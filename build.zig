@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     main_mod.addImport("mer", mer_mod);
-    addDirModules(b, main_mod, mer_mod, "pages");
+    addDirModules(b, main_mod, mer_mod, "app");
     addDirModules(b, main_mod, mer_mod, "api");
 
     // ── Main executable ─────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseSmall,
     });
     worker_mod.addImport("mer", mer_mod);
-    addDirModules(b, worker_mod, mer_mod, "pages");
+    addDirModules(b, worker_mod, mer_mod, "app");
     addDirModules(b, worker_mod, mer_mod, "api");
     const worker_wasm = b.addExecutable(.{
         .name = "merjs",
@@ -107,7 +107,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     test_mod.addImport("mer", mer_mod);
-    addDirModules(b, test_mod, mer_mod, "pages");
+    addDirModules(b, test_mod, mer_mod, "app");
     addDirModules(b, test_mod, mer_mod, "api");
     const unit_tests = b.addTest(.{ .root_module = test_mod });
     const run_tests = b.addRunArtifact(unit_tests);
@@ -116,19 +116,32 @@ pub fn build(b: *std.Build) void {
 }
 
 /// Scan dir/ and add each *.zig as a named module import.
-/// "pages" dir: pages/index.zig  → import "pages/index"
+/// "app" dir: app/index.zig  → import "app/index"
 /// "api"   dir: api/hello.zig   → import "api/hello"
 fn addDirModules(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Module, dir: []const u8) void {
+    // Check if a layout module exists in this directory.
+    const layout_path = b.fmt("{s}/layout.zig", .{dir});
+    const layout_mod: ?*std.Build.Module = blk: {
+        std.fs.cwd().access(layout_path, .{}) catch break :blk null;
+        const m = b.createModule(.{ .root_source_file = b.path(layout_path) });
+        m.addImport("mer", mer_mod);
+        const layout_import = b.fmt("{s}/layout", .{dir});
+        mod.addImport(layout_import, m);
+        break :blk m;
+    };
+
     var d = std.fs.cwd().openDir(dir, .{ .iterate = true }) catch return;
     defer d.close();
     var it = d.iterate();
     while (it.next() catch null) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
+        if (std.mem.eql(u8, entry.name, "layout.zig")) continue;
         const file_path    = b.fmt("{s}/{s}", .{ dir, entry.name });
         const import_name  = b.fmt("{s}/{s}", .{ dir, entry.name[0 .. entry.name.len - 4] });
         const route_mod = b.createModule(.{ .root_source_file = b.path(file_path) });
         route_mod.addImport("mer", mer_mod);
+        if (layout_mod) |lm| route_mod.addImport(b.fmt("{s}/layout", .{dir}), lm);
         mod.addImport(import_name, route_mod);
     }
 }

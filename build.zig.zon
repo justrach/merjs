@@ -13,7 +13,7 @@
         "build.zig",
         "build.zig.zon",
         "src",
-        "pages",
+        "app",
         "public",
         "tools",
     },
