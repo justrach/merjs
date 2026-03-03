@@ -128,19 +128,25 @@ jobs:
       - name: Update README benchmark rows
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          BENCH_ROWS="| Requests/sec (wrk)    | **${MERJS_RPS} req/s**     | **${NEXT_RPS} req/s**          |\n| Avg latency           | **${MERJS_LAT}**           | **${NEXT_LAT}**                |"
-          sed -i '/<!-- BENCH:START -->/,/<!-- BENCH:END -->/{
-            /<!-- BENCH:START -->/{
-              n
-              :loop
-              /<!-- BENCH:END -->/!{N;b loop}
-              s|.*\(<!-- BENCH:END -->\)|'"${BENCH_ROWS}"'\n\1|
-            }
-          }' README.md
+          python3 -c "
+          import os, re
+          rps_m, rps_n = os.environ['MERJS_RPS'], os.environ['NEXT_RPS']
+          lat_m, lat_n = os.environ['MERJS_LAT'], os.environ['NEXT_LAT']
+          rows = (
+              f'| Requests/sec (wrk)    | **{rps_m} req/s**     | **{rps_n} req/s**          |\n'
+              f'| Avg latency           | **{lat_m}**           | **{lat_n}**                |'
+          )
+          txt = open('README.md').read()
+          txt = re.sub(
+              r'(<!-- BENCH:START -->\n).*?(\n<!-- BENCH:END -->)',
+              r'\1' + rows + r'\2',
+              txt, flags=re.DOTALL)
+          open('README.md','w').write(txt)
+          "
 
       - name: Commit updated README
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git diff --quiet README.md || (git add README.md && git commit -m "bench: update README with latest wrk results [skip ci]" && git push)
+          git diff --quiet README.md || (git add README.md && git commit -m "docs: update README benchmark numbers [skip ci]" && git push)
