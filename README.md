@@ -30,8 +30,8 @@
 | Hot reload             | SSE file watcher (300 ms)  | Webpack/Turbopack HMR          |
 | Build toolchain        | `zig build` (one binary)   | Node + Webpack/Turbo + Babel   |
 <!-- BENCH:START -->
-| Requests/sec (wrk)    | _pending CI_               | _pending CI_                   |
-| Avg latency           | _pending CI_               | _pending CI_                   |
+| Requests/sec (wrk)    | **2442.17 req/s**     | **1901.51 req/s**          |
+| Avg latency           | **40.68ms 3.07ms**           | **77.10ms 171.61ms**                |
 <!-- BENCH:END -->
 
 > **Note:** These are approximate comparisons. Benchmark rows are auto-updated by CI on each push to main. Next.js is a mature, production-grade framework — merjs is an early experiment exploring whether we can get the same DX without the runtime weight.
