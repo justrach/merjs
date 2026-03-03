@@ -13,6 +13,9 @@ pub const meta: mer.Meta = .{
 };
 
 const page_node = page();
+comptime {
+    mer.lint.check(page_node);
+}
 
 pub fn render(req: mer.Request) mer.Response {
     return mer.render(req.allocator, page_node);

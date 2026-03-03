@@ -60,6 +60,10 @@ pub const Meta = struct {
 /// Type-safe HTML DSL. Build pages with `mer.h.div(...)`, `mer.h.document(...)`, etc.
 pub const h = @import("html.zig");
 
+// --- HTML linter ------------------------------------------------------------
+/// Comptime HTML linter. Use `mer.lint.check(node)` to enforce structural rules.
+pub const lint = @import("html_lint.zig");
+
 /// Render an HTML node tree to a Response.
 pub fn render(allocator: std.mem.Allocator, node: h.Node) Response {
     const body = h.render(allocator, node) catch return internalError("html render failed");
