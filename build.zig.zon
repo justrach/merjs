@@ -1,0 +1,20 @@
+.{
+    .name = .merjs,
+    .fingerprint = 0xaa135c45924bbfa8,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{
+        .dhi = .{
+            .url = "git+https://github.com/justrach/dhi.git#20bbf6a25e9f0d28bd915f6dc7e18a9766b1134a",
+            .hash = "dhi-0.1.0-Fz3bn3g6AwCFCeeGWyrLnJo-V95C5VkFxdVaWMEqc7iy",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "pages",
+        "public",
+        "tools",
+    },
+}

@@ -1,0 +1,28 @@
+# Zig build artifacts
+.zig-cache/
+zig-out/
+
+# Generated files (recreated by `zig build codegen`)
+src/generated/
+
+# Built assets (recreated by build steps)
+public/styles.css
+public/counter.wasm
+worker/merjs.wasm
+
+# Toolchain binaries (downloaded on first build)
+tools/tailwindcss
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Wrangler
+.wrangler/
+node_modules/

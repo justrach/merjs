@@ -1,0 +1,91 @@
+name: Benchmark — merjs vs Next.js
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    name: Size & Build Comparison
+
+    steps:
+      - name: Checkout merjs
+        uses: actions/checkout@v4
+
+      - name: Setup Zig 0.15.1
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ── Build merjs ──────────────────────────────────────
+      - name: Build merjs
+        run: |
+          START=$(date +%s%N)
+          zig build codegen
+          zig build
+          END=$(date +%s%N)
+          echo "MERJS_BUILD_MS=$(( (END - START) / 1000000 ))" >> $GITHUB_ENV
+
+      - name: Measure merjs
+        run: |
+          MERJS_BIN=$(find zig-out -name "merjs" -type f 2>/dev/null | head -1)
+          if [ -n "$MERJS_BIN" ]; then
+            MERJS_SIZE=$(du -sh "$MERJS_BIN" | cut -f1)
+            MERJS_BYTES=$(stat --format=%s "$MERJS_BIN")
+          else
+            MERJS_SIZE="N/A"
+            MERJS_BYTES=0
+          fi
+          MERJS_FILES=$(find src pages api wasm -name '*.zig' | wc -l)
+          echo "MERJS_SIZE=$MERJS_SIZE" >> $GITHUB_ENV
+          echo "MERJS_BYTES=$MERJS_BYTES" >> $GITHUB_ENV
+          echo "MERJS_FILES=$MERJS_FILES" >> $GITHUB_ENV
+
+      # ── Build Next.js baseline ───────────────────────────
+      - name: Create Next.js app
+        run: |
+          START=$(date +%s%N)
+          npx -y create-next-app@latest nextjs-baseline \
+            --yes --ts --tailwind --app --eslint --use-npm
+          cd nextjs-baseline
+          npm run build
+          END=$(date +%s%N)
+          echo "NEXT_BUILD_MS=$(( (END - START) / 1000000 ))" >> $GITHUB_ENV
+
+      - name: Measure Next.js
+        run: |
+          cd nextjs-baseline
+          NEXT_NM_SIZE=$(du -sh node_modules | cut -f1)
+          NEXT_NM_BYTES=$(du -sb node_modules | cut -f1)
+          NEXT_NM_FILES=$(find node_modules -type f | wc -l)
+          NEXT_DOT_NEXT_SIZE=$(du -sh .next 2>/dev/null | cut -f1 || echo "N/A")
+          echo "NEXT_NM_SIZE=$NEXT_NM_SIZE" >> $GITHUB_ENV
+          echo "NEXT_NM_BYTES=$NEXT_NM_BYTES" >> $GITHUB_ENV
+          echo "NEXT_NM_FILES=$NEXT_NM_FILES" >> $GITHUB_ENV
+          echo "NEXT_DOT_NEXT_SIZE=$NEXT_DOT_NEXT_SIZE" >> $GITHUB_ENV
+
+      # ── Summary ──────────────────────────────────────────
+      - name: Post comparison
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'HEREDOC'
+          ## 📊 merjs vs Next.js — Benchmark
+
+          | Metric | **merjs** | **Next.js** |
+          |--------|-----------|-------------|
+          HEREDOC
+
+          echo "| Server binary / node_modules | $MERJS_SIZE | $NEXT_NM_SIZE |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build output | — | $NEXT_DOT_NEXT_SIZE (.next/) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source files (Zig) / node_modules files | $MERJS_FILES files | $NEXT_NM_FILES files |" >> $GITHUB_STEP_SUMMARY
+          echo "| Full build time | ${MERJS_BUILD_MS} ms | ${NEXT_BUILD_MS} ms |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runtime deps | 0 | Node.js ≥ 18 |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Measured on GitHub Actions \`ubuntu-latest\`. Next.js created with \`create-next-app@latest --yes --ts --tailwind --app\`." >> $GITHUB_STEP_SUMMARY
