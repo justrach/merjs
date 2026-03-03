@@ -10,6 +10,7 @@ pub const meta: mer.Meta = .{
     .twitter_card = "summary_large_image",
     .twitter_title = "merjs \u{2014} A Zig-native web framework",
     .twitter_description = "Zero Node.js. Zero node_modules. Pure Zig all the way down.",
+    .extra_head = "<style>" ++ page_css ++ "</style>",
 };
 
 const page_node = page();
@@ -23,18 +24,6 @@ pub fn render(req: mer.Request) mer.Response {
 
 fn page() h.Node {
     return h.div(.{ .class = "page" }, .{
-        // Header
-        h.header(.{ .class = "header" }, .{
-            h.div(.{ .class = "wordmark" }, .{ h.text("mer"), h.span(.{}, .{h.raw("js")}) }),
-            h.nav(.{ .class = "nav" }, .{
-                navLink("/dashboard", "Dashboard"),
-                navLink("/weather", "Weather"),
-                navLink("/users", "Users"),
-                navLink("/counter", "Counter"),
-                navLink("/about", "About"),
-            }),
-        }),
-
         // Hero
         h.h1(.{ .class = "lede" }, .{
             h.text("The web doesn't need"),
@@ -110,10 +99,6 @@ fn page() h.Node {
     });
 }
 
-fn navLink(href: []const u8, label: []const u8) h.Node {
-    return h.a(.{ .href = href }, label);
-}
-
 fn item(num: []const u8, heading: []const u8, body_children: anytype) h.Node {
     return h.div(.{ .class = "item" }, .{
         h.div(.{ .class = "item-num" }, num),
@@ -123,3 +108,63 @@ fn item(num: []const u8, heading: []const u8, body_children: anytype) h.Node {
         }),
     });
 }
+
+const page_css =
+    \\.page { max-width: 800px; margin: 0 auto; padding: 56px 40px 120px; }
+    \\.lede {
+    \\  font-family: 'DM Serif Display', Georgia, serif;
+    \\  font-size: clamp(36px, 5vw, 58px);
+    \\  line-height: 1.08;
+    \\  letter-spacing: -0.03em;
+    \\  color: var(--text);
+    \\  margin-bottom: 56px;
+    \\}
+    \\.lede .red { color: var(--red); }
+    \\.lede em { font-style: italic; }
+    \\.rule { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+    \\.items { display: flex; flex-direction: column; }
+    \\.item {
+    \\  display: grid;
+    \\  grid-template-columns: 40px 1fr;
+    \\  gap: 16px;
+    \\  padding: 36px 0;
+    \\  border-bottom: 1px solid var(--border);
+    \\}
+    \\.item:first-child { border-top: 1px solid var(--border); }
+    \\.item-num { font-size: 11px; color: var(--red); font-weight: 600; letter-spacing: 0.08em; padding-top: 6px; }
+    \\.item-heading {
+    \\  font-family: 'DM Serif Display', Georgia, serif;
+    \\  font-size: clamp(20px, 2.6vw, 28px);
+    \\  line-height: 1.15; letter-spacing: -0.02em;
+    \\  color: var(--text); margin-bottom: 12px;
+    \\}
+    \\.item-heading .red { color: var(--red); }
+    \\.item-heading em { font-style: italic; }
+    \\.item-text { font-size: 15px; color: var(--muted); line-height: 1.75; max-width: 580px; }
+    \\.item-text strong { color: var(--text); font-weight: 500; }
+    \\.item-text code {
+    \\  font-family: 'SF Mono', 'Fira Code', monospace;
+    \\  font-size: 13px; background: var(--bg3);
+    \\  border-radius: 4px; padding: 1px 6px; color: var(--text);
+    \\}
+    \\.footer { margin-top: 72px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    \\.btn-primary {
+    \\  display: inline-flex; align-items: center;
+    \\  background: var(--red); color: var(--bg);
+    \\  font-size: 14px; font-weight: 600;
+    \\  padding: 12px 26px; border-radius: 6px;
+    \\  transition: opacity 0.15s;
+    \\}
+    \\.btn-primary:hover { opacity: 0.88; }
+    \\.btn-ghost {
+    \\  display: inline-flex; align-items: center;
+    \\  color: var(--muted); font-size: 14px;
+    \\  border: 1px solid var(--border);
+    \\  padding: 12px 26px; border-radius: 6px;
+    \\  transition: color 0.15s, border-color 0.15s;
+    \\}
+    \\.btn-ghost:hover { color: var(--text); border-color: var(--text); }
+    \\.footer-note { width: 100%; margin-top: 28px; font-size: 12px; color: var(--muted); }
+    \\.footer-note a { border-bottom: 1px solid var(--border); padding-bottom: 1px; }
+    \\.footer-note a:hover { color: var(--text); }
+;

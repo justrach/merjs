@@ -69,8 +69,9 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\    a { color:inherit; text-decoration:none; }
         \\    .layout { max-width:780px; margin:0 auto; padding:48px 32px 96px; }
         \\    .layout-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:48px; }
-        \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; }
+        \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; display:flex; align-items:center; gap:6px; }
         \\    .wordmark span { color:var(--red); }
+        \\    .wordmark .logo { width:24px; height:24px; object-fit:contain; }
         \\    .nav { display:flex; gap:20px; }
         \\    .nav a { font-size:13px; color:var(--muted); transition:color 0.15s; }
         \\    .nav a:hover { color:var(--text); }
@@ -92,7 +93,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\<body>
         \\<div class="layout">
         \\  <header class="layout-header">
-        \\    <a href="/" class="wordmark">mer<span>js</span></a>
+        \\    <a href="/" class="wordmark"><img src="/merlion.png" alt="merjs logo" class="logo">mer<span>js</span></a>
         \\    <nav class="nav">
         \\      <a href="/dashboard">Dashboard</a>
         \\      <a href="/weather">Weather</a>

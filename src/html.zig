@@ -99,7 +99,6 @@ fn propsToAttrs(props: Props) []const Attr {
         }
     }
 
-    // Copy into a const to allow comptime promotion.
     const final: [n]Attr = attrs[0..n].*;
     return &final;
 }

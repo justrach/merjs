@@ -40,7 +40,7 @@ fn page() h.Node {
         ),
     }, .{
         h.div(.{ .class = "wrap" }, .{
-            h.div(.{ .class = "wordmark" }, .{ h.text("mer"), h.span(.{}, .{h.raw("js")}) }),
+            h.a(.{ .href = "/", .class = "wordmark" }, .{ h.text("mer"), h.span(.{}, .{h.raw("js")}) }),
             h.div(.{ .class = "code" }, "404"),
             h.h1(.{}, "Page not found"),
             h.p(.{ .class = "sub" }, "The route you're looking for doesn't exist. Maybe it was never here, or maybe it just hasn't been built yet."),

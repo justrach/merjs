@@ -62,7 +62,7 @@ fn page() h.Node {
         h.div(.{ .class = "page" }, .{
             // Header
             h.header(.{ .class = "header" }, .{
-                h.div(.{ .class = "wordmark" }, .{ h.text("mer"), h.span(.{}, .{h.raw("js")}) }),
+                h.a(.{ .href = "/", .class = "wordmark" }, .{ h.text("mer"), h.span(.{}, .{h.raw("js")}) }),
                 h.a(.{ .href = "/", .class = "back" }, .{h.raw("&larr; home")}),
             }),
             h.h1(.{}, "Weather"),
