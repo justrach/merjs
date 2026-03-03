@@ -9,7 +9,7 @@ on:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    name: Size & Build Comparison
+    name: Size, Build & Load Comparison
 
     steps:
       - name: Checkout merjs
@@ -24,6 +24,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Install wrk
+        run: sudo apt-get update && sudo apt-get install -y wrk
 
       # ── Build merjs ──────────────────────────────────────
       - name: Build merjs
@@ -44,10 +47,25 @@ jobs:
             MERJS_SIZE="N/A"
             MERJS_BYTES=0
           fi
-          MERJS_FILES=$(find src pages api wasm -name '*.zig' | wc -l)
+          MERJS_FILES=$(find src app api wasm -name '*.zig' | wc -l)
           echo "MERJS_SIZE=$MERJS_SIZE" >> $GITHUB_ENV
           echo "MERJS_BYTES=$MERJS_BYTES" >> $GITHUB_ENV
           echo "MERJS_FILES=$MERJS_FILES" >> $GITHUB_ENV
+
+      # ── wrk: merjs ────────────────────────────────────────
+      - name: Load test merjs
+        run: |
+          MERJS_BIN=$(find zig-out -name "merjs" -type f 2>/dev/null | head -1)
+          $MERJS_BIN --port 3000 --no-dev &
+          MERJS_PID=$!
+          sleep 2
+          WRK_OUT=$(wrk -t2 -c100 -d10s http://127.0.0.1:3000/)
+          echo "$WRK_OUT"
+          MERJS_RPS=$(echo "$WRK_OUT" | grep 'Requests/sec' | awk '{print $2}')
+          MERJS_LAT=$(echo "$WRK_OUT" | grep 'Latency' | awk '{print $2 " " $3}')
+          echo "MERJS_RPS=$MERJS_RPS" >> $GITHUB_ENV
+          echo "MERJS_LAT=$MERJS_LAT" >> $GITHUB_ENV
+          kill $MERJS_PID 2>/dev/null || true
 
       # ── Build Next.js baseline ───────────────────────────
       - name: Create Next.js app
@@ -72,6 +90,21 @@ jobs:
           echo "NEXT_NM_FILES=$NEXT_NM_FILES" >> $GITHUB_ENV
           echo "NEXT_DOT_NEXT_SIZE=$NEXT_DOT_NEXT_SIZE" >> $GITHUB_ENV
 
+      # ── wrk: Next.js ──────────────────────────────────────
+      - name: Load test Next.js
+        run: |
+          cd nextjs-baseline
+          npx next start -p 3001 &
+          NEXT_PID=$!
+          sleep 5
+          WRK_OUT=$(wrk -t2 -c100 -d10s http://127.0.0.1:3001/)
+          echo "$WRK_OUT"
+          NEXT_RPS=$(echo "$WRK_OUT" | grep 'Requests/sec' | awk '{print $2}')
+          NEXT_LAT=$(echo "$WRK_OUT" | grep 'Latency' | awk '{print $2 " " $3}')
+          echo "NEXT_RPS=$NEXT_RPS" >> $GITHUB_ENV
+          echo "NEXT_LAT=$NEXT_LAT" >> $GITHUB_ENV
+          kill $NEXT_PID 2>/dev/null || true
+
       # ── Summary ──────────────────────────────────────────
       - name: Post comparison
         run: |
@@ -87,5 +120,7 @@ jobs:
           echo "| Source files (Zig) / node_modules files | $MERJS_FILES files | $NEXT_NM_FILES files |" >> $GITHUB_STEP_SUMMARY
           echo "| Full build time | ${MERJS_BUILD_MS} ms | ${NEXT_BUILD_MS} ms |" >> $GITHUB_STEP_SUMMARY
           echo "| Runtime deps | 0 | Node.js ≥ 18 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Requests/sec** (wrk, 2t/100c/10s) | **${MERJS_RPS}** | **${NEXT_RPS}** |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Avg latency** | **${MERJS_LAT}** | **${NEXT_LAT}** |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> Measured on GitHub Actions \`ubuntu-latest\`. Next.js created with \`create-next-app@latest --yes --ts --tailwind --app\`." >> $GITHUB_STEP_SUMMARY
+          echo "> Measured on GitHub Actions \`ubuntu-latest\`. Next.js created with \`create-next-app@latest --yes --ts --tailwind --app\`. Load test: \`wrk -t2 -c100 -d10s\` on index route." >> $GITHUB_STEP_SUMMARY
