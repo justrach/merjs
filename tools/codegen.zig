@@ -1,4 +1,4 @@
-// tools/codegen.zig — scans pages/ and api/, writes src/generated/routes.zig.
+// tools/codegen.zig — scans app/ and api/, writes src/generated/routes.zig.
 // Run via: zig build codegen
 
 const std = @import("std");
@@ -9,14 +9,14 @@ pub fn main() !void {
     const alloc = gpa.allocator();
 
     // Each entry stores the full relative path from the project root.
-    // e.g. "pages/about.zig", "api/hello.zig"
+    // e.g. "app/about.zig", "api/hello.zig"
     var entries: std.ArrayList([]u8) = .{};
     defer {
         for (entries.items) |e| alloc.free(e);
         entries.deinit(alloc);
     }
 
-    try scanDir(alloc, &entries, "pages");
+    try scanDir(alloc, &entries, "app");
     try scanDir(alloc, &entries, "api");
 
     std.mem.sort([]u8, entries.items, {}, struct {
@@ -52,9 +52,23 @@ pub fn main() !void {
         defer alloc.free(ident);
         const url   = try toUrl(alloc, path);
         defer alloc.free(url);
-        try w.print("    .{{ .path = \"{s}\", .render = {s}.render }},\n", .{ url, ident });
+        try w.print("    .{{ .path = \"{s}\", .render = {s}.render, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}} }},\n", .{ url, ident, ident, ident });
     }
-    try w.writeAll("};\n");
+    try w.writeAll("};\n\n");
+
+    // --- Framework primitives (auto-detected) ---
+
+    // Layout — if app/layout.zig exists, export its wrap function.
+    if (fileExists("app/layout.zig")) {
+        try w.writeAll("const app_layout = @import(\"app/layout\");\n");
+        try w.writeAll("pub const layout = app_layout.wrap;\n");
+    }
+
+    // Error handlers — if app/404.zig exists, export its render function.
+    if (fileExists("app/404.zig")) {
+        try w.writeAll("const app_404 = @import(\"app/404\");\n");
+        try w.writeAll("pub const notFound = app_404.render;\n");
+    }
 
     try std.fs.cwd().makePath("src/generated");
     const out = try std.fs.cwd().createFile("src/generated/routes.zig", .{});
@@ -73,13 +87,17 @@ fn scanDir(alloc: std.mem.Allocator, entries: *std.ArrayList([]u8), dir: []const
     while (try walker.next()) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
+        // Skip layout.zig — it's a shared layout module, not a route.
+        if (std.mem.eql(u8, entry.path, "layout.zig")) continue;
+        // Skip 404.zig — it's an error handler, not a regular route.
+        if (std.mem.eql(u8, entry.path, "404.zig")) continue;
         const full = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ dir, entry.path });
         try entries.append(alloc, full);
     }
 }
 
-/// "pages/about.zig" → "pages_about"
-/// "api/hello.zig"   → "api_hello"
+/// "app/about.zig" → "app_about"
+/// "api/hello.zig" → "api_hello"
 fn toIdent(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     const without_ext = if (std.mem.endsWith(u8, path, ".zig")) path[0 .. path.len - 4] else path;
     const buf = try alloc.dupe(u8, without_ext);
@@ -91,8 +109,8 @@ fn toIdent(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     return buf;
 }
 
-/// "pages/about.zig" → "pages/about"   (module import name)
-/// "api/hello.zig"   → "api/hello"
+/// "app/about.zig" → "app/about"   (module import name)
+/// "api/hello.zig" → "api/hello"
 fn toImportName(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     return alloc.dupe(u8,
         if (std.mem.endsWith(u8, path, ".zig")) path[0 .. path.len - 4] else path
@@ -100,21 +118,21 @@ fn toImportName(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
 }
 
 /// URL mapping:
-///   pages/index.zig      → "/"
-///   pages/about.zig      → "/about"
-///   pages/blog/post.zig  → "/blog/post"
+///   app/index.zig      → "/"
+///   app/about.zig      → "/about"
+///   app/blog/post.zig  → "/blog/post"
 ///   api/hello.zig        → "/api/hello"
 ///   api/v1/users.zig     → "/api/v1/users"
 fn toUrl(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     const without_ext = if (std.mem.endsWith(u8, path, ".zig")) path[0 .. path.len - 4] else path;
 
-    // Strip "pages/" prefix, keep "api/" as part of the URL.
-    const rel = if (std.mem.startsWith(u8, without_ext, "pages/"))
-        without_ext["pages/".len..]
+    // Strip "app/" prefix, keep "api/" as part of the URL.
+    const rel = if (std.mem.startsWith(u8, without_ext, "app/"))
+        without_ext["app/".len..]
     else
         without_ext; // "api/hello" — stays as-is
 
-    // "index" at pages root → "/"
+    // "index" at app root → "/"
     if (std.mem.eql(u8, rel, "index")) return alloc.dupe(u8, "/");
 
     // Build URL: "/" + rel, replacing OS separators with '/'.
@@ -138,4 +156,9 @@ fn toUrl(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     }
 
     return result;
+}
+
+fn fileExists(path: []const u8) bool {
+    std.fs.cwd().access(path, .{}) catch return false;
+    return true;
 }

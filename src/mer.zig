@@ -1,5 +1,5 @@
 // mer.zig — public API for page authors and internal modules.
-// Both pages/ and src/ internal files import this as `@import("mer")`.
+// Both app/ and src/ internal files import this as `@import("mer")`.
 
 const std     = @import("std");
 const req_mod = @import("request.zig");
@@ -29,6 +29,32 @@ pub fn typedJson(allocator: std.mem.Allocator, value: anytype) Response {
     jw.write(value) catch return internalError("json write failed");
     return res_mod.Response.init(.ok, .json, out.written());
 }
+
+// --- SEO / Meta tags --------------------------------------------------------
+/// Typed metadata for pages. Export `pub const meta: mer.Meta = .{ ... }` from
+/// any page and the framework injects the correct <meta> / OG / Twitter tags.
+pub const Meta = struct {
+    title: []const u8 = "",
+    description: []const u8 = "",
+    // Open Graph
+    og_title: ?[]const u8 = null,
+    og_description: ?[]const u8 = null,
+    og_image: ?[]const u8 = null,
+    og_url: ?[]const u8 = null,
+    og_type: []const u8 = "website",
+    og_site_name: []const u8 = "merjs",
+    // Twitter Card
+    twitter_card: []const u8 = "summary_large_image",
+    twitter_title: ?[]const u8 = null,
+    twitter_description: ?[]const u8 = null,
+    twitter_image: ?[]const u8 = null,
+    twitter_site: ?[]const u8 = null,
+    // Other
+    canonical: ?[]const u8 = null,
+    robots: ?[]const u8 = null,
+    // Extra head HTML (custom <link>, <script>, etc.)
+    extra_head: ?[]const u8 = null,
+};
 
 // --- Validation (dhi) -------------------------------------------------------
 /// Pydantic-style validation types. Define typed models and validate them.

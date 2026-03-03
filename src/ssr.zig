@@ -7,5 +7,12 @@ const Router = @import("router.zig").Router;
 const generated = @import("generated/routes.zig");
 
 pub fn buildRouter(allocator: std.mem.Allocator) Router {
-    return Router.init(allocator, generated.routes);
+    var r = Router.init(allocator, generated.routes);
+    if (@hasDecl(generated, "layout")) {
+        r.layout = generated.layout;
+    }
+    if (@hasDecl(generated, "notFound")) {
+        r.not_found = generated.notFound;
+    }
+    return r;
 }
