@@ -20,6 +20,7 @@ pub const Server = struct {
     router: *const Router,
     watcher: ?*watcher_mod.Watcher,
     allocator: std.mem.Allocator,
+    pool: std.Thread.Pool,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -32,19 +33,29 @@ pub const Server = struct {
             .config = config,
             .router = router,
             .watcher = watcher,
+            .pool = undefined,
         };
     }
 
     pub fn listen(self: *Server) !void {
+        try self.pool.init(.{ .allocator = self.allocator, .n_jobs = 128 });
+        defer self.pool.deinit();
+
         const addr = try std.net.Address.parseIp(self.config.host, self.config.port);
-        var net_server = try addr.listen(.{ .reuse_address = true });
+        var net_server = try addr.listen(.{ .reuse_address = true, .kernel_backlog = 512 });
         defer net_server.deinit();
 
         log.info("merjs dev server -> http://{s}:{d}", .{ self.config.host, self.config.port });
 
         while (true) {
-            const conn = try net_server.accept();
-            const ctx = try self.allocator.create(ConnCtx);
+            const conn = net_server.accept() catch |err| {
+                log.debug("accept: {}", .{err});
+                continue;
+            };
+            const ctx = self.allocator.create(ConnCtx) catch {
+                conn.stream.close();
+                continue;
+            };
             ctx.* = .{
                 .conn = conn,
                 .router = self.router,
@@ -52,8 +63,10 @@ pub const Server = struct {
                 .allocator = self.allocator,
                 .dev = self.config.dev,
             };
-            const thread = try std.Thread.spawn(.{}, handleConn, .{ctx});
-            thread.detach();
+            self.pool.spawn(handleConn, .{ctx}) catch {
+                ctx.allocator.destroy(ctx);
+                conn.stream.close();
+            };
         }
     }
 };
@@ -84,7 +97,7 @@ fn handleConn(ctx: *ConnCtx) void {
 
     while (true) {
         var std_req = http_server.receiveHead() catch |err| {
-            if (err != error.HttpConnectionClosing) {
+            if (err != error.HttpConnectionClosing and err != error.ReadFailed) {
                 log.debug("receiveHead: {}", .{err});
             }
             return;

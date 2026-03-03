@@ -29,8 +29,12 @@
 | Type safety            | Comptime (Zig + dhi)       | TypeScript (runtime-erased)    |
 | Hot reload             | SSE file watcher (300 ms)  | Webpack/Turbopack HMR          |
 | Build toolchain        | `zig build` (one binary)   | Node + Webpack/Turbo + Babel   |
+<!-- BENCH:START -->
+| Requests/sec (wrk)    | _pending CI_               | _pending CI_                   |
+| Avg latency           | _pending CI_               | _pending CI_                   |
+<!-- BENCH:END -->
 
-> **Note:** These are approximate comparisons. Next.js is a mature, production-grade framework — merjs is an early experiment exploring whether we can get the same DX without the runtime weight.
+> **Note:** These are approximate comparisons. Benchmark rows are auto-updated by CI on each push to main. Next.js is a mature, production-grade framework — merjs is an early experiment exploring whether we can get the same DX without the runtime weight.
 
 ---
 

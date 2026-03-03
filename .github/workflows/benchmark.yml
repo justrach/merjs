@@ -124,3 +124,23 @@ jobs:
           echo "| **Avg latency** | **${MERJS_LAT}** | **${NEXT_LAT}** |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "> Measured on GitHub Actions \`ubuntu-latest\`. Next.js created with \`create-next-app@latest --yes --ts --tailwind --app\`. Load test: \`wrk -t2 -c100 -d10s\` on index route." >> $GITHUB_STEP_SUMMARY
+
+      - name: Update README benchmark rows
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          BENCH_ROWS="| Requests/sec (wrk)    | **${MERJS_RPS} req/s**     | **${NEXT_RPS} req/s**          |\n| Avg latency           | **${MERJS_LAT}**           | **${NEXT_LAT}**                |"
+          sed -i '/<!-- BENCH:START -->/,/<!-- BENCH:END -->/{
+            /<!-- BENCH:START -->/{
+              n
+              :loop
+              /<!-- BENCH:END -->/!{N;b loop}
+              s|.*\(<!-- BENCH:END -->\)|'"${BENCH_ROWS}"'\n\1|
+            }
+          }' README.md
+
+      - name: Commit updated README
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet README.md || (git add README.md && git commit -m "bench: update README with latest wrk results [skip ci]" && git push)
