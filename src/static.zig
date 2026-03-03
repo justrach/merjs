@@ -13,6 +13,13 @@ const mime_table = [_]struct { ext: []const u8, ct: mer.ContentType }{
     .{ .ext = ".wasm", .ct = .wasm },
     .{ .ext = ".json", .ct = .json },
     .{ .ext = ".txt",  .ct = .text },
+    .{ .ext = ".png",  .ct = .png },
+    .{ .ext = ".jpg",  .ct = .jpeg },
+    .{ .ext = ".jpeg", .ct = .jpeg },
+    .{ .ext = ".gif",  .ct = .gif },
+    .{ .ext = ".svg",  .ct = .svg },
+    .{ .ext = ".ico",  .ct = .ico },
+    .{ .ext = ".webp", .ct = .webp },
 };
 
 fn mimeForPath(path: []const u8) mer.ContentType {

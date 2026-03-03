@@ -7,6 +7,12 @@ pub const ContentType = enum {
     css,
     js,
     wasm,
+    png,
+    jpeg,
+    gif,
+    svg,
+    ico,
+    webp,
     octet_stream,
 
     pub fn mime(self: ContentType) []const u8 {
@@ -17,6 +23,12 @@ pub const ContentType = enum {
             .css  => "text/css; charset=utf-8",
             .js   => "application/javascript",
             .wasm => "application/wasm",
+            .png  => "image/png",
+            .jpeg => "image/jpeg",
+            .gif  => "image/gif",
+            .svg  => "image/svg+xml",
+            .ico  => "image/x-icon",
+            .webp => "image/webp",
             .octet_stream => "application/octet-stream",
         };
     }

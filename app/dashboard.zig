@@ -25,14 +25,22 @@ const html_top =
     \\    a { color:inherit; text-decoration:none; }
     \\    .page { max-width:680px; margin:0 auto; padding:48px 32px 96px; }
     \\    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:48px; }
-    \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; display:flex; align-items:center; gap:6px; }
+    \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; }
     \\    .wordmark span { color:var(--red); }
-    \\    .wordmark .logo { width:24px; height:24px; object-fit:contain; }
     \\    .back { font-size:13px; color:var(--muted); transition:color 0.15s; }
     \\    .back:hover { color:var(--text); }
     \\    h1 { font-family:'DM Serif Display',Georgia,serif; font-size:32px; letter-spacing:-0.02em; margin-bottom:32px; }
-    \\    .card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:16px; }
-    \\    .card-label { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:20px; }
+    \\    .card {
+    \\      background:var(--bg2); border:1px solid var(--border);
+    \\      border-radius:12px; padding:24px;
+    \\      margin-bottom:16px;
+    \\    }
+    \\    .card-label {
+    \\      display:flex; align-items:center; gap:8px;
+    \\      font-size:11px; color:var(--muted);
+    \\      text-transform:uppercase; letter-spacing:0.08em;
+    \\      margin-bottom:20px;
+    \\    }
     \\    .dot { width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
     \\    .dot-red { background:var(--red); }
     \\    .dot-pulse { background:var(--red); animation:pulse 2s infinite; }
@@ -50,12 +58,16 @@ const html_top =
     \\<body>
     \\<div class="page">
     \\  <header class="header">
-    \\    <a href="/" class="wordmark"><img src="/merlion.png" alt="merjs logo" class="logo">mer<span>js</span></a>
+    \\    <a href="/" class="wordmark">mer<span>js</span></a>
     \\    <a href="/" class="back">← home</a>
     \\  </header>
     \\  <h1>Dashboard</h1>
+    \\  <!-- SSR card -->
     \\  <div class="card">
-    \\    <div class="card-label"><span class="dot dot-red"></span> Server-side rendered</div>
+    \\    <div class="card-label">
+    \\      <span class="dot dot-red"></span>
+    \\      Server-side rendered
+    \\    </div>
     \\    <div class="grid2">
     \\      <div class="stat">
     \\        <div class="stat-label">framework</div>
@@ -75,20 +87,24 @@ const html_bottom =
     \\      </div>
     \\    </div>
     \\  </div>
+    \\  <!-- Live card -->
     \\  <div class="card">
-    \\    <div class="card-label"><span class="dot dot-pulse"></span> Live &mdash; /api/time</div>
+    \\    <div class="card-label">
+    \\      <span class="dot dot-pulse"></span>
+    \\      Live &mdash; /api/time
+    \\    </div>
     \\    <div class="grid2">
     \\      <div class="stat" style="grid-column:1/-1">
     \\        <div class="stat-label">current unix timestamp</div>
-    \\        <div class="stat-value big" id="live-ts">&mdash;</div>
+    \\        <div class="stat-value big" id="live-ts">—</div>
     \\      </div>
     \\      <div class="stat">
     \\        <div class="stat-label">human time</div>
-    \\        <div class="stat-value red" id="live-human">&mdash;</div>
+    \\        <div class="stat-value red" id="live-human">—</div>
     \\      </div>
     \\      <div class="stat">
     \\        <div class="stat-label">iso string</div>
-    \\        <div class="stat-value" id="live-iso" style="font-size:12px">&mdash;</div>
+    \\        <div class="stat-value" id="live-iso" style="font-size:12px">—</div>
     \\      </div>
     \\    </div>
     \\  </div>
