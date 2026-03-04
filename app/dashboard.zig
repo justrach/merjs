@@ -81,11 +81,19 @@ const html_top =
     \\      </div>
     \\      <div class="stat" style="grid-column:1/-1">
     \\        <div class="stat-label">rendered at (unix)</div>
-    \\        <div class="stat-value" id="ssr-ts">
+    \\        <div class="stat-value big" id="ssr-ts">
 ;
 
 const html_bottom =
     \\        </div>
+    \\      </div>
+    \\      <div class="stat">
+    \\        <div class="stat-label">human time</div>
+    \\        <div class="stat-value red" id="ssr-human">&mdash;</div>
+    \\      </div>
+    \\      <div class="stat">
+    \\        <div class="stat-label">iso string</div>
+    \\        <div class="stat-value" id="ssr-iso" style="font-size:12px">&mdash;</div>
     \\      </div>
     \\    </div>
     \\  </div>
@@ -123,6 +131,13 @@ const html_bottom =
     \\    document.getElementById('live-iso').textContent = d.iso;
     \\  }
     \\  tick(); setInterval(tick, 1000);
+    \\  // Hydrate SSR card with human-readable values
+    \\  const ssrTs = parseInt(document.getElementById('ssr-ts').textContent, 10);
+    \\  if (ssrTs > 0) {
+    \\    const d = new Date(ssrTs * 1000);
+    \\    document.getElementById('ssr-human').textContent = d.toLocaleTimeString();
+    \\    document.getElementById('ssr-iso').textContent = d.toISOString();
+    \\  }
     \\</script>
     \\</body>
     \\</html>
