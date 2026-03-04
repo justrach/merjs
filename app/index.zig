@@ -36,6 +36,24 @@ fn page() h.Node {
             h.span(.{ .class = "red" }, "no runtime at all."),
         }),
 
+        // Benchmark comparison
+        h.div(.{ .class = "bench" }, .{
+            h.div(.{ .class = "bench-title" }, .{h.raw("vs Next.js &mdash; <span class=\"red\">at a glance</span>")}),
+            h.p(.{ .class = "bench-sub" }, "Head-to-head on the metrics that matter."),
+            h.div(.{ .class = "bench-legend" }, .{
+                h.div(.{ .class = "bench-legend-item" }, .{h.div(.{ .class = "bench-legend-dot mer" }, ""), h.text(" merjs")}),
+                h.div(.{ .class = "bench-legend-item" }, .{h.div(.{ .class = "bench-legend-dot next" }, ""), h.text(" Next.js")}),
+            }),
+            benchRow("Cold Start", "8%", "< 5 ms", "80%", "~1-3 s"),
+            benchRow("Requests / sec", "90%", "2448.23 req/s", "69%", "1883.41 req/s"),
+            benchRow("Avg Latency", "42%", "40.68 ms", "80%", "75.99 ms"),
+            benchRow("Build Time", "8%", "~4.3 s", "80%", "~51 s"),
+            benchRow("node_modules", "8%", "0 files", "85%", "~300 MB / 85k files"),
+            h.p(.{ .class = "bench-note" }, .{
+                h.text("Next.js is a mature, production-grade framework \u{2014} merjs is an early experiment exploring whether the same DX is possible without the runtime weight. Benchmarks auto-updated by CI on each push to main."),
+            }),
+        }),
+
         h.hr(.{ .class = "rule" }),
 
         // Items
@@ -99,6 +117,22 @@ fn page() h.Node {
     });
 }
 
+fn benchRow(label: []const u8, mer_width: []const u8, mer_val: []const u8, next_width: []const u8, next_val: []const u8) h.Node {
+    return h.div(.{ .class = "bench-row" }, .{
+        h.div(.{ .class = "bench-label" }, label),
+        h.div(.{ .class = "bench-bars" }, .{
+            h.div(.{ .class = "bench-bar-wrap" }, .{
+                h.div(.{ .class = "bench-bar mer", .style = "width: " ++ mer_width ++ ";" }, mer_val),
+                h.div(.{ .class = "bench-bar-tag" }, "merjs"),
+            }),
+            h.div(.{ .class = "bench-bar-wrap" }, .{
+                h.div(.{ .class = "bench-bar next", .style = "width: " ++ next_width ++ ";" }, next_val),
+                h.div(.{ .class = "bench-bar-tag" }, "Next.js"),
+            }),
+        }),
+    });
+}
+
 fn item(num: []const u8, heading: []const u8, body_children: anytype) h.Node {
     return h.div(.{ .class = "item" }, .{
         h.div(.{ .class = "item-num" }, num),
@@ -147,6 +181,33 @@ const page_css =
     \\  font-size: 13px; background: var(--bg3);
     \\  border-radius: 4px; padding: 1px 6px; color: var(--text);
     \\}
+    \\.bench { margin-top: 0; }
+    \\.bench-title {
+    \\  font-family: 'DM Serif Display', Georgia, serif;
+    \\  font-size: clamp(22px, 3vw, 32px);
+    \\  letter-spacing: -0.02em; color: var(--text); margin-bottom: 8px;
+    \\}
+    \\.bench-title .red { color: var(--red); }
+    \\.bench-sub { font-size: 13px; color: var(--muted); margin-bottom: 32px; line-height: 1.5; }
+    \\.bench-legend { display: flex; gap: 20px; margin-bottom: 24px; }
+    \\.bench-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    \\.bench-legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+    \\.bench-legend-dot.mer { background: var(--red); }
+    \\.bench-legend-dot.next { background: var(--border); }
+    \\.bench-row { margin-bottom: 28px; }
+    \\.bench-label { font-size: 12px; font-weight: 600; color: var(--text); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px; }
+    \\.bench-bars { display: flex; flex-direction: column; gap: 6px; }
+    \\.bench-bar-wrap { display: flex; align-items: center; gap: 10px; }
+    \\.bench-bar {
+    \\  height: 32px; border-radius: 4px;
+    \\  display: flex; align-items: center; padding: 0 12px;
+    \\  font-size: 12px; font-weight: 600; color: #fff;
+    \\  white-space: nowrap; min-width: max-content;
+    \\}
+    \\.bench-bar.mer { background: var(--red); }
+    \\.bench-bar.next { background: var(--border); color: var(--muted); }
+    \\.bench-bar-tag { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; min-width: 40px; }
+    \\.bench-note { font-size: 11px; color: var(--muted); margin-top: 32px; line-height: 1.6; font-style: italic; }
     \\.footer { margin-top: 72px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     \\.btn-primary {
     \\  display: inline-flex; align-items: center;
@@ -167,4 +228,20 @@ const page_css =
     \\.footer-note { width: 100%; margin-top: 28px; font-size: 12px; color: var(--muted); }
     \\.footer-note a { border-bottom: 1px solid var(--border); padding-bottom: 1px; }
     \\.footer-note a:hover { color: var(--text); }
+    \\@media (max-width: 600px) {
+    \\  .page { padding: 24px 16px 64px; }
+    \\  .lede { font-size: 28px; margin-bottom: 32px; }
+    \\  .lede br { display: none; }
+    \\  .rule { margin: 28px 0; }
+    \\  .item { grid-template-columns: 1fr; gap: 8px; padding: 20px 0; }
+    \\  .item-num { padding-top: 0; }
+    \\  .item-heading { font-size: 18px; }
+    \\  .item-text { font-size: 14px; max-width: 100%; }
+    \\  .footer { flex-direction: column; align-items: stretch; gap: 10px; margin-top: 40px; }
+    \\  .btn-primary, .btn-ghost { justify-content: center; text-align: center; padding: 14px 20px; }
+    \\  .footer-note { text-align: center; }
+    \\  .bench-legend { gap: 14px; }
+    \\  .bench-bar { height: 24px; font-size: 11px; }
+    \\  .bench-row { margin-bottom: 22px; }
+    \\}
 ;
