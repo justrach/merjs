@@ -8,147 +8,97 @@ const UserModel = mer.dhi.Model("User", .{
     .score = mer.dhi.Float(f64, .{ .ge = 0.0, .le = 100.0 }),
 });
 
-// HTML segments — dynamic slots: initials · name · status · email · age · score · model
+pub const meta: mer.Meta = .{
+    .title = "Users",
+    .description = "Type-safe user profiles validated with dhi. Comptime constraints, zero runtime overhead.",
+    .og_title = "Users \u{2014} merjs",
+    .og_description = "dhi-validated user profiles with comptime type safety.",
+    .twitter_card = "summary",
+    .twitter_title = "Users \u{2014} merjs",
+    .twitter_description = "Type-safe user profiles validated with dhi.",
+    .extra_head = "<style>" ++ page_css ++ "</style>",
+};
+
 const P0 =
-    \\<!DOCTYPE html><html lang="en"><head>
-    \\  <meta charset="UTF-8">
-    \\  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    \\  <title>Users — merjs</title>
-    \\  <meta name="description" content="Type-safe user profiles validated with dhi. Comptime constraints, zero runtime overhead.">
-    \\  <meta property="og:type" content="website">
-    \\  <meta property="og:site_name" content="merjs">
-    \\  <meta property="og:title" content="Users — merjs">
-    \\  <meta property="og:description" content="dhi-validated user profiles with comptime type safety.">
-    \\  <meta name="twitter:card" content="summary">
-    \\  <meta name="twitter:title" content="Users — merjs">
-    \\  <meta name="twitter:description" content="Type-safe user profiles validated with dhi.">
-    \\  <link rel="preconnect" href="https://fonts.googleapis.com">
-    \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-    \\  <style>
-    \\    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    \\    :root { --bg:#f0ebe3; --bg2:#e8e2d9; --bg3:#ddd5cc; --text:#252530; --muted:#8a7f78; --border:#d5cdc4; --red:#e8251f; }
-    \\    body { background:var(--bg); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; min-height:100vh; }
-    \\    a { color:inherit; text-decoration:none; }
-    \\    .page { max-width:680px; margin:0 auto; padding:48px 32px 96px; }
-    \\    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:48px; }
-    \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; }
-    \\    .wordmark span { color:var(--red); }
-    \\    .back { font-size:13px; color:var(--muted); transition:color 0.15s; }
-    \\    .back:hover { color:var(--text); }
-    \\    h1 { font-family:'DM Serif Display',Georgia,serif; font-size:32px; letter-spacing:-0.02em; margin-bottom:32px; }
-    \\    .card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:16px; }
-    \\    .card-label { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:20px; }
-    \\    .dot-red { width:7px; height:7px; border-radius:50%; background:var(--red); flex-shrink:0; }
-    \\    .dot-pulse { width:7px; height:7px; border-radius:50%; background:var(--red); flex-shrink:0; animation:pulse 2s infinite; }
-    \\    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
-    \\    .profile { display:flex; align-items:center; gap:16px; margin-bottom:20px; }
-    \\    .avatar { width:52px; height:52px; border-radius:10px; background:var(--red); color:var(--bg); display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:600; flex-shrink:0; user-select:none; }
-    \\    .profile-name { font-size:18px; font-weight:600; letter-spacing:-0.01em; }
-    \\    .status { display:inline-flex; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; background:rgba(232,37,31,0.1); color:var(--red); border:1px solid rgba(232,37,31,0.25); border-radius:100px; padding:3px 10px; margin-left:10px; }
-    \\    .profile-email { font-size:14px; color:var(--muted); margin-top:3px; }
-    \\    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-    \\    .stat { background:var(--bg3); border-radius:8px; padding:14px; }
-    \\    .stat-label { font-size:11px; color:var(--muted); margin-bottom:5px; }
-    \\    .stat-value { font-family:'SF Mono','Fira Code',monospace; font-size:15px; color:var(--text); }
-    \\    .stat-value.red { color:var(--red); }
-    \\    pre { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:18px; font-family:'SF Mono','Fira Code',monospace; font-size:13px; line-height:1.7; overflow-x:auto; color:var(--text); }
-    \\    pre .k { color:var(--red); }
-    \\    pre .s { color:#7a6b5a; }
-    \\    pre .n { color:#5a5060; }
-    \\    pre .v { color:#252530; font-weight:500; }
-    \\    #api-out { color:var(--muted); }
-    \\    .footer-note { font-size:12px; color:var(--muted); text-align:center; margin-top:16px; }
-    \\    .footer-note a { border-bottom:1px solid var(--border); }
-    \\    .footer-note a:hover { color:var(--text); }
-    \\  </style>
-    \\</head>
-    \\<body>
-    \\<div class="page">
-    \\  <header class="header">
-    \\    <a href="/" class="wordmark">mer<span>js</span></a>
-    \\    <a href="/" class="back">← home</a>
-    \\  </header>
-    \\  <h1>Users</h1>
-    \\  <div class="card">
-    \\    <div class="card-label"><span class="dot-red"></span> Server-side rendered &middot; dhi validated</div>
-    \\    <div class="profile">
-    \\      <div class="avatar">
-; // initials
+    \\<h1>Users</h1>
+    \\<div class="card">
+    \\  <div class="card-label"><span class="dot-red"></span> Server-side rendered &middot; dhi validated</div>
+    \\  <div class="profile">
+    \\    <div class="avatar">
+;
 
 const P1 =
-    \\      </div>
-    \\      <div>
-    \\        <div class="profile-name">
-; // name
+    \\    </div>
+    \\    <div>
+    \\      <div class="profile-name">
+;
 
 const P2 =
-    \\          <span class="status">
-; // status
+    \\        <span class="status">
+;
 
 const P3 =
-    \\          </span>
-    \\        </div>
-    \\        <div class="profile-email">
-; // email
+    \\        </span>
+    \\      </div>
+    \\      <div class="profile-email">
+;
 
 const P4 =
-    \\        </div>
     \\      </div>
     \\    </div>
-    \\    <div class="stats">
-    \\      <div class="stat">
-    \\        <div class="stat-label">age</div>
-    \\        <div class="stat-value">
-; // age
+    \\  </div>
+    \\  <div class="stats">
+    \\    <div class="stat">
+    \\      <div class="stat-label">age</div>
+    \\      <div class="stat-value">
+;
 
 const P5 =
-    \\        </div>
     \\      </div>
-    \\      <div class="stat">
-    \\        <div class="stat-label">score</div>
-    \\        <div class="stat-value red">
-; // score
+    \\    </div>
+    \\    <div class="stat">
+    \\      <div class="stat-label">score</div>
+    \\      <div class="stat-value red">
+;
 
 const P6 =
-    \\        </div>
     \\      </div>
-    \\      <div class="stat">
-    \\        <div class="stat-label">model</div>
-    \\        <div class="stat-value" style="font-size:12px">
-; // model name
+    \\    </div>
+    \\    <div class="stat">
+    \\      <div class="stat-label">model</div>
+    \\      <div class="stat-value" style="font-size:12px">
+;
 
 const P7 =
-    \\        </div>
     \\      </div>
     \\    </div>
     \\  </div>
-    \\  <!-- dhi schema -->
-    \\  <div class="card">
-    \\    <div class="card-label"><span class="dot-red"></span> dhi schema &middot; compile-time validation</div>
-    \\    <pre><span class="k">const</span> UserModel = <span class="n">mer.dhi.Model</span>(<span class="s">"User"</span>, .{
-    \\    .name  = <span class="n">dhi.Str</span>(.{ .min_length=<span class="v">1</span>, .max_length=<span class="v">100</span> }),
-    \\    .email = <span class="n">dhi.EmailStr</span>,
-    \\    .age   = <span class="n">dhi.Int</span>(i32, .{ .gt=<span class="v">0</span>, .le=<span class="v">150</span> }),
-    \\    .score = <span class="n">dhi.Float</span>(f64, .{ .ge=<span class="v">0.0</span>, .le=<span class="v">100.0</span> }),
-    \\});</pre>
-    \\  </div>
-    \\  <!-- live API -->
-    \\  <div class="card">
-    \\    <div class="card-label"><span class="dot-pulse"></span> Live &mdash; /api/users</div>
-    \\    <pre id="api-out">fetching…</pre>
-    \\  </div>
-    \\  <p class="footer-note">
-    \\    Validated with <a href="https://github.com/justrach/dhi">dhi</a>
-    \\    at compile time &middot; zero runtime schema overhead
-    \\  </p>
     \\</div>
+    \\<!-- dhi schema -->
+    \\<div class="card">
+    \\  <div class="card-label"><span class="dot-red"></span> dhi schema &middot; compile-time validation</div>
+    \\  <pre><span class="k">const</span> UserModel = <span class="n">mer.dhi.Model</span>(<span class="s">"User"</span>, .{
+    \\  .name  = <span class="n">dhi.Str</span>(.{ .min_length=<span class="v">1</span>, .max_length=<span class="v">100</span> }),
+    \\  .email = <span class="n">dhi.EmailStr</span>,
+    \\  .age   = <span class="n">dhi.Int</span>(i32, .{ .gt=<span class="v">0</span>, .le=<span class="v">150</span> }),
+    \\  .score = <span class="n">dhi.Float</span>(f64, .{ .ge=<span class="v">0.0</span>, .le=<span class="v">100.0</span> }),
+    \\});</pre>
+    \\</div>
+    \\<!-- live API -->
+    \\<div class="card">
+    \\  <div class="card-label"><span class="dot-pulse"></span> Live &mdash; /api/users</div>
+    \\  <pre id="api-out">fetching&hellip;</pre>
+    \\</div>
+    \\<p class="footer-note">
+    \\  Validated with <a href="https://github.com/justrach/dhi">dhi</a>
+    \\  at compile time &middot; zero runtime schema overhead
+    \\</p>
     \\<script>
     \\  fetch('/api/users')
     \\    .then(r => r.json())
     \\    .then(d => { document.getElementById('api-out').textContent = JSON.stringify(d, null, 2); })
     \\    .catch(e => { document.getElementById('api-out').textContent = 'error: ' + e; });
     \\</script>
-    \\</body></html>
 ;
 
 fn initials(name: []const u8, buf: *[2]u8) []const u8 {
@@ -193,3 +143,31 @@ pub fn render(req: mer.Request) mer.Response {
 
     return mer.html(page);
 }
+
+const page_css =
+    \\h1 { font-family:'DM Serif Display',Georgia,serif; font-size:32px; letter-spacing:-0.02em; margin-bottom:32px; }
+    \\.card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:16px; }
+    \\.card-label { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:20px; }
+    \\.dot-red { width:7px; height:7px; border-radius:50%; background:var(--red); flex-shrink:0; }
+    \\.dot-pulse { width:7px; height:7px; border-radius:50%; background:var(--red); flex-shrink:0; animation:pulse 2s infinite; }
+    \\@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+    \\.profile { display:flex; align-items:center; gap:16px; margin-bottom:20px; }
+    \\.avatar { width:52px; height:52px; border-radius:10px; background:var(--red); color:var(--bg); display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:600; flex-shrink:0; user-select:none; }
+    \\.profile-name { font-size:18px; font-weight:600; letter-spacing:-0.01em; }
+    \\.status { display:inline-flex; font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; background:rgba(232,37,31,0.1); color:var(--red); border:1px solid rgba(232,37,31,0.25); border-radius:100px; padding:3px 10px; margin-left:10px; }
+    \\.profile-email { font-size:14px; color:var(--muted); margin-top:3px; }
+    \\.stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    \\.stat { background:var(--bg3); border-radius:8px; padding:14px; }
+    \\.stat-label { font-size:11px; color:var(--muted); margin-bottom:5px; }
+    \\.stat-value { font-family:'SF Mono','Fira Code',monospace; font-size:15px; color:var(--text); }
+    \\.stat-value.red { color:var(--red); }
+    \\pre { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:18px; font-family:'SF Mono','Fira Code',monospace; font-size:13px; line-height:1.7; overflow-x:auto; color:var(--text); }
+    \\pre .k { color:var(--red); }
+    \\pre .s { color:#7a6b5a; }
+    \\pre .n { color:#5a5060; }
+    \\pre .v { color:#252530; font-weight:500; }
+    \\#api-out { color:var(--muted); }
+    \\.footer-note { font-size:12px; color:var(--muted); text-align:center; margin-top:16px; }
+    \\.footer-note a { border-bottom:1px solid var(--border); }
+    \\.footer-note a:hover { color:var(--text); }
+;
