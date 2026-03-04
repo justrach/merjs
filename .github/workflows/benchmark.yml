@@ -155,8 +155,10 @@ jobs:
 
           rps_m = os.environ.get('MERJS_RPS', '2446')
           rps_n = os.environ.get('NEXT_RPS', '1890')
-          lat_m = os.environ.get('MERJS_LAT', '40.68 ms').split()[0]
-          lat_n = os.environ.get('NEXT_LAT', '76.82 ms').split()[0]
+          lat_m_raw = os.environ.get('MERJS_LAT', '40.68ms').split()[0].rstrip('ms')
+          lat_n_raw = os.environ.get('NEXT_LAT', '76.82ms').split()[0].rstrip('ms')
+          lat_m = lat_m_raw
+          lat_n = lat_n_raw
           build_m = int(os.environ.get('MERJS_BUILD_MS', '1200'))
           build_n = int(os.environ.get('NEXT_BUILD_MS', '30000'))
 
