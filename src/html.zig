@@ -45,56 +45,106 @@ pub const Element = struct {
 // ── Attribute helpers ───────────────────────────────────────────────────────
 
 pub const Props = struct {
-    class: ?[]const u8 = null,
-    id: ?[]const u8 = null,
-    style: ?[]const u8 = null,
-    href: ?[]const u8 = null,
-    src: ?[]const u8 = null,
-    alt: ?[]const u8 = null,
-    name: ?[]const u8 = null,
-    content: ?[]const u8 = null,
-    property: ?[]const u8 = null,
-    rel: ?[]const u8 = null,
-    @"type": ?[]const u8 = null,
-    charset: ?[]const u8 = null,
-    crossorigin: ?[]const u8 = null,
-    lang: ?[]const u8 = null,
-    action: ?[]const u8 = null,
-    method: ?[]const u8 = null,
-    value: ?[]const u8 = null,
-    placeholder: ?[]const u8 = null,
-    target: ?[]const u8 = null,
+    // String attributes
+    class:        ?[]const u8 = null,
+    id:           ?[]const u8 = null,
+    style:        ?[]const u8 = null,
+    href:         ?[]const u8 = null,
+    src:          ?[]const u8 = null,
+    alt:          ?[]const u8 = null,
+    name:         ?[]const u8 = null,
+    content:      ?[]const u8 = null,
+    property:     ?[]const u8 = null,
+    rel:          ?[]const u8 = null,
+    @"type":      ?[]const u8 = null,
+    charset:      ?[]const u8 = null,
+    crossorigin:  ?[]const u8 = null,
+    lang:         ?[]const u8 = null,
+    action:       ?[]const u8 = null,
+    method:       ?[]const u8 = null,
+    value:        ?[]const u8 = null,
+    placeholder:  ?[]const u8 = null,
+    target:       ?[]const u8 = null,
+    // Form / input extras
+    @"for":       ?[]const u8 = null,  // <label for="...">
+    rows:         ?[]const u8 = null,
+    cols:         ?[]const u8 = null,
+    role:         ?[]const u8 = null,
+    tabindex:     ?[]const u8 = null,
+    min:          ?[]const u8 = null,
+    max:          ?[]const u8 = null,
+    step:         ?[]const u8 = null,
+    autocomplete: ?[]const u8 = null,
+    size:         ?[]const u8 = null,
+    // Boolean attributes (rendered as `name=""` when true)
+    disabled:     bool = false,
+    required:     bool = false,
+    checked:      bool = false,
+    readonly:     bool = false,
+    multiple:     bool = false,
+    selected:     bool = false,
+    open:         bool = false,  // <details open>
+    hidden:       bool = false,
+    // Escape hatch for any attr not in the list above
     extra: []const Attr = &.{},
 };
 
 fn propsToAttrs(props: Props) []const Attr {
-    @setEvalBranchQuota(10_000);
-    var attrs: [20]Attr = undefined;
+    @setEvalBranchQuota(20_000);
+    var attrs: [48]Attr = undefined;
     var n: usize = 0;
 
+    // String optional attributes
     inline for (.{
-        .{ "class", props.class },
-        .{ "id", props.id },
-        .{ "style", props.style },
-        .{ "href", props.href },
-        .{ "src", props.src },
-        .{ "alt", props.alt },
-        .{ "name", props.name },
-        .{ "content", props.content },
-        .{ "property", props.property },
-        .{ "rel", props.rel },
-        .{ "type", props.@"type" },
-        .{ "charset", props.charset },
-        .{ "crossorigin", props.crossorigin },
-        .{ "lang", props.lang },
-        .{ "action", props.action },
-        .{ "method", props.method },
-        .{ "value", props.value },
-        .{ "placeholder", props.placeholder },
-        .{ "target", props.target },
+        .{ "class",        props.class },
+        .{ "id",           props.id },
+        .{ "style",        props.style },
+        .{ "href",         props.href },
+        .{ "src",          props.src },
+        .{ "alt",          props.alt },
+        .{ "name",         props.name },
+        .{ "content",      props.content },
+        .{ "property",     props.property },
+        .{ "rel",          props.rel },
+        .{ "type",         props.@"type" },
+        .{ "charset",      props.charset },
+        .{ "crossorigin",  props.crossorigin },
+        .{ "lang",         props.lang },
+        .{ "action",       props.action },
+        .{ "method",       props.method },
+        .{ "value",        props.value },
+        .{ "placeholder",  props.placeholder },
+        .{ "target",       props.target },
+        .{ "for",          props.@"for" },
+        .{ "rows",         props.rows },
+        .{ "cols",         props.cols },
+        .{ "role",         props.role },
+        .{ "tabindex",     props.tabindex },
+        .{ "min",          props.min },
+        .{ "max",          props.max },
+        .{ "step",         props.step },
+        .{ "autocomplete", props.autocomplete },
+        .{ "size",         props.size },
     }) |pair| {
         if (pair[1]) |v| {
             attrs[n] = .{ .name = pair[0], .value = v };
+            n += 1;
+        }
+    }
+
+    // Boolean attributes — rendered as `disabled=""` etc.
+    inline for (.{
+        .{ "disabled", props.disabled },
+        .{ "required", props.required },
+        .{ "checked",  props.checked },
+        .{ "readonly", props.readonly },
+        .{ "multiple", props.multiple },
+        .{ "selected", props.selected },
+        .{ "open",     props.open },
+        .{ "hidden",   props.hidden },
+    }) |pair| {
+        if (pair[1]) {
+            attrs[n] = .{ .name = pair[0], .value = "" };
             n += 1;
         }
     }
@@ -266,6 +316,37 @@ pub fn tbody(props: Props, children: anytype) Node { return el("tbody", props, c
 pub fn tr(props: Props, children: anytype) Node { return el("tr", props, children); }
 pub fn th(props: Props, children: anytype) Node { return el("th", props, children); }
 pub fn td(props: Props, children: anytype) Node { return el("td", props, children); }
+
+// Interactive / semantic HTML5
+pub fn dialog(props: Props, children: anytype) Node  { return el("dialog", props, children); }
+pub fn details(props: Props, children: anytype) Node { return el("details", props, children); }
+pub fn summary(props: Props, children: anytype) Node { return el("summary", props, children); }
+pub fn figure(props: Props, children: anytype) Node  { return el("figure", props, children); }
+pub fn figcaption(props: Props, children: anytype) Node { return el("figcaption", props, children); }
+pub fn fieldset(props: Props, children: anytype) Node { return el("fieldset", props, children); }
+pub fn legend(props: Props, children: anytype) Node  { return el("legend", props, children); }
+
+// Inline semantics
+pub fn mark(props: Props, children: anytype) Node    { return el("mark", props, children); }
+pub fn time_el(props: Props, children: anytype) Node { return el("time", props, children); }
+pub fn abbr(props: Props, children: anytype) Node    { return el("abbr", props, children); }
+pub fn kbd(props: Props, children: anytype) Node     { return el("kbd", props, children); }
+pub fn samp(props: Props, children: anytype) Node    { return el("samp", props, children); }
+pub fn sub(props: Props, children: anytype) Node     { return el("sub", props, children); }
+pub fn sup(props: Props, children: anytype) Node     { return el("sup", props, children); }
+pub fn del(props: Props, children: anytype) Node     { return el("del", props, children); }
+pub fn ins(props: Props, children: anytype) Node     { return el("ins", props, children); }
+pub fn q(props: Props, children: anytype) Node       { return el("q", props, children); }
+pub fn s_el(props: Props, children: anytype) Node    { return el("s", props, children); }
+
+// Block semantics
+pub fn blockquote(props: Props, children: anytype) Node { return el("blockquote", props, children); }
+pub fn address(props: Props, children: anytype) Node { return el("address", props, children); }
+
+// Progress / meter
+pub fn progress(props: Props, children: anytype) Node { return el("progress", props, children); }
+pub fn meter(props: Props, children: anytype) Node   { return el("meter", props, children); }
+
 
 // ── Head / document elements ────────────────────────────────────────────────
 
