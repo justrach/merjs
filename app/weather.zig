@@ -30,7 +30,9 @@ const html =
     \\  <meta name="twitter:title" content="merjs Weather — Live Global Forecasts">
     \\  <meta name="twitter:description" content="Live weather dashboard powered by Open-Meteo, served by Zig.">
     \\  <link rel="preconnect" href="https://fonts.googleapis.com">
-    \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    \\  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    \\  <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
     \\  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     \\  <style>
     \\    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

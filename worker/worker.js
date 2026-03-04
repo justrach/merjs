@@ -1,5 +1,6 @@
 // worker.js — Cloudflare Workers fetch handler for merjs.
-// Loads merjs.wasm, calls handle() for each request, returns the response.
+// Static assets from public/ are served automatically by Wrangler [assets].
+// This worker handles dynamic routes via the merjs WASM module.
 
 import merWasm from "./merjs.wasm";
 
@@ -14,6 +15,16 @@ async function getInstance() {
   instance.init();
   return instance;
 }
+
+const securityHeaders = {
+  "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+  "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  "x-frame-options": "DENY",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "cross-origin-opener-policy": "same-origin",
+  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+};
 
 export default {
   async fetch(request) {
@@ -48,7 +59,7 @@ export default {
 
     return new Response(body, {
       status,
-      headers: { "content-type": contentType },
+      headers: { "content-type": contentType, ...securityHeaders },
     });
   },
 };

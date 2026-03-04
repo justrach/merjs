@@ -17,7 +17,9 @@ const html_top =
     \\  <meta name="twitter:title" content="Dashboard — merjs">
     \\  <meta name="twitter:description" content="SSR dashboard with live API polling.">
     \\  <link rel="preconnect" href="https://fonts.googleapis.com">
-    \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    \\  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    \\  <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
     \\  <style>
     \\    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     \\    :root { --bg:#f0ebe3; --bg2:#e8e2d9; --bg3:#ddd5cc; --text:#252530; --muted:#8a7f78; --border:#d5cdc4; --red:#e8251f; }

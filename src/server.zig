@@ -9,6 +9,17 @@ const watcher_mod = @import("watcher.zig");
 
 const log = std.log.scoped(.server);
 
+/// Security headers applied to every page/API response.
+pub const security_headers = [_]std.http.Header{
+    .{ .name = "strict-transport-security", .value = "max-age=63072000; includeSubDomains; preload" },
+    .{ .name = "content-security-policy", .value = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
+    .{ .name = "x-frame-options", .value = "DENY" },
+    .{ .name = "x-content-type-options", .value = "nosniff" },
+    .{ .name = "referrer-policy", .value = "strict-origin-when-cross-origin" },
+    .{ .name = "cross-origin-opener-policy", .value = "same-origin" },
+    .{ .name = "permissions-policy", .value = "camera=(), microphone=(), geolocation=()" },
+};
+
 pub const Config = struct {
     host: []const u8 = "127.0.0.1",
     port: u16 = 3000,
@@ -159,13 +170,14 @@ fn serveRequest(
 }
 
 fn sendResponse(std_req: *std.http.Server.Request, response: anytype) !void {
-    var header_buf: [512]u8 = undefined;
+    const ct_header = [1]std.http.Header{
+        .{ .name = "content-type", .value = response.content_type.mime() },
+    };
+    var header_buf: [2048]u8 = undefined;
     var bw = try std_req.respondStreaming(&header_buf, .{
         .respond_options = .{
             .status = response.status,
-            .extra_headers = &.{
-                .{ .name = "content-type", .value = response.content_type.mime() },
-            },
+            .extra_headers = &(ct_header ++ security_headers),
         },
     });
     try bw.writer.writeAll(response.body);
