@@ -1,5 +1,7 @@
+const std = @import("std");
 const mer = @import("mer");
 const h = mer.h;
+const cfg = mer.counter_config.config;
 
 pub const meta: mer.Meta = .{
     .title = "Counter",
@@ -28,22 +30,42 @@ fn page() h.Node {
             h.h1(.{}, "Counter"),
             h.p(.{ .class = "sub", .style = "margin-top:8px" }, "State lives in Zig/WASM. JS just applies patches."),
         }),
-        h.div(.{ .class = "count", .id = "count-value" }, "0"),
+        h.div(.{ .class = "count", .id = "count-value" }, comptimeIntStr(cfg.initial)),
+        h.div(.{ .class = "bounds" }, .{
+            h.span(.{ .class = "bound" }, .{h.raw("min: <strong>" ++ comptimeIntStr(cfg.min) ++ "</strong>")}),
+            h.span(.{ .class = "bound-sep" }, .{h.raw("&middot;")}),
+            h.span(.{ .class = "bound" }, .{h.raw("step: <strong>" ++ comptimeIntStr(cfg.step) ++ "</strong>")}),
+            h.span(.{ .class = "bound-sep" }, .{h.raw("&middot;")}),
+            h.span(.{ .class = "bound" }, .{h.raw("max: <strong>" ++ comptimeIntStr(cfg.max) ++ "</strong>")}),
+        }),
         h.div(.{ .class = "buttons" }, .{
             h.button(.{ .id = "btn-dec", .class = "btn", .@"type" = "button" }, .{h.raw("&minus;")}),
             h.button(.{ .id = "btn-reset", .class = "btn btn-reset", .@"type" = "button" }, "reset"),
             h.button(.{ .id = "btn-inc", .class = "btn btn-inc", .@"type" = "button" }, "+"),
         }),
         h.span(.{ .class = "badge" }, "wasm32-freestanding"),
+        h.div(.{ .class = "config-note" }, .{
+            h.raw("Bounds enforced at <strong>comptime</strong> via "),
+            h.code(.{}, "counter_config.zig"),
+            h.raw(" &mdash; change the values and the compiler validates them."),
+        }),
         h.a(.{ .href = "/", .class = "back" }, .{h.raw("&larr; home")}),
         h.script(.{}, counter_js),
     });
 }
 
+fn comptimeIntStr(comptime val: i32) []const u8 {
+    return std.fmt.comptimePrint("{d}", .{val});
+}
+
 const counter_js =
     \\(async function(){
     \\  const display = document.getElementById('count-value');
-    \\  let count = 0;
+    ++ std.fmt.comptimePrint(
+    \\  const MIN={d}, MAX={d}, STEP={d}, INIT={d};
+, .{ cfg.min, cfg.max, cfg.step, cfg.initial }) ++
+    \\  let count = INIT;
+    \\  function clamp(v){ return Math.max(MIN, Math.min(MAX, v)); }
     \\  function sync(){ display.textContent = count; }
     \\  try {
     \\    const {instance} = await WebAssembly.instantiateStreaming(fetch('/counter.wasm'),{});
@@ -53,9 +75,9 @@ const counter_js =
     \\    document.getElementById('btn-reset').onclick = ()=>{ w.reset(); display.textContent = w.get_count(); };
     \\    display.textContent = w.get_count();
     \\  } catch(e) {
-    \\    document.getElementById('btn-inc').onclick = ()=>{ count++; sync(); };
-    \\    document.getElementById('btn-dec').onclick = ()=>{ count--; sync(); };
-    \\    document.getElementById('btn-reset').onclick = ()=>{ count=0; sync(); };
+    \\    document.getElementById('btn-inc').onclick = ()=>{ count = clamp(count + STEP); sync(); };
+    \\    document.getElementById('btn-dec').onclick = ()=>{ count = clamp(count - STEP); sync(); };
+    \\    document.getElementById('btn-reset').onclick = ()=>{ count = INIT; sync(); };
     \\  }
     \\})();
 ;
@@ -81,6 +103,12 @@ const page_css =
     \\  color:var(--text); letter-spacing:-0.04em;
     \\  min-width:3ch; text-align:center;
     \\}
+    \\.bounds {
+    \\  display:flex; gap:12px; align-items:center;
+    \\  font-size:12px; color:var(--muted);
+    \\}
+    \\.bounds strong { color:var(--text); font-weight:600; }
+    \\.bound-sep { color:var(--border); }
     \\.buttons { display:flex; gap:12px; align-items:center; }
     \\.btn {
     \\  width:52px; height:52px; border-radius:8px;
@@ -104,5 +132,14 @@ const page_css =
     \\  font-size:11px; color:var(--muted); background:var(--bg2);
     \\  border:1px solid var(--border); border-radius:100px;
     \\  padding:4px 12px; letter-spacing:0.04em;
+    \\}
+    \\.config-note {
+    \\  font-size:12px; color:var(--muted); max-width:360px; line-height:1.6;
+    \\}
+    \\.config-note strong { color:var(--text); }
+    \\.config-note code {
+    \\  font-family:'SF Mono','Fira Code',monospace;
+    \\  font-size:11px; background:var(--bg3);
+    \\  border-radius:4px; padding:1px 6px;
     \\}
 ;
