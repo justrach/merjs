@@ -206,11 +206,11 @@ const html =
     \\      <div class="bench-label">Requests / sec</div>
     \\      <div class="bench-bars">
     \\        <div class="bench-bar-wrap">
-    \\          <div class="bench-bar mer" style="width: 90%;">2448.23 req/s</div>
+    \\          <div class="bench-bar mer" style="width: 90%;">2446.97 req/s</div>
     \\          <div class="bench-bar-tag">merjs</div>
     \\        </div>
     \\        <div class="bench-bar-wrap">
-    \\          <div class="bench-bar next" style="width: 69%;">1883.41 req/s</div>
+    \\          <div class="bench-bar next" style="width: 67%;">1842.68 req/s</div>
     \\          <div class="bench-bar-tag">Next.js</div>
     \\        </div>
     \\      </div>
@@ -219,11 +219,11 @@ const html =
     \\      <div class="bench-label">Avg Latency</div>
     \\      <div class="bench-bars">
     \\        <div class="bench-bar-wrap">
-    \\          <div class="bench-bar mer" style="width: 42%;">40.68 ms</div>
+    \\          <div class="bench-bar mer" style="width: 42%;">40.65 ms</div>
     \\          <div class="bench-bar-tag">merjs</div>
     \\        </div>
     \\        <div class="bench-bar-wrap">
-    \\          <div class="bench-bar next" style="width: 80%;">75.99 ms</div>
+    \\          <div class="bench-bar next" style="width: 80%;">76.04 ms</div>
     \\          <div class="bench-bar-tag">Next.js</div>
     \\        </div>
     \\      </div>
@@ -232,11 +232,11 @@ const html =
     \\      <div class="bench-label">Build Time</div>
     \\      <div class="bench-bars">
     \\        <div class="bench-bar-wrap">
-    \\          <div class="bench-bar mer" style="width: 8%;">~4.3 s</div>
+    \\          <div class="bench-bar mer" style="width: 8%;">~1.7 s</div>
     \\          <div class="bench-bar-tag">merjs</div>
     \\        </div>
     \\        <div class="bench-bar-wrap">
-    \\          <div class="bench-bar next" style="width: 80%;">~51 s</div>
+    \\          <div class="bench-bar next" style="width: 80%;">~43 s</div>
     \\          <div class="bench-bar-tag">Next.js</div>
     \\        </div>
     \\      </div>
