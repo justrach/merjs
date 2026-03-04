@@ -67,6 +67,17 @@ export default {
     const contentType = decoder.decode(resBuf.slice(4, 4 + ctLen));
     const body = resBuf.slice(4 + ctLen);
 
+    // Patch SSR timestamp for dashboard (WASM has no clock, renders 0).
+    if (url.pathname === "/dashboard" && contentType.startsWith("text/html")) {
+      let html = decoder.decode(body);
+      const ts = Math.floor(Date.now() / 1000);
+      html = html.replace('id="ssr-ts">0<', `id="ssr-ts">${ts}<`);
+      return new Response(html, {
+        status,
+        headers: { "content-type": contentType, ...securityHeaders },
+      });
+    }
+
     return new Response(body, {
       status,
       headers: { "content-type": contentType, ...securityHeaders },
