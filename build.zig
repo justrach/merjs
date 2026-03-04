@@ -62,6 +62,15 @@ pub fn build(b: *std.Build) void {
     const prerender_step = b.step("prerender", "Pre-render pages with `pub const prerender = true` to dist/");
     prerender_step.dependOn(&run_prerender.step);
 
+    // ── `zig build prod` — one-shot: codegen → build → prerender ────────────
+    const prod_step = b.step("prod", "Full production build: codegen + compile + prerender to dist/");
+    // 1. codegen first
+    prod_step.dependOn(&run_codegen.step);
+    // 2. then build + install the binary (depends on codegen via source file)
+    prod_step.dependOn(b.getInstallStep());
+    // 3. then prerender (depends on the installed binary)
+    prod_step.dependOn(&run_prerender.step);
+
     // ── WASM: wasm/counter.zig → public/counter.wasm ────────────────────────
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
