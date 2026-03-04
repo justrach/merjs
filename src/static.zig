@@ -3,6 +3,7 @@
 const std = @import("std");
 const mer = @import("mer");
 
+const server = @import("server.zig");
 const log = std.log.scoped(.static);
 
 const mime_table = [_]struct { ext: []const u8, ct: mer.ContentType }{
@@ -13,6 +14,13 @@ const mime_table = [_]struct { ext: []const u8, ct: mer.ContentType }{
     .{ .ext = ".wasm", .ct = .wasm },
     .{ .ext = ".json", .ct = .json },
     .{ .ext = ".txt",  .ct = .text },
+    .{ .ext = ".png",  .ct = .png },
+    .{ .ext = ".jpg",  .ct = .jpeg },
+    .{ .ext = ".jpeg", .ct = .jpeg },
+    .{ .ext = ".gif",  .ct = .gif },
+    .{ .ext = ".svg",  .ct = .svg },
+    .{ .ext = ".ico",  .ct = .ico },
+    .{ .ext = ".webp", .ct = .webp },
 };
 
 fn mimeForPath(path: []const u8) mer.ContentType {
@@ -47,13 +55,15 @@ pub fn tryServe(
     defer alloc.free(body);
 
     const ct = mimeForPath(rel);
-    var header_buf: [512]u8 = undefined;
+    const ct_header = [_]std.http.Header{
+        .{ .name = "content-type", .value = ct.mime() },
+        .{ .name = "cache-control", .value = "public, max-age=31536000, immutable" },
+    };
+    var header_buf: [2048]u8 = undefined;
     var bw = std_req.respondStreaming(&header_buf, .{
         .respond_options = .{
             .status = .ok,
-            .extra_headers = &.{
-                .{ .name = "content-type", .value = ct.mime() },
-            },
+            .extra_headers = &(ct_header ++ server.security_headers),
         },
     }) catch return null;
     bw.writer.writeAll(body) catch return null;

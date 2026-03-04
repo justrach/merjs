@@ -17,7 +17,9 @@ const html =
     \\  <meta name="viewport" content="width=device-width, initial-scale=1.0">
     \\  <title>404 — merjs</title>
     \\  <link rel="preconnect" href="https://fonts.googleapis.com">
-    \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    \\  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    \\  <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
     \\  <style>
     \\    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     \\    :root { --bg:#f0ebe3; --bg2:#e8e2d9; --bg3:#ddd5cc; --text:#252530; --muted:#8a7f78; --border:#d5cdc4; --red:#e8251f; }
@@ -36,7 +38,7 @@ const html =
     \\</head>
     \\<body>
     \\<div class="wrap">
-    \\  <div class="wordmark">mer<span>js</span></div>
+    \\  <a href="/" class="wordmark">mer<span>js</span></a>
     \\  <div class="code">404</div>
     \\  <h1>Page not found</h1>
     \\  <p class="sub">The route you're looking for doesn't exist. Maybe it was never here, or maybe it just hasn't been built yet.</p>

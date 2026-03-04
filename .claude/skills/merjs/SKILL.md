@@ -14,8 +14,10 @@ app/          → file-based page routes (SSR HTML)
 api/          → file-based API routes (return JSON)
 wasm/         → client-side WASM modules (Zig → wasm32)
 src/          → framework internals
-  mer.zig     → public API (Request, Response, typedJson, dhi)
-  server.zig  → HTTP server (std.http.Server)
+  mer.zig     → public API (Request, Response, typedJson, dhi, h, lint)
+  html.zig    → HTML builder DSL (mer.h.*)
+  html_lint.zig → comptime HTML linter (mer.lint.*)
+  server.zig  → HTTP server (std.Thread.Pool, 128 workers)
   router.zig  → static dispatch table
   ssr.zig     → wires router to generated routes
   prerender.zig → SSG: renders pages at build time → dist/
@@ -32,33 +34,98 @@ tools/        → build tooling
   codegen.zig → scans app/ + api/, writes routes.zig
 ```
 
-## Creating a Page
+## Creating a Page (HTML Builder — preferred)
 
-1. Create `app/<name>.zig`
-2. Import mer and export a `render` function:
+Use the `mer.h` DSL to build pages with type-safe comptime elements:
+
+```zig
+const mer = @import("mer");
+const h = mer.h;
+
+pub const meta: mer.Meta = .{
+    .title = "My Page",
+    .description = "A great page.",
+    .extra_head = "<style>" ++ my_css ++ "</style>",
+};
+
+const page_node = page();
+comptime { mer.lint.check(page_node); }
+
+pub fn render(req: mer.Request) mer.Response {
+    return mer.render(req.allocator, page_node);
+}
+
+fn page() h.Node {
+    return h.div(.{ .class = "container" }, .{
+        h.h1(.{}, "Hello, world!"),
+        h.p(.{}, "Built with Zig."),
+        h.a(.{ .href = "/about" }, "Learn more"),
+    });
+}
+
+const my_css = \\.container { max-width: 800px; margin: 0 auto; }
+;
+```
+
+### HTML Builder conventions
+- **Comptime only** — the builder creates static node trees at compile time. Never call builder functions at runtime (dangling pointers). For dynamic data, use raw HTML strings with `allocPrint`.
+- Node tree must be a file-level `const`: `const page_node = page();`
+- Each element takes `(Props, children)` where children can be:
+  - A string: `h.h1(.{}, "Hello")` — auto-wrapped as text node
+  - A tuple: `h.div(.{}, .{ h.p(.{}, "A"), h.p(.{}, "B") })`
+  - A node slice: `h.div(.{}, &[_]h.Node{...})`
+- Use `h.raw("...")` for HTML entities (`&middot;`, `&mdash;`) or inline HTML
+- Use `h.text("...")` for escaped text
+- Props struct fields: `.class`, `.id`, `.style`, `.href`, `.src`, `.alt`, `.name`, `.content`, `.property`, `.rel`, `.@"type"`, `.charset`, `.lang`, `.action`, `.method`, `.value`, `.placeholder`, `.target`, `.extra` (for arbitrary attrs)
+- Self-closing tags (meta, img, input, br, hr, link) handled automatically
+- `h.document(head, body)` produces `<!DOCTYPE html><html>...</html>`
+- `h.documentLang("en", head, body)` for pages with lang attribute
+- Head helpers: `h.charset("UTF-8")`, `h.viewport("...")`, `h.title("...")`, `h.description("...")`, `h.og("og:title", "...")`, `h.style("css")`, `h.script(.{}, "js")`, `h.scriptSrc(.{ .src = "url" })`
+- `mer.render(allocator, node)` renders a node tree to an HTML Response
+
+### HTML Linter (`mer.lint`)
+- `mer.lint.check(node)` — comptime walk that `@compileError`s on violations
+- `mer.lint.checkOpt(node, false)` — disable checks when needed
+- Rules: `<a>` needs href, `<img>` needs alt, `<meta>` needs content, `<title>` can't be empty, `<button>`/`<input>` need type, `<form>` needs action, no nested `<a>`, no block elements in `<p>`
+
+## Creating a Page (Raw HTML — for dynamic content)
+
+For pages with runtime-dynamic data (e.g., timestamps, database results), use raw HTML strings:
 
 ```zig
 const mer = @import("mer");
 
 pub fn render(req: mer.Request) mer.Response {
     _ = req;
-    return mer.html("<h1>Hello</h1>");
+    return mer.html(html);
 }
+
+const html =
+    \\<h1>Hello</h1>
+;
 ```
 
-3. Run `zig build codegen` to register the route
-4. The route is automatically `/name`
+For dynamic data, split into top/bottom strings and use `allocPrint`:
+
+```zig
+const html_top = \\<div>Rendered at: ;
+const html_bottom = \\</div>;
+
+pub fn render(req: mer.Request) mer.Response {
+    const ts = std.time.timestamp();
+    const body = std.fmt.allocPrint(req.allocator, "{s}{d}{s}", .{html_top, ts, html_bottom})
+        catch return mer.internalError("alloc failed");
+    return mer.html(body);
+}
+```
 
 ### Page conventions
 - `app/index.zig` → `/`
 - `app/about.zig` → `/about`
 - Nested dirs work: `app/blog/post.zig` → `/blog/post`
 - Every page must export `pub fn render(req: mer.Request) mer.Response`
-- Use `mer.html(body)` to return HTML responses
-- HTML is written as Zig multiline string literals (`\\` syntax)
 - Follow the existing design system: DM Serif Display + DM Sans fonts, CSS vars `--bg`, `--bg2`, `--bg3`, `--text`, `--muted`, `--border`, `--red`
-- Client-side JS can be embedded inline in `<script>` tags within the HTML
-- For external APIs, fetch client-side (the SSR just renders the shell HTML)
+- Client-side JS can be embedded inline in `<script>` tags or via `h.script(.{}, "...")`
 
 ## SEO / Meta Tags (Framework Primitive)
 
@@ -67,7 +134,7 @@ Pages can export `pub const meta: mer.Meta` to get automatic SEO tags injected b
 ```zig
 pub const meta: mer.Meta = .{
     .title = "Weather",
-    .description = "Live weather dashboard powered by Open-Meteo.",
+    .description = "Live weather dashboard.",
     .og_title = "merjs Weather — Live Forecasts",
     .og_description = "Real-time weather from a Zig web framework.",
     .og_image = "https://example.com/og-weather.png",
@@ -76,15 +143,11 @@ pub const meta: mer.Meta = .{
     .twitter_site = "@merjs",
     .canonical = "https://example.com/weather",
     .robots = "index, follow",
+    .extra_head = "<style>.custom { color: red; }</style>",
 };
 ```
 
-All fields are optional with sensible defaults. The layout automatically injects:
-- `<title>`, `<meta name="description">`
-- `og:title`, `og:description`, `og:image`, `og:url`, `og:type`, `og:site_name`
-- `twitter:card`, `twitter:title`, `twitter:description`, `twitter:image`, `twitter:site`
-- `<link rel="canonical">`, `<meta name="robots">`
-- `extra_head` for arbitrary `<link>`/`<script>` tags
+All fields are optional with sensible defaults. Use `extra_head` for page-specific CSS or scripts.
 
 ## Framework Primitives
 
@@ -92,10 +155,12 @@ These files are auto-detected by the framework — no manual wiring needed:
 
 | File | Purpose |
 |------|---------|
-| `app/layout.zig` | Wraps all HTML page responses with shared head/nav/footer + SEO tags |
+| `app/layout.zig` | Wraps all HTML page responses with shared head/nav/footer + SEO tags + logo |
 | `app/404.zig` | Custom 404 error page for unmatched routes |
 
-**Layout convention**: Pages returning content fragments (no `<!DOCTYPE>`) are auto-wrapped. Pages returning full HTML documents (starting with `<!`) bypass layout.
+**Layout convention**: Pages returning content fragments (no `<!DOCTYPE>`) are auto-wrapped by `layout.zig`. Pages returning full HTML documents (starting with `<!`) bypass layout.
+
+**Logo**: The layout includes `/merlion.png` in the wordmark. The wordmark links to `/` on all pages.
 
 ## Creating an API Route
 
@@ -224,3 +289,5 @@ zig build test       # Run tests
 6. **For wasm32 targets**, avoid `std.time`, `std.fs`, `std.net` — use comptime arch checks to guard
 7. **Tailwind CSS uses the standalone CLI** at `tools/tailwindcss` — no npm needed
 8. **Zig version: 0.15.1** — use 0.15 std library APIs (e.g., `std.io.Writer.Allocating`, unmanaged ArrayList)
+9. **HTML builder is comptime-only** — never construct `h.*` nodes at runtime; use raw HTML strings for dynamic pages
+10. **Server uses std.Thread.Pool** with 128 workers and kernel backlog 512

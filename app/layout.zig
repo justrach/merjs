@@ -61,7 +61,9 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
     // Fonts + styles
     w.writeAll(
         \\  <link rel="preconnect" href="https://fonts.googleapis.com">
-        \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+        \\  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+        \\  <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
         \\  <style>
         \\    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         \\    :root { --bg:#f0ebe3; --bg2:#e8e2d9; --bg3:#ddd5cc; --text:#252530; --muted:#8a7f78; --border:#d5cdc4; --red:#e8251f; }
@@ -69,8 +71,9 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\    a { color:inherit; text-decoration:none; }
         \\    .layout { max-width:780px; margin:0 auto; padding:48px 32px 96px; }
         \\    .layout-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:48px; }
-        \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; }
+        \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; display:flex; align-items:center; gap:6px; }
         \\    .wordmark span { color:var(--red); }
+        \\    .wordmark .logo { width:24px; height:24px; object-fit:contain; }
         \\    .nav { display:flex; gap:20px; }
         \\    .nav a { font-size:13px; color:var(--muted); transition:color 0.15s; }
         \\    .nav a:hover { color:var(--text); }
@@ -92,7 +95,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\<body>
         \\<div class="layout">
         \\  <header class="layout-header">
-        \\    <a href="/" class="wordmark">mer<span>js</span></a>
+        \\    <a href="/" class="wordmark"><img src="/merlion.png" alt="merjs logo" class="logo">mer<span>js</span></a>
         \\    <nav class="nav">
         \\      <a href="/dashboard">Dashboard</a>
         \\      <a href="/weather">Weather</a>

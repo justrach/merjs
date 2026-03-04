@@ -66,7 +66,7 @@ const html =
     \\</head>
     \\<body>
     \\<div class="wrap">
-    \\  <div class="wordmark">mer<span>js</span></div>
+    \\  <a href="/" class="wordmark">mer<span>js</span></a>
     \\  <div>
     \\    <h1>Counter</h1>
     \\    <p class="sub" style="margin-top:8px">State lives in Zig/WASM. JS just applies patches.</p>

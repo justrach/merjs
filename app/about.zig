@@ -70,7 +70,7 @@ const html =
     \\<body>
     \\<div class="page">
     \\  <header class="header">
-    \\    <div class="wordmark">mer<span>js</span></div>
+    \\    <a href="/" class="wordmark">mer<span>js</span></a>
     \\    <a href="/" class="back">← home</a>
     \\  </header>
     \\  <h1>Philosophy</h1>
