@@ -56,6 +56,16 @@ pub fn main() !void {
     }
     try w.writeAll("};\n\n");
 
+    // Enforce: every app/ page must export `pub const meta: mer.Meta`.
+    try w.writeAll("comptime {\n");
+    for (entries.items) |path| {
+        if (!std.mem.startsWith(u8, path, "app/")) continue;
+        const ident = try toIdent(alloc, path);
+        defer alloc.free(ident);
+        try w.print("    if (!@hasDecl({s}, \"meta\")) @compileError(\"{s} must export pub const meta: mer.Meta\");\n", .{ ident, path });
+    }
+    try w.writeAll("}\n\n");
+
     // --- Framework primitives (auto-detected) ---
 
     // Layout — if app/layout.zig exists, export its wrap function.

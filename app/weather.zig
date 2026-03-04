@@ -3,10 +3,11 @@ const mer = @import("mer");
 pub const meta: mer.Meta = .{
     .title = "Weather",
     .description = "Live weather dashboard powered by Open-Meteo. Temperature, precipitation, wind, and 7-day forecast.",
-    .og_title = "merjs Weather — Live Global Forecasts",
+    .og_title = "merjs Weather \u{2014} Live Global Forecasts",
     .og_description = "Real-time weather data rendered by a Zig web framework with zero Node.js.",
     .og_type = "website",
     .twitter_card = "summary_large_image",
+    .extra_head = "<script src=\"https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\"></script><style>" ++ page_css ++ "</style>",
 };
 
 pub fn render(req: mer.Request) mer.Response {
@@ -15,77 +16,7 @@ pub fn render(req: mer.Request) mer.Response {
 }
 
 const html =
-    \\<!DOCTYPE html>
-    \\<html lang="en">
-    \\<head>
-    \\  <meta charset="UTF-8">
-    \\  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    \\  <title>Weather — merjs</title>
-    \\  <meta name="description" content="Live weather dashboard powered by Open-Meteo. Temperature, precipitation, wind, and 7-day forecast.">
-    \\  <meta property="og:type" content="website">
-    \\  <meta property="og:site_name" content="merjs">
-    \\  <meta property="og:title" content="merjs Weather — Live Global Forecasts">
-    \\  <meta property="og:description" content="Real-time weather data rendered by a Zig web framework with zero Node.js.">
-    \\  <meta name="twitter:card" content="summary_large_image">
-    \\  <meta name="twitter:title" content="merjs Weather — Live Global Forecasts">
-    \\  <meta name="twitter:description" content="Live weather dashboard powered by Open-Meteo, served by Zig.">
-    \\  <link rel="preconnect" href="https://fonts.googleapis.com">
-    \\  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-    \\  <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
-    \\  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-    \\  <style>
-    \\    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    \\    :root { --bg:#f0ebe3; --bg2:#e8e2d9; --bg3:#ddd5cc; --text:#252530; --muted:#8a7f78; --border:#d5cdc4; --red:#e8251f; }
-    \\    body { background:var(--bg); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; min-height:100vh; }
-    \\    a { color:inherit; text-decoration:none; }
-    \\    .page { max-width:780px; margin:0 auto; padding:48px 32px 96px; }
-    \\    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:48px; }
-    \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; }
-    \\    .wordmark span { color:var(--red); }
-    \\    .back { font-size:13px; color:var(--muted); transition:color 0.15s; }
-    \\    .back:hover { color:var(--text); }
-    \\    h1 { font-family:'DM Serif Display',Georgia,serif; font-size:32px; letter-spacing:-0.02em; margin-bottom:8px; }
-    \\    .subtitle { font-size:14px; color:var(--muted); margin-bottom:32px; }
-    \\    .card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:16px; }
-    \\    .card-label { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:20px; }
-    \\    .dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-    \\    .dot-red { background:var(--red); }
-    \\    .dot-pulse { background:var(--red); animation:pulse 2s infinite; }
-    \\    .dot-blue { background:#3b82f6; }
-    \\    .dot-green { background:#22c55e; }
-    \\    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-    \\    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    \\    .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
-    \\    .grid4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; }
-    \\    .stat { background:var(--bg3); border-radius:8px; padding:16px; }
-    \\    .stat-label { font-size:11px; color:var(--muted); margin-bottom:6px; }
-    \\    .stat-value { font-family:'SF Mono','Fira Code',monospace; font-size:15px; color:var(--text); }
-    \\    .stat-value.red { color:var(--red); }
-    \\    .stat-value.big { font-size:28px; }
-    \\    .stat-value.huge { font-size:40px; letter-spacing:-0.03em; }
-    \\    .stat-unit { font-size:11px; color:var(--muted); margin-left:2px; }
-    \\    .chart-wrap { position:relative; height:220px; margin-top:12px; }
-    \\    .chart-wrap canvas { width:100%!important; height:100%!important; }
-    \\    .location-bar { display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap; }
-    \\    .loc-btn { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:8px 16px; font-size:13px; font-family:'DM Sans',sans-serif; color:var(--text); cursor:pointer; transition:all 0.15s; }
-    \\    .loc-btn:hover { background:var(--border); }
-    \\    .loc-btn.active { background:var(--text); color:var(--bg); border-color:var(--text); }
-    \\    .weather-icon { font-size:48px; line-height:1; }
-    \\    .loading { text-align:center; padding:40px; color:var(--muted); font-size:14px; }
-    \\    .footer-note { font-size:12px; color:var(--muted); text-align:center; margin-top:24px; }
-    \\    .footer-note a { text-decoration:underline; text-underline-offset:2px; }
-    \\    .footer-note code { font-family:'SF Mono',monospace; font-size:11px; background:var(--bg3); padding:1px 5px; border-radius:3px; }
-    \\    @media(max-width:640px) { .grid3,.grid4 { grid-template-columns:1fr 1fr; } }
-    \\  </style>
-    \\</head>
-    \\<body>
-    \\<div class="page">
-    \\  <header class="header">
-    \\    <a href="/" class="wordmark">mer<span>js</span></a>
-    \\    <a href="/" class="back">&larr; home</a>
-    \\  </header>
-    \\  <h1>Weather</h1>
+    \\<h1>Weather</h1>
     \\  <p class="subtitle">Live data from Open-Meteo &mdash; rendered client-side, fetched from a free API, charted with Chart.js</p>
     \\
     \\  <div class="location-bar" id="locations">
@@ -178,7 +109,6 @@ const html =
     \\      and the route is live. The charts fetch from Open-Meteo client-side &mdash; zero backend proxy needed.
     \\    </p>
     \\  </div>
-    \\</div>
     \\
     \\<script>
     \\const WMO = {0:'Clear',1:'Mostly Clear',2:'Partly Cloudy',3:'Overcast',
@@ -303,6 +233,39 @@ const html =
     \\initCharts();
     \\loadCity(1.29, 103.85);
     \\</script>
-    \\</body>
-    \\</html>
+;
+
+const page_css =
+    \\h1 { font-family:'DM Serif Display',Georgia,serif; font-size:32px; letter-spacing:-0.02em; margin-bottom:8px; }
+    \\.subtitle { font-size:14px; color:var(--muted); margin-bottom:32px; }
+    \\.card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:16px; }
+    \\.card-label { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:20px; }
+    \\.dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+    \\.dot-red { background:var(--red); }
+    \\.dot-pulse { background:var(--red); animation:pulse 2s infinite; }
+    \\.dot-blue { background:#3b82f6; }
+    \\.dot-green { background:#22c55e; }
+    \\@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    \\.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    \\.grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+    \\.grid4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; }
+    \\.stat { background:var(--bg3); border-radius:8px; padding:16px; }
+    \\.stat-label { font-size:11px; color:var(--muted); margin-bottom:6px; }
+    \\.stat-value { font-family:'SF Mono','Fira Code',monospace; font-size:15px; color:var(--text); }
+    \\.stat-value.red { color:var(--red); }
+    \\.stat-value.big { font-size:28px; }
+    \\.stat-value.huge { font-size:40px; letter-spacing:-0.03em; }
+    \\.stat-unit { font-size:11px; color:var(--muted); margin-left:2px; }
+    \\.chart-wrap { position:relative; height:220px; margin-top:12px; }
+    \\.chart-wrap canvas { width:100%!important; height:100%!important; }
+    \\.location-bar { display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap; }
+    \\.loc-btn { background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:8px 16px; font-size:13px; font-family:'DM Sans',sans-serif; color:var(--text); cursor:pointer; transition:all 0.15s; }
+    \\.loc-btn:hover { background:var(--border); }
+    \\.loc-btn.active { background:var(--text); color:var(--bg); border-color:var(--text); }
+    \\.weather-icon { font-size:48px; line-height:1; }
+    \\.loading { text-align:center; padding:40px; color:var(--muted); font-size:14px; }
+    \\.footer-note { font-size:12px; color:var(--muted); text-align:center; margin-top:24px; }
+    \\.footer-note a { text-decoration:underline; text-underline-offset:2px; }
+    \\.footer-note code { font-family:'SF Mono',monospace; font-size:11px; background:var(--bg3); padding:1px 5px; border-radius:3px; }
+    \\@media(max-width:640px) { .grid3,.grid4 { grid-template-columns:1fr 1fr; } }
 ;
