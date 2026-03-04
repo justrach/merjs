@@ -79,3 +79,6 @@ pub fn render(allocator: std.mem.Allocator, node: h.Node) Response {
 ///   });
 ///   const user = try User.parse(.{ .name = "Alice", .email = "a@b.com" });
 pub const dhi = @import("dhi.zig");
+
+// --- Counter config (shared with WASM module) --------------------------------
+pub const counter_config = @import("counter_config");

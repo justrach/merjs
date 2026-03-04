@@ -15,6 +15,9 @@ pub fn build(b: *std.Build) void {
     });
     mer_mod.addImport("dhi_model", dhi_model_mod);
     mer_mod.addImport("dhi_validator", dhi_validator_mod);
+    mer_mod.addImport("counter_config", b.addModule("counter_config", .{
+        .root_source_file = b.path("wasm/counter_config.zig"),
+    }));
 
     // ── Main module ─────────────────────────────────────────────────────────
     const main_mod = b.createModule(.{
