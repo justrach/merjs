@@ -135,9 +135,11 @@ jobs:
           import os, re
           rps_m, rps_n = os.environ['MERJS_RPS'], os.environ['NEXT_RPS']
           lat_m, lat_n = os.environ['MERJS_LAT'], os.environ['NEXT_LAT']
+          build_m, build_n = os.environ['MERJS_BUILD_MS'], os.environ['NEXT_BUILD_MS']
           rows = (
               f'| Requests/sec (wrk)    | **{rps_m} req/s**     | **{rps_n} req/s**          |\n'
-              f'| Avg latency           | **{lat_m}**           | **{lat_n}**                |'
+              f'| Avg latency           | **{lat_m}**           | **{lat_n}**                |\n'
+              f'| Build time             | **{build_m} ms**                | **{build_n} ms**                   |'
           )
           txt = open('README.md').read()
           txt = re.sub(
