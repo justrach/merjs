@@ -18,6 +18,7 @@ src/          → framework internals
   server.zig  → HTTP server (std.http.Server)
   router.zig  → static dispatch table
   ssr.zig     → wires router to generated routes
+  prerender.zig → SSG: renders pages at build time → dist/
   watcher.zig → file watcher + SSE hot reload
   static.zig  → static file serving with MIME detection
   worker.zig  → Cloudflare Workers WASM entry point
@@ -135,6 +136,49 @@ const user = try UserModel.parse(.{ ... });
 
 Available types: `Str`, `Int`, `Float`, `Bool`, `EmailStr`, `HttpUrl`, `Uuid`, `IPv4`, `IPv6`, `IsoDate`, `IsoDatetime`, `Base64Str`, `PositiveInt`, `NegativeInt`, `PositiveFloat`, `NegativeFloat`, `FiniteFloat`
 
+## Pre-rendering (SSG)
+
+Pages can opt into **Static Site Generation** — their HTML is rendered at build time and written to `dist/`. Inspired by Next.js `getStaticProps` / `export const dynamic = 'force-static'`.
+
+### Opt in
+
+Export `pub const prerender = true` from any page:
+
+```zig
+const mer = @import("mer");
+
+pub const prerender = true;
+
+pub fn render(req: mer.Request) mer.Response {
+    _ = req;
+    return mer.html("<h1>Static page</h1>");
+}
+```
+
+### Build & serve
+
+```bash
+zig build codegen    # regenerate routes with prerender flags
+zig build prerender  # render opted-in pages → dist/
+zig build serve -- --no-dev  # production: serves dist/ files first, falls back to SSR
+```
+
+### How it works
+
+1. `codegen` detects `pub const prerender` and sets `Route.prerender = true`
+2. `zig build prerender` runs the server binary with `--prerender`, which:
+   - Calls `render()` + layout wrapping for each pre-rendered route
+   - Writes HTML to `dist/` (e.g., `/about` → `dist/about.html`)
+   - Copies `public/` assets into `dist/` for a self-contained static export
+3. In production (`--no-dev`), the server checks `dist/` before SSR dispatch
+
+### When to pre-render
+
+- ✅ Static content (about, docs, marketing pages)
+- ✅ Pages with no request-time data dependencies
+- ❌ Pages that use `req.path` for dynamic behavior (weather, dashboard)
+- ❌ API routes (JSON responses, not pre-rendered)
+
 ## WASM Modules
 
 1. Create `wasm/<name>.zig`
@@ -160,13 +204,14 @@ Key constraint: `std.time`, `std.fs`, `std.net`, `std.posix` are NOT available o
 ## Build Commands
 
 ```bash
-zig build codegen   # Regenerate routes (after adding/removing pages or API routes)
-zig build css       # Compile Tailwind v4 → public/styles.css
-zig build wasm      # Compile wasm/ → public/*.wasm
-zig build serve     # Start dev server on :3000 with hot reload
-zig build worker    # Compile to WASM for Cloudflare Workers → worker/merjs.wasm
-zig build           # Build the server binary
-zig build test      # Run tests
+zig build codegen    # Regenerate routes (after adding/removing pages or API routes)
+zig build prerender  # Pre-render SSG pages → dist/
+zig build css        # Compile Tailwind v4 → public/styles.css
+zig build wasm       # Compile wasm/ → public/*.wasm
+zig build serve      # Start dev server on :3000 with hot reload
+zig build worker     # Compile to WASM for Cloudflare Workers → worker/merjs.wasm
+zig build            # Build the server binary
+zig build test       # Run tests
 ```
 
 ## Important Rules

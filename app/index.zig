@@ -42,12 +42,14 @@ const html =
     \\      font-family: 'DM Sans', system-ui, sans-serif;
     \\      min-height: 100vh;
     \\      line-height: 1.6;
+    \\      overflow-x: hidden;
+    \\      -webkit-text-size-adjust: 100%;
     \\    }
     \\    a { color: inherit; text-decoration: none; }
     \\    .page { max-width: 800px; margin: 0 auto; padding: 56px 40px 120px; }
     \\    .header {
     \\      display: flex; align-items: center; justify-content: space-between;
-    \\      margin-bottom: 88px;
+    \\      margin-bottom: 88px; flex-wrap: wrap; gap: 16px;
     \\    }
     \\    .wordmark {
     \\      font-family: 'DM Serif Display', Georgia, serif;
@@ -55,7 +57,7 @@ const html =
     \\      color: var(--text);
     \\    }
     \\    .wordmark span { color: var(--red); }
-    \\    .nav { display: flex; gap: 24px; }
+    \\    .nav { display: flex; gap: 16px; flex-wrap: wrap; }
     \\    .nav a { font-size: 13px; color: var(--muted); transition: color 0.15s; }
     \\    .nav a:hover { color: var(--text); }
     \\    .lede {
@@ -94,6 +96,33 @@ const html =
     \\      font-size: 13px; background: var(--bg3);
     \\      border-radius: 4px; padding: 1px 6px; color: var(--text);
     \\    }
+    \\    .bench { margin-top: 0; }
+    \\    .bench-title {
+    \\      font-family: 'DM Serif Display', Georgia, serif;
+    \\      font-size: clamp(22px, 3vw, 32px);
+    \\      letter-spacing: -0.02em; color: var(--text); margin-bottom: 8px;
+    \\    }
+    \\    .bench-title .red { color: var(--red); }
+    \\    .bench-sub { font-size: 13px; color: var(--muted); margin-bottom: 32px; line-height: 1.5; }
+    \\    .bench-legend { display: flex; gap: 20px; margin-bottom: 24px; }
+    \\    .bench-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    \\    .bench-legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+    \\    .bench-legend-dot.mer { background: var(--red); }
+    \\    .bench-legend-dot.next { background: var(--border); }
+    \\    .bench-row { margin-bottom: 28px; }
+    \\    .bench-label { font-size: 12px; font-weight: 600; color: var(--text); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px; }
+    \\    .bench-bars { display: flex; flex-direction: column; gap: 6px; }
+    \\    .bench-bar-wrap { display: flex; align-items: center; gap: 10px; }
+    \\    .bench-bar {
+    \\      height: 32px; border-radius: 4px;
+    \\      display: flex; align-items: center; padding: 0 12px;
+    \\      font-size: 12px; font-weight: 600; color: #fff;
+    \\      white-space: nowrap; min-width: max-content;
+    \\    }
+    \\    .bench-bar.mer { background: var(--red); }
+    \\    .bench-bar.next { background: var(--border); color: var(--muted); }
+    \\    .bench-bar-tag { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; min-width: 40px; }
+    \\    .bench-note { font-size: 11px; color: var(--muted); margin-top: 32px; line-height: 1.6; font-style: italic; }
     \\    .footer { margin-top: 72px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     \\    .btn-primary {
     \\      display: inline-flex; align-items: center;
@@ -114,6 +143,25 @@ const html =
     \\    .footer-note { width: 100%; margin-top: 28px; font-size: 12px; color: var(--muted); }
     \\    .footer-note a { border-bottom: 1px solid var(--border); padding-bottom: 1px; }
     \\    .footer-note a:hover { color: var(--text); }
+    \\    @media (max-width: 600px) {
+    \\      .page { padding: 24px 16px 64px; }
+    \\      .header { margin-bottom: 40px; flex-direction: column; align-items: flex-start; gap: 12px; }
+    \\      .nav { gap: 14px; }
+    \\      .nav a { font-size: 14px; }
+    \\      .lede { font-size: 28px; margin-bottom: 32px; }
+    \\      .lede br { display: none; }
+    \\      .rule { margin: 28px 0; }
+    \\      .item { grid-template-columns: 1fr; gap: 8px; padding: 20px 0; }
+    \\      .item-num { padding-top: 0; }
+    \\      .item-heading { font-size: 18px; }
+    \\      .item-text { font-size: 14px; max-width: 100%; }
+    \\      .footer { flex-direction: column; align-items: stretch; gap: 10px; margin-top: 40px; }
+    \\      .btn-primary, .btn-ghost { justify-content: center; text-align: center; padding: 14px 20px; }
+    \\      .footer-note { text-align: center; }
+    \\      .bench-legend { gap: 14px; }
+    \\      .bench-bar { height: 24px; font-size: 11px; }
+    \\      .bench-row { margin-bottom: 22px; }
+    \\    }
     \\  </style>
     \\</head>
     \\<body>
@@ -134,6 +182,84 @@ const html =
     \\    framework. It needs<br>
     \\    <span class="red">no runtime at all.</span>
     \\  </h1>
+    \\  <div class="bench">
+    \\    <div class="bench-title">vs Next.js — <span class="red">at a glance</span></div>
+    \\    <p class="bench-sub">Head-to-head on the metrics that matter.</p>
+    \\    <div class="bench-legend">
+    \\      <div class="bench-legend-item"><div class="bench-legend-dot mer"></div> merjs</div>
+    \\      <div class="bench-legend-item"><div class="bench-legend-dot next"></div> Next.js</div>
+    \\    </div>
+    \\    <div class="bench-row">
+    \\      <div class="bench-label">Cold Start</div>
+    \\      <div class="bench-bars">
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar mer" style="width: 8%;">< 5 ms</div>
+    \\          <div class="bench-bar-tag">merjs</div>
+    \\        </div>
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar next" style="width: 80%;">~1-3 s</div>
+    \\          <div class="bench-bar-tag">Next.js</div>
+    \\        </div>
+    \\      </div>
+    \\    </div>
+    \\    <div class="bench-row">
+    \\      <div class="bench-label">Requests / sec</div>
+    \\      <div class="bench-bars">
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar mer" style="width: 90%;">2,446 req/s</div>
+    \\          <div class="bench-bar-tag">merjs</div>
+    \\        </div>
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar next" style="width: 70%;">1,890 req/s</div>
+    \\          <div class="bench-bar-tag">Next.js</div>
+    \\        </div>
+    \\      </div>
+    \\    </div>
+    \\    <div class="bench-row">
+    \\      <div class="bench-label">Avg Latency</div>
+    \\      <div class="bench-bars">
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar mer" style="width: 35%;">40.68 ms</div>
+    \\          <div class="bench-bar-tag">merjs</div>
+    \\        </div>
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar next" style="width: 65%;">76.82 ms</div>
+    \\          <div class="bench-bar-tag">Next.js</div>
+    \\        </div>
+    \\      </div>
+    \\    </div>
+    \\    <div class="bench-row">
+    \\      <div class="bench-label">Build Time</div>
+    \\      <div class="bench-bars">
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar mer" style="width: 12%;">~1.2 s</div>
+    \\          <div class="bench-bar-tag">merjs</div>
+    \\        </div>
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar next" style="width: 75%;">~30 s</div>
+    \\          <div class="bench-bar-tag">Next.js</div>
+    \\        </div>
+    \\      </div>
+    \\    </div>
+    \\    <div class="bench-row">
+    \\      <div class="bench-label">node_modules</div>
+    \\      <div class="bench-bars">
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar mer" style="width: 8%;">0 files</div>
+    \\          <div class="bench-bar-tag">merjs</div>
+    \\        </div>
+    \\        <div class="bench-bar-wrap">
+    \\          <div class="bench-bar next" style="width: 85%;">~300 MB / 85k files</div>
+    \\          <div class="bench-bar-tag">Next.js</div>
+    \\        </div>
+    \\      </div>
+    \\    </div>
+    \\    <p class="bench-note">
+    \\      Next.js is a mature, production-grade framework — merjs is an early
+    \\      experiment exploring whether the same DX is possible without the runtime weight.
+    \\      Benchmarks auto-updated by CI on each push to main.
+    \\    </p>
+    \\  </div>
     \\  <hr class="rule">
     \\  <div class="items">
     \\    <div class="item">

@@ -54,6 +54,14 @@ pub fn build(b: *std.Build) void {
     const codegen_step = b.step("codegen", "Regenerate src/generated/routes.zig");
     codegen_step.dependOn(&run_codegen.step);
 
+    // ── Prerender step (SSG) ───────────────────────────────────────────────
+    // Reuses the main exe with --prerender flag.
+    const run_prerender = b.addRunArtifact(exe);
+    run_prerender.addArg("--prerender");
+    run_prerender.step.dependOn(b.getInstallStep());
+    const prerender_step = b.step("prerender", "Pre-render pages with `pub const prerender = true` to dist/");
+    prerender_step.dependOn(&run_prerender.step);
+
     // ── WASM: wasm/counter.zig → public/counter.wasm ────────────────────────
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,

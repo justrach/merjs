@@ -147,9 +147,77 @@ jobs:
           open('README.md','w').write(txt)
           "
 
-      - name: Commit updated README
+      - name: Update index.zig benchmark bars
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          python3 << 'PYEOF'
+          import os, re
+
+          rps_m = os.environ.get('MERJS_RPS', '2446')
+          rps_n = os.environ.get('NEXT_RPS', '1890')
+          lat_m = os.environ.get('MERJS_LAT', '40.68 ms').split()[0]
+          lat_n = os.environ.get('NEXT_LAT', '76.82 ms').split()[0]
+          build_m = int(os.environ.get('MERJS_BUILD_MS', '1200'))
+          build_n = int(os.environ.get('NEXT_BUILD_MS', '30000'))
+
+          # Format build times
+          build_m_s = f"{build_m / 1000:.1f} s" if build_m >= 1000 else f"{build_m} ms"
+          build_n_s = f"{build_n / 1000:.0f} s" if build_n >= 1000 else f"{build_n} ms"
+
+          # Calculate bar widths (relative to max)
+          rps_m_f, rps_n_f = float(rps_m.replace(',', '')), float(rps_n.replace(',', ''))
+          rps_max = max(rps_m_f, rps_n_f)
+          rps_m_w = int(rps_m_f / rps_max * 90)
+          rps_n_w = int(rps_n_f / rps_max * 90)
+
+          lat_m_f, lat_n_f = float(lat_m.replace(',', '')), float(lat_n.replace(',', ''))
+          lat_max = max(lat_m_f, lat_n_f)
+          lat_m_w = max(10, int(lat_m_f / lat_max * 80))
+          lat_n_w = max(10, int(lat_n_f / lat_max * 80))
+
+          build_max = max(build_m, build_n)
+          build_m_w = max(8, int(build_m / build_max * 80))
+          build_n_w = max(8, int(build_n / build_max * 80))
+
+          txt = open('app/index.zig').read()
+
+          # Update req/s bars
+          txt = re.sub(
+              r'(bench-bar mer.*?style="width: )\d+(%;">[^<]*req/s)',
+              lambda m: f'{m.group(1)}{rps_m_w}%;\">{rps_m} req/s',
+              txt, count=1)
+          txt = re.sub(
+              r'(bench-bar next.*?style="width: )\d+(%;">[^<]*req/s)',
+              lambda m: f'{m.group(1)}{rps_n_w}%;\">{rps_n} req/s',
+              txt, count=1)
+
+          # Update latency bars
+          txt = re.sub(
+              r'(bench-bar mer.*?style="width: )\d+(%;">[^<]*ms)',
+              lambda m: f'{m.group(1)}{lat_m_w}%;\">{lat_m} ms',
+              txt, count=1)
+          txt = re.sub(
+              r'(bench-bar next.*?style="width: )\d+(%;">[^<]*ms)',
+              lambda m: f'{m.group(1)}{lat_n_w}%;\">{lat_n} ms',
+              txt, count=1)
+
+          # Update build time bars
+          txt = re.sub(
+              r'(Build Time.*?bench-bar mer.*?style="width: )\d+(%;">)[^<]*(</)',
+              lambda m: f'{m.group(1)}{build_m_w}%;\">~{build_m_s}{m.group(3)}',
+              txt, flags=re.DOTALL, count=1)
+          txt = re.sub(
+              r'(Build Time.*?bench-bar next.*?style="width: )\d+(%;">)[^<]*(</)',
+              lambda m: f'{m.group(1)}{build_n_w}%;\">~{build_n_s}{m.group(3)}',
+              txt, flags=re.DOTALL, count=1)
+
+          open('app/index.zig', 'w').write(txt)
+          print(f"Updated index.zig: req/s={rps_m}/{rps_n}, lat={lat_m}/{lat_n}ms, build={build_m_s}/{build_n_s}")
+          PYEOF
+
+      - name: Commit updated benchmarks
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git diff --quiet README.md || (git add README.md && git commit -m "docs: update README benchmark numbers [skip ci]" && git push)
+          git diff --quiet README.md app/index.zig || (git add README.md app/index.zig && git commit -m "docs: update benchmark numbers [skip ci]" && git push)

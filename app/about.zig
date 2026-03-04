@@ -1,5 +1,9 @@
 const mer = @import("mer");
 
+/// Pre-render this page at build time (SSG). The HTML is written to dist/
+/// and served directly without calling render() on each request.
+pub const prerender = true;
+
 pub const meta: mer.Meta = .{
     .title = "About",
     .description = "merjs is a Zig-native web framework exploring whether systems languages and WASM can replace Node.js for web development.",

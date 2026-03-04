@@ -9,6 +9,7 @@ src/generated/
 public/styles.css
 public/counter.wasm
 worker/merjs.wasm
+dist/
 
 # Toolchain binaries (downloaded on first build)
 tools/tailwindcss

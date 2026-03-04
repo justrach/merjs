@@ -12,6 +12,7 @@ pub const Route = struct {
     path: []const u8,
     render: RenderFn,
     meta: mer.Meta = .{},
+    prerender: bool = false,
 };
 
 pub const Router = struct {

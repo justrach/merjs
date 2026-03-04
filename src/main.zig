@@ -9,6 +9,7 @@ const Server = @import("server.zig").Server;
 const Config = @import("server.zig").Config;
 const ssr = @import("ssr.zig");
 const watcher_mod = @import("watcher.zig");
+const prerender = @import("prerender.zig");
 
 const log = std.log.scoped(.main);
 
@@ -26,6 +27,8 @@ pub fn main() !void {
         .dev = true,
     };
 
+    var do_prerender = false;
+
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "--port") and i + 1 < args.len) {
@@ -33,12 +36,20 @@ pub fn main() !void {
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--no-dev")) {
             config.dev = false;
+        } else if (std.mem.eql(u8, args[i], "--prerender")) {
+            do_prerender = true;
         }
     }
 
     // Build router from generated routes.
     var router = ssr.buildRouter(alloc);
     defer router.deinit();
+
+    // SSG mode: pre-render pages to dist/ and exit.
+    if (do_prerender) {
+        try prerender.run(alloc, &router);
+        return;
+    }
 
     // File watcher (dev mode only).
     var watcher = watcher_mod.Watcher.init(alloc, "app");
