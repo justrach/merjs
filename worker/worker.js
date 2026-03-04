@@ -71,7 +71,7 @@ export default {
     if (url.pathname === "/dashboard" && contentType.startsWith("text/html")) {
       let html = decoder.decode(body);
       const ts = Math.floor(Date.now() / 1000);
-      html = html.replace('id="ssr-ts">0<', `id="ssr-ts">${ts}<`);
+      html = html.replace(/(id="ssr-ts"[^>]*>)\s*0\s*(<)/, `$1${ts}$2`);
       return new Response(html, {
         status,
         headers: { "content-type": contentType, ...securityHeaders },
