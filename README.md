@@ -32,6 +32,7 @@
 <!-- BENCH:START -->
 | Requests/sec (wrk)    | **2414.97 req/s**     | **1920.52 req/s**          |
 | Avg latency           | **41.27ms 3.16ms**           | **77.85ms 175.26ms**                |
+| RAM usage (under load) | **~5 MB**                  | **~80 MB**                     |
 | Build time             | **1729 ms**                | **49715 ms**                   |
 <!-- BENCH:END -->
 

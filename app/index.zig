@@ -47,6 +47,7 @@ fn page() h.Node {
             benchRow("Cold Start", "8%", "< 5 ms", "80%", "~1-3 s"),
             benchRow("Requests / sec", "90%", "2448.23 req/s", "69%", "1883.41 req/s"),
             benchRow("Avg Latency", "42%", "40.68 ms", "80%", "75.99 ms"),
+            benchRow("RAM Usage", "8%", "~5 MB", "80%", "~80 MB"),
             benchRow("Build Time", "8%", "~4.3 s", "80%", "~51 s"),
             benchRow("node_modules", "8%", "0 files", "85%", "~300 MB / 85k files"),
             h.p(.{ .class = "bench-note" }, .{

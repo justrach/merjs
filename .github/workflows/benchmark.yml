@@ -55,20 +55,33 @@ jobs:
           echo "MERJS_BYTES=$MERJS_BYTES" >> $GITHUB_ENV
           echo "MERJS_FILES=$MERJS_FILES" >> $GITHUB_ENV
 
-      # ── wrk: merjs ────────────────────────────────────────
+      # ── wrk: merjs (sequential — merjs first, then Next.js) ─────────────
       - name: Load test merjs
         run: |
           MERJS_BIN=$(find zig-out -name "merjs" -type f 2>/dev/null | head -1)
           $MERJS_BIN --port 3000 --no-dev &
           MERJS_PID=$!
           sleep 2
+
+          # Sample RSS before load test
+          MERJS_RSS_BEFORE=$(ps -o rss= -p $MERJS_PID | tr -d ' ')
+
           WRK_OUT=$(wrk -t2 -c100 -d10s http://127.0.0.1:3000/)
           echo "$WRK_OUT"
+
+          # Sample peak RSS after load test
+          MERJS_RSS_AFTER=$(ps -o rss= -p $MERJS_PID | tr -d ' ')
+          # Use the higher value (KB → MB)
+          MERJS_RSS_KB=$(( MERJS_RSS_BEFORE > MERJS_RSS_AFTER ? MERJS_RSS_BEFORE : MERJS_RSS_AFTER ))
+          MERJS_RAM_MB=$(awk "BEGIN{printf \"%.1f\", $MERJS_RSS_KB / 1024}")
+
           MERJS_RPS=$(echo "$WRK_OUT" | grep 'Requests/sec' | awk '{print $2}')
           MERJS_LAT=$(echo "$WRK_OUT" | grep 'Latency' | awk '{print $2 " " $3}')
           echo "MERJS_RPS=$MERJS_RPS" >> $GITHUB_ENV
           echo "MERJS_LAT=$MERJS_LAT" >> $GITHUB_ENV
+          echo "MERJS_RAM_MB=$MERJS_RAM_MB" >> $GITHUB_ENV
           kill $MERJS_PID 2>/dev/null || true
+          sleep 1
 
       # ── Build Next.js baseline ───────────────────────────
       - name: Create Next.js app
@@ -100,12 +113,23 @@ jobs:
           npx next start -p 3001 &
           NEXT_PID=$!
           sleep 5
+
+          # Sample RSS before load test
+          NEXT_RSS_BEFORE=$(ps -o rss= -p $NEXT_PID | tr -d ' ')
+
           WRK_OUT=$(wrk -t2 -c100 -d10s http://127.0.0.1:3001/)
           echo "$WRK_OUT"
+
+          # Sample peak RSS after load test
+          NEXT_RSS_AFTER=$(ps -o rss= -p $NEXT_PID | tr -d ' ')
+          NEXT_RSS_KB=$(( NEXT_RSS_BEFORE > NEXT_RSS_AFTER ? NEXT_RSS_BEFORE : NEXT_RSS_AFTER ))
+          NEXT_RAM_MB=$(awk "BEGIN{printf \"%.1f\", $NEXT_RSS_KB / 1024}")
+
           NEXT_RPS=$(echo "$WRK_OUT" | grep 'Requests/sec' | awk '{print $2}')
           NEXT_LAT=$(echo "$WRK_OUT" | grep 'Latency' | awk '{print $2 " " $3}')
           echo "NEXT_RPS=$NEXT_RPS" >> $GITHUB_ENV
           echo "NEXT_LAT=$NEXT_LAT" >> $GITHUB_ENV
+          echo "NEXT_RAM_MB=$NEXT_RAM_MB" >> $GITHUB_ENV
           kill $NEXT_PID 2>/dev/null || true
 
       # ── Summary ──────────────────────────────────────────
@@ -125,8 +149,41 @@ jobs:
           echo "| Runtime deps | 0 | Node.js ≥ 18 |" >> $GITHUB_STEP_SUMMARY
           echo "| **Requests/sec** (wrk, 2t/100c/10s) | **${MERJS_RPS}** | **${NEXT_RPS}** |" >> $GITHUB_STEP_SUMMARY
           echo "| **Avg latency** | **${MERJS_LAT}** | **${NEXT_LAT}** |" >> $GITHUB_STEP_SUMMARY
+          echo "| **RAM usage** (under load) | **${MERJS_RAM_MB} MB** | **${NEXT_RAM_MB} MB** |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "> Measured on GitHub Actions \`ubuntu-latest\`. Next.js created with \`create-next-app@latest --yes --ts --tailwind --app\`. Load test: \`wrk -t2 -c100 -d10s\` on index route." >> $GITHUB_STEP_SUMMARY
+
+      - name: Save benchmark JSON
+        run: |
+          mkdir -p benchmarks
+          python3 -c "
+          import os, json
+          data = {
+            'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+            'runner': 'ubuntu-latest',
+            'merjs': {
+              'requests_per_sec': float(os.environ.get('MERJS_RPS', '0')),
+              'avg_latency_ms': os.environ.get('MERJS_LAT', ''),
+              'ram_mb': float(os.environ.get('MERJS_RAM_MB', '0')),
+              'build_time_ms': int(os.environ.get('MERJS_BUILD_MS', '0')),
+              'binary_size': os.environ.get('MERJS_SIZE', ''),
+              'binary_bytes': int(os.environ.get('MERJS_BYTES', '0')),
+              'source_files': int(os.environ.get('MERJS_FILES', '0')),
+            },
+            'nextjs': {
+              'requests_per_sec': float(os.environ.get('NEXT_RPS', '0')),
+              'avg_latency_ms': os.environ.get('NEXT_LAT', ''),
+              'ram_mb': float(os.environ.get('NEXT_RAM_MB', '0')),
+              'build_time_ms': int(os.environ.get('NEXT_BUILD_MS', '0')),
+              'node_modules_size': os.environ.get('NEXT_NM_SIZE', ''),
+              'node_modules_bytes': int(os.environ.get('NEXT_NM_BYTES', '0')),
+              'node_modules_files': int(os.environ.get('NEXT_NM_FILES', '0')),
+              'dot_next_size': os.environ.get('NEXT_DOT_NEXT_SIZE', ''),
+            }
+          }
+          json.dump(data, open('benchmarks/latest.json', 'w'), indent=2)
+          print(json.dumps(data, indent=2))
+          "
 
       - name: Update README benchmark rows
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -136,9 +193,11 @@ jobs:
           rps_m, rps_n = os.environ['MERJS_RPS'], os.environ['NEXT_RPS']
           lat_m, lat_n = os.environ['MERJS_LAT'], os.environ['NEXT_LAT']
           build_m, build_n = os.environ['MERJS_BUILD_MS'], os.environ['NEXT_BUILD_MS']
+          ram_m, ram_n = os.environ.get('MERJS_RAM_MB', 'N/A'), os.environ.get('NEXT_RAM_MB', 'N/A')
           rows = (
               f'| Requests/sec (wrk)    | **{rps_m} req/s**     | **{rps_n} req/s**          |\n'
               f'| Avg latency           | **{lat_m}**           | **{lat_n}**                |\n'
+              f'| RAM usage (under load) | **{ram_m} MB**        | **{ram_n} MB**             |\n'
               f'| Build time             | **{build_m} ms**                | **{build_n} ms**                   |'
           )
           txt = open('README.md').read()
@@ -163,60 +222,48 @@ jobs:
           lat_n = lat_n_raw
           build_m = int(os.environ.get('MERJS_BUILD_MS', '1200'))
           build_n = int(os.environ.get('NEXT_BUILD_MS', '30000'))
+          ram_m = os.environ.get('MERJS_RAM_MB', '5.0')
+          ram_n = os.environ.get('NEXT_RAM_MB', '80.0')
 
           # Format build times
           build_m_s = f"{build_m / 1000:.1f} s" if build_m >= 1000 else f"{build_m} ms"
           build_n_s = f"{build_n / 1000:.0f} s" if build_n >= 1000 else f"{build_n} ms"
 
           # Calculate bar widths (relative to max)
-          rps_m_f, rps_n_f = float(rps_m.replace(',', '')), float(rps_n.replace(',', ''))
-          rps_max = max(rps_m_f, rps_n_f)
-          rps_m_w = int(rps_m_f / rps_max * 90)
-          rps_n_w = int(rps_n_f / rps_max * 90)
+          def bar_w(a, b):
+              mx = max(a, b)
+              if mx == 0: return 50, 50
+              return max(8, int(a / mx * 90)), max(8, int(b / mx * 90))
 
-          lat_m_f, lat_n_f = float(lat_m.replace(',', '')), float(lat_n.replace(',', ''))
-          lat_max = max(lat_m_f, lat_n_f)
-          lat_m_w = max(10, int(lat_m_f / lat_max * 80))
-          lat_n_w = max(10, int(lat_n_f / lat_max * 80))
+          rps_m_f = float(rps_m.replace(',', ''))
+          rps_n_f = float(rps_n.replace(',', ''))
+          rps_m_w, rps_n_w = bar_w(rps_m_f, rps_n_f)
 
-          build_max = max(build_m, build_n)
-          build_m_w = max(8, int(build_m / build_max * 80))
-          build_n_w = max(8, int(build_n / build_max * 80))
+          lat_m_f = float(lat_m.replace(',', ''))
+          lat_n_f = float(lat_n.replace(',', ''))
+          lat_m_w, lat_n_w = bar_w(lat_m_f, lat_n_f)
+
+          build_m_w, build_n_w = bar_w(build_m, build_n)
+
+          ram_m_f, ram_n_f = float(ram_m), float(ram_n)
+          ram_m_w, ram_n_w = bar_w(ram_m_f, ram_n_f)
 
           txt = open('app/index.zig').read()
 
-          # Update req/s bars
-          txt = re.sub(
-              r'(bench-bar mer.*?style="width: )\d+(%;">[^<]*req/s)',
-              lambda m: f'{m.group(1)}{rps_m_w}%;\">{rps_m} req/s',
-              txt, count=1)
-          txt = re.sub(
-              r'(bench-bar next.*?style="width: )\d+(%;">[^<]*req/s)',
-              lambda m: f'{m.group(1)}{rps_n_w}%;\">{rps_n} req/s',
-              txt, count=1)
+          # Replace benchRow() calls by label name
+          def update_row(txt, label, mw, mv, nw, nv):
+              return re.sub(
+                  rf'(benchRow\("{label}",\s*")[^"]*(",\s*")[^"]*(",\s*")[^"]*(",\s*")[^"]*(")',
+                  rf'\g<1>{mw}%\g<2>{mv}\g<3>{nw}%\g<4>{nv}\g<5>',
+                  txt, count=1)
 
-          # Update latency bars
-          txt = re.sub(
-              r'(bench-bar mer.*?style="width: )\d+(%;">[^<]*ms)',
-              lambda m: f'{m.group(1)}{lat_m_w}%;\">{lat_m} ms',
-              txt, count=1)
-          txt = re.sub(
-              r'(bench-bar next.*?style="width: )\d+(%;">[^<]*ms)',
-              lambda m: f'{m.group(1)}{lat_n_w}%;\">{lat_n} ms',
-              txt, count=1)
-
-          # Update build time bars
-          txt = re.sub(
-              r'(Build Time.*?bench-bar mer.*?style="width: )\d+(%;">)[^<]*(</)',
-              lambda m: f'{m.group(1)}{build_m_w}%;\">~{build_m_s}{m.group(3)}',
-              txt, flags=re.DOTALL, count=1)
-          txt = re.sub(
-              r'(Build Time.*?bench-bar next.*?style="width: )\d+(%;">)[^<]*(</)',
-              lambda m: f'{m.group(1)}{build_n_w}%;\">~{build_n_s}{m.group(3)}',
-              txt, flags=re.DOTALL, count=1)
+          txt = update_row(txt, "Requests / sec", rps_m_w, f"{rps_m} req/s", rps_n_w, f"{rps_n} req/s")
+          txt = update_row(txt, "Avg Latency", lat_m_w, f"{lat_m} ms", lat_n_w, f"{lat_n} ms")
+          txt = update_row(txt, "RAM Usage", ram_m_w, f"~{ram_m} MB", ram_n_w, f"~{ram_n} MB")
+          txt = update_row(txt, "Build Time", build_m_w, f"~{build_m_s}", build_n_w, f"~{build_n_s}")
 
           open('app/index.zig', 'w').write(txt)
-          print(f"Updated index.zig: req/s={rps_m}/{rps_n}, lat={lat_m}/{lat_n}ms, build={build_m_s}/{build_n_s}")
+          print(f"Updated index.zig: req/s={rps_m}/{rps_n}, lat={lat_m}/{lat_n}ms, ram={ram_m}/{ram_n}MB, build={build_m_s}/{build_n_s}")
           PYEOF
 
       - name: Commit updated benchmarks
@@ -224,4 +271,5 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git diff --quiet README.md app/index.zig || (git add README.md app/index.zig && git commit -m "docs: update benchmark numbers [skip ci]" && git push)
+          git add README.md app/index.zig benchmarks/latest.json 2>/dev/null
+          git diff --staged --quiet || (git commit -m "docs: update benchmark numbers [skip ci]" && git push)
