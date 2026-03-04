@@ -123,6 +123,11 @@ const html_bottom =
     \\    document.getElementById('live-iso').textContent = d.iso;
     \\  }
     \\  tick(); setInterval(tick, 1000);
+    \\  // Fill SSR timestamp client-side if server couldn't (wasm32)
+    \\  const ssrEl = document.getElementById('ssr-ts');
+    \\  if (ssrEl && ssrEl.textContent.trim() === '0') {
+    \\    ssrEl.textContent = Math.floor(Date.now() / 1000);
+    \\  }
     \\</script>
     \\</body>
     \\</html>

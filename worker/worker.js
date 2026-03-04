@@ -28,8 +28,18 @@ const securityHeaders = {
 
 export default {
   async fetch(request) {
-    const wasm = await getInstance();
     const url = new URL(request.url);
+
+    // /api/time — return real timestamp from JS (WASM has no clock).
+    if (url.pathname === "/api/time") {
+      const ts = Math.floor(Date.now() / 1000);
+      return new Response(
+        JSON.stringify({ timestamp: ts, unit: "unix_seconds", iso: new Date(ts * 1000).toISOString() }),
+        { status: 200, headers: { "content-type": "application/json", ...securityHeaders } },
+      );
+    }
+
+    const wasm = await getInstance();
     const input = `${request.method} ${url.pathname}`;
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
