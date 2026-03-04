@@ -18,16 +18,38 @@ pub const text          = res_mod.text;
 pub const notFound      = res_mod.notFound;
 pub const internalError = res_mod.internalError;
 
+/// HTTP redirect.
+///
+///   return mer.redirect("/login", .found);          // 302
+///   return mer.redirect("/dashboard", .see_other);  // 303 after POST
+pub const redirect = res_mod.redirect;
+
 /// Serialize any struct to a JSON response (type-safe alternative to `json()`).
 ///
 ///   const TimeResp = struct { timestamp: i64, unit: []const u8 };
 ///   return mer.typedJson(req.allocator, TimeResp{ .timestamp = ts, .unit = "s" });
 pub fn typedJson(allocator: std.mem.Allocator, value: anytype) Response {
     var out: std.io.Writer.Allocating = .init(allocator);
-    // No deinit needed — arena allocator owns the memory for the lifetime of the request.
     var jw: std.json.Stringify = .{ .writer = &out.writer };
     jw.write(value) catch return internalError("json write failed");
     return res_mod.Response.init(.ok, .json, out.written());
+}
+
+/// Parse a JSON request body into type T.
+///
+///   const Body = struct { name: []const u8, age: u32 };
+///   const body = try mer.parseJson(Body, req) orelse return mer.badRequest("empty body");
+///   _ = body.value; // remember to call body.deinit() when done
+///
+/// Returns null for an empty body. Caller owns the parsed value (call `.deinit()`).
+pub fn parseJson(comptime T: type, req: Request) !?std.json.Parsed(T) {
+    if (req.body.len == 0) return null;
+    return std.json.parseFromSlice(T, req.allocator, req.body, .{ .ignore_unknown_fields = true });
+}
+
+/// 400 Bad Request response with a plain-text message.
+pub fn badRequest(msg: []const u8) Response {
+    return res_mod.Response.init(.bad_request, .text, msg);
 }
 
 // --- SEO / Meta tags --------------------------------------------------------
