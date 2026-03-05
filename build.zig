@@ -138,6 +138,10 @@ pub fn build(b: *std.Build) void {
 /// Scan dir/ and add each *.zig as a named module import.
 /// "app" dir: app/index.zig  → import "app/index"
 /// "api"   dir: api/hello.zig   → import "api/hello"
+/// Scan dir/ recursively and add each *.zig as a named module import.
+/// "app" dir: app/index.zig       → import "app/index"
+///            app/users/[id].zig  → import "app/users/[id]"
+/// "api" dir: api/hello.zig       → import "api/hello"
 fn addDirModules(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Module, dir: []const u8) void {
     // Check if a layout module exists in this directory.
     const layout_path = b.fmt("{s}/layout.zig", .{dir});
@@ -152,13 +156,15 @@ fn addDirModules(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Modu
 
     var d = std.fs.cwd().openDir(dir, .{ .iterate = true }) catch return;
     defer d.close();
-    var it = d.iterate();
-    while (it.next() catch null) |entry| {
+    var walker = d.walk(b.allocator) catch return;
+    defer walker.deinit();
+    while (walker.next() catch null) |entry| {
         if (entry.kind != .file) continue;
-        if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
-        if (std.mem.eql(u8, entry.name, "layout.zig")) continue;
-        const file_path    = b.fmt("{s}/{s}", .{ dir, entry.name });
-        const import_name  = b.fmt("{s}/{s}", .{ dir, entry.name[0 .. entry.name.len - 4] });
+        if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
+        if (std.mem.eql(u8, entry.path, "layout.zig")) continue;
+        // entry.path is relative to `dir`, e.g. "about.zig" or "users/[id].zig"
+        const file_path   = b.fmt("{s}/{s}", .{ dir, entry.path });
+        const import_name = b.fmt("{s}/{s}", .{ dir, entry.path[0 .. entry.path.len - 4] });
         const route_mod = b.createModule(.{ .root_source_file = b.path(file_path) });
         route_mod.addImport("mer", mer_mod);
         if (layout_mod) |lm| route_mod.addImport(b.fmt("{s}/layout", .{dir}), lm);

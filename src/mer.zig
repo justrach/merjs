@@ -7,6 +7,7 @@ const res_mod = @import("response.zig");
 
 // --- HTTP types -------------------------------------------------------------
 pub const Method      = req_mod.Method;
+pub const Param       = req_mod.Param;
 pub const Request     = req_mod.Request;
 pub const ContentType = res_mod.ContentType;
 pub const Response    = res_mod.Response;
