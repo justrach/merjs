@@ -13,8 +13,8 @@ pub const meta: mer.Meta = .{
 };
 
 pub fn render(req: mer.Request) mer.Response {
-    const user_id  = req.cookie("oauth_user")  orelse "unknown";
-    const provider = req.cookie("oauth_state"); // we read state as proof of initiation
+    const user_id  = req.cookie("oauth_user") orelse "unknown";
+    const provider = req.cookie("oauth_state");
 
     const provider_label: []const u8 = if (provider != null) "your account" else "your account";
     _ = provider_label;
@@ -40,13 +40,30 @@ pub fn render(req: mer.Request) mer.Response {
         }),
     });
 
-    // Clear the oauth_state and oauth_user cookies.
-    const clear_cookies = req.allocator.alloc(mer.SetCookie, 2) catch
-        return mer.render(req.allocator, node);
-    clear_cookies[0] = .{ .name = "oauth_state", .value = "", .max_age = 0 };
-    clear_cookies[1] = .{ .name = "oauth_user",  .value = "", .max_age = 0 };
+    const base_res = mer.render(req.allocator, node);
 
-    return mer.withCookies(mer.render(req.allocator, node), clear_cookies);
+    // Sign a real session cookie and clear the temporary OAuth cookies.
+    const session_token = mer.signSession(req.allocator, user_id, mer.SESSION_DEFAULT_TTL) catch {
+        // No SESSION_SECRET configured — still clear OAuth cookies, no session issued.
+        const clear = req.allocator.alloc(mer.SetCookie, 2) catch return base_res;
+        clear[0] = .{ .name = "oauth_state", .value = "", .max_age = 0 };
+        clear[1] = .{ .name = "oauth_user",  .value = "", .max_age = 0 };
+        return mer.withCookies(base_res, clear);
+    };
+
+    const cookies = req.allocator.alloc(mer.SetCookie, 3) catch return base_res;
+    cookies[0] = .{
+        .name      = "session",
+        .value     = session_token,
+        .max_age   = mer.SESSION_DEFAULT_TTL,
+        .http_only = true,
+        .secure    = true,
+        .same_site = .lax,
+    };
+    cookies[1] = .{ .name = "oauth_state", .value = "", .max_age = 0 };
+    cookies[2] = .{ .name = "oauth_user",  .value = "", .max_age = 0 };
+
+    return mer.withCookies(base_res, cookies);
 }
 
 const page_css =

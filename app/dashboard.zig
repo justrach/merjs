@@ -90,6 +90,12 @@ const html_bottom =
 ;
 
 pub fn render(req: mer.Request) mer.Response {
+    // Guard: require a valid signed session.
+    const session_cookie = req.cookie("session") orelse "";
+    if (mer.verifySession(session_cookie) == null) {
+        return mer.redirect("/login", .found);
+    }
+
     const builtin = @import("builtin");
     const ts: i64 = if (builtin.target.cpu.arch != .wasm32)
         std.time.timestamp()
