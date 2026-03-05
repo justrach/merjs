@@ -121,6 +121,10 @@ fn toIdent(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
 
 /// "app/about.zig" → "app/about"   (module import name)
 /// "api/hello.zig" → "api/hello"
+/// "app/about.zig" → "../../app/about.zig"  (file-path import from src/generated/)
+/// "api/hello.zig" → "../../api/hello.zig"
+/// "app/about.zig" → "app/about"   (module import name)
+/// "api/hello.zig" → "api/hello"
 fn toImportName(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     return alloc.dupe(u8,
         if (std.mem.endsWith(u8, path, ".zig")) path[0 .. path.len - 4] else path
