@@ -37,10 +37,47 @@ pub const ContentType = enum {
     }
 };
 
+// ── Set-Cookie ─────────────────────────────────────────────────────────────
+
+pub const SameSite = enum { strict, lax, none };
+
+/// A cookie to emit via Set-Cookie. All slices must outlive the Response.
+pub const SetCookie = struct {
+    name:      []const u8,
+    value:     []const u8,
+    path:      []const u8 = "/",
+    max_age:   ?u32 = null,
+    http_only: bool = true,
+    secure:    bool = false,
+    same_site: SameSite = .lax,
+
+    /// Format the Set-Cookie header value into `buf`. Returns the written slice.
+    /// Silently truncates if `buf` is too small (512 bytes is always enough).
+    pub fn headerValue(self: SetCookie, buf: []u8) []const u8 {
+        var fbs = std.io.fixedBufferStream(buf);
+        const w = fbs.writer();
+        w.print("{s}={s}; Path={s}", .{ self.name, self.value, self.path }) catch {};
+        if (self.max_age) |age| w.print("; Max-Age={d}", .{age}) catch {};
+        if (self.http_only) w.writeAll("; HttpOnly") catch {};
+        if (self.secure)    w.writeAll("; Secure") catch {};
+        const ss: []const u8 = switch (self.same_site) {
+            .strict => "Strict",
+            .lax    => "Lax",
+            .none   => "None",
+        };
+        w.print("; SameSite={s}", .{ss}) catch {};
+        return fbs.getWritten();
+    }
+};
+
+// ── Response ───────────────────────────────────────────────────────────────
+
 pub const Response = struct {
     status:       std.http.Status,
     content_type: ContentType,
     body:         []const u8,
+    /// Cookies to emit as Set-Cookie headers. Slice must outlive the Response.
+    cookies:      []const SetCookie = &.{},
 
     pub fn init(status: std.http.Status, ct: ContentType, body: []const u8) Response {
         return .{ .status = status, .content_type = ct, .body = body };
@@ -75,6 +112,16 @@ pub fn internalError(msg: []const u8) Response {
 ///   return mer.redirect("/dashboard", .see_other);       // 303 — after POST
 ///   return mer.redirect("/new-path", .moved_permanently);// 301
 pub fn redirect(location: []const u8, status: std.http.Status) Response {
-    // body carries the Location URL; server.zig detects content_type == .redirect.
     return .{ .status = status, .content_type = .redirect, .body = location };
+}
+
+/// Return a copy of `res` with its `cookies` field replaced.
+///
+///   return mer.withCookies(mer.redirect("/dashboard", .see_other), &.{
+///       .{ .name = "session", .value = token, .max_age = 86400 },
+///   });
+pub fn withCookies(res: Response, cookies: []const SetCookie) Response {
+    var r = res;
+    r.cookies = cookies;
+    return r;
 }

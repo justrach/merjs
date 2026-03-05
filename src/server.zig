@@ -161,7 +161,8 @@ fn serveRequest(
 
     // Read Cookie header.
     const cookies_raw: []const u8 = blk: {
-        for (std_req.head.iterateHeaders()) |hdr| {
+        var it = std_req.iterateHeaders();
+        while (it.next()) |hdr| {
             if (std.ascii.eqlIgnoreCase(hdr.name, "cookie")) break :blk hdr.value;
         }
         break :blk "";
@@ -185,21 +186,6 @@ fn serveRequest(
 
     var response = router.dispatch(req);
 
-    // Handle redirects — emit Location header, no body needed.
-    if (response.content_type == .redirect) {
-        var header_buf: [512]u8 = undefined;
-        var bw = try std_req.respondStreaming(&header_buf, .{
-            .respond_options = .{
-                .status = response.status,
-                .extra_headers = &.{
-                    .{ .name = "location", .value = response.body },
-                },
-            },
-        });
-        try bw.end();
-        return;
-    }
-
     // Dev mode: inject hot-reload script before </body>.
     var owned_body: ?[]u8 = null;
     if (dev and response.content_type == .html) {
@@ -213,15 +199,52 @@ fn serveRequest(
     try sendResponse(std_req, response);
 }
 
-fn sendResponse(std_req: *std.http.Server.Request, response: anytype) !void {
-    const ct_header = [1]std.http.Header{
+/// Maximum number of Set-Cookie headers we emit per response.
+const MAX_COOKIES = 8;
+
+fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void {
+    // Format Set-Cookie header values on the stack.
+    var cookie_val_bufs: [MAX_COOKIES][512]u8 = undefined;
+    var cookie_headers:  [MAX_COOKIES]std.http.Header = undefined;
+    const n_cookies = @min(response.cookies.len, MAX_COOKIES);
+    for (response.cookies[0..n_cookies], 0..) |ck, i| {
+        cookie_headers[i] = .{
+            .name  = "set-cookie",
+            .value = ck.headerValue(&cookie_val_bufs[i]),
+        };
+    }
+
+    if (response.content_type == .redirect) {
+        // Redirect: Location + optional Set-Cookie, no body, no security headers.
+        var extra: [1 + MAX_COOKIES]std.http.Header = undefined;
+        extra[0] = .{ .name = "location", .value = response.body };
+        @memcpy(extra[1..1 + n_cookies], cookie_headers[0..n_cookies]);
+
+        var header_buf: [2048]u8 = undefined;
+        var bw = try std_req.respondStreaming(&header_buf, .{
+            .respond_options = .{
+                .status        = response.status,
+                .extra_headers = extra[0..1 + n_cookies],
+            },
+        });
+        try bw.end();
+        return;
+    }
+
+    // Normal response: content-type + security headers + optional Set-Cookie.
+    const fixed = [1]std.http.Header{
         .{ .name = "content-type", .value = response.content_type.mime() },
-    };
-    var header_buf: [2048]u8 = undefined;
+    } ++ security_headers;
+
+    var extra: [fixed.len + MAX_COOKIES]std.http.Header = undefined;
+    @memcpy(extra[0..fixed.len], &fixed);
+    @memcpy(extra[fixed.len..fixed.len + n_cookies], cookie_headers[0..n_cookies]);
+
+    var header_buf: [4096]u8 = undefined;
     var bw = try std_req.respondStreaming(&header_buf, .{
         .respond_options = .{
             .status        = response.status,
-            .extra_headers = &(ct_header ++ security_headers),
+            .extra_headers = extra[0..fixed.len + n_cookies],
         },
     });
     try bw.writer.writeAll(response.body);
