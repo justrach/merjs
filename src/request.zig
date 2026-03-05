@@ -24,6 +24,12 @@ pub const Method = enum {
     }
 };
 
+/// A matched route parameter (e.g. `:id` segment from `/users/:id`).
+pub const Param = struct {
+    key:   []const u8,
+    value: []const u8,
+};
+
 pub const Request = struct {
     method:       Method,
     path:         []const u8,
@@ -36,6 +42,9 @@ pub const Request = struct {
     /// Raw `Cookie:` header value.
     /// Empty slice when no cookie header is present.
     cookies_raw:  []const u8,
+    /// Dynamic route parameters extracted by the router.
+    /// E.g. for route `/users/:id` and path `/users/42`, params = [{key:"id", value:"42"}].
+    params:       []const Param,
     allocator:    std.mem.Allocator,
 
     pub fn init(
@@ -50,7 +59,21 @@ pub const Request = struct {
             .query_string = "",
             .body         = "",
             .cookies_raw  = "",
+            .params       = &.{},
         };
+    }
+
+    // ── Route parameters ───────────────────────────────────────────────────
+
+    /// Return the value of a dynamic route parameter, or null if absent.
+    ///
+    ///   // Route: /users/:id   Request: /users/42
+    ///   req.param("id")  // → "42"
+    pub fn param(self: Request, name: []const u8) ?[]const u8 {
+        for (self.params) |p| {
+            if (std.mem.eql(u8, p.key, name)) return p.value;
+        }
+        return null;
     }
 
     // ── Query parameters ───────────────────────────────────────────────────
