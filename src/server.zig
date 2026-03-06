@@ -169,7 +169,11 @@ fn serveRequest(
     };
 
     // Read request body (up to 4 MiB).
+    // Skip when Content-Length is absent: GET/HEAD have no body, and attempting
+    // to read would block waiting for EOF since the connection stays open.
     const body_bytes: []const u8 = blk: {
+        const cl = std_req.head.content_length orelse break :blk "";
+        if (cl == 0) break :blk "";
         var transfer_buf: [4096]u8 = undefined;
         var br = std_req.server.reader.bodyReader(
             &transfer_buf,
@@ -183,6 +187,10 @@ fn serveRequest(
     req.query_string = query_string;
     req.body         = body_bytes;
     req.cookies_raw  = cookies_raw;
+
+    // Arm the thread-local arena so coerceChildren can heap-allocate runtime
+    // children tuples (avoids dangling-pointer SIGBUS in html.renderNode).
+    mer.h.setRenderAllocator(alloc);
 
     var response = router.dispatch(req);
 

@@ -22,6 +22,17 @@
 
 const std = @import("std");
 
+// ── Thread-local request allocator ──────────────────────────────────────────
+// Set by server.zig before each request so coerceChildren can heap-allocate
+// runtime children tuples (avoids returning pointers to stack-local arrays).
+threadlocal var _render_alloc: ?std.mem.Allocator = null;
+
+/// Call this once per request (before building any Node tree) to enable
+/// safe runtime children. server.zig calls this automatically.
+pub fn setRenderAllocator(alloc: std.mem.Allocator) void {
+    _render_alloc = alloc;
+}
+
 // ── Core types ──────────────────────────────────────────────────────────────
 
 pub const Attr = struct {
@@ -91,7 +102,7 @@ pub const Props = struct {
 
 fn propsToAttrs(comptime props: Props) []const Attr {
     @setEvalBranchQuota(20_000);
-    var attrs: [48]Attr = undefined;
+    comptime var attrs: [48]Attr = undefined;
     comptime var n: usize = 0;
 
     // String optional attributes
@@ -175,13 +186,23 @@ fn isSelfClosing(tag: []const u8) bool {
 fn coerceChildren(children: anytype) []const Node {
     const T = @TypeOf(children);
 
-    // String literal → text node
+    // String literal → text node.  At runtime the [1]Node wrapper lives on the
+    // stack and becomes dangling once coerceChildren returns.  Heap-copy via
+    // the per-request arena when available, same as the tuple path below.
     if (T == []const u8) {
-        return &.{Node{ .text = children }};
+        if (@inComptime()) return &.{Node{ .text = children }};
+        var singleton: [1]Node = .{Node{ .text = children }};
+        if (_render_alloc) |alloc| return alloc.dupe(Node, &singleton) catch &singleton;
+        const final: [1]Node = singleton;
+        return &final;
     }
     if (comptime isStringLiteral(T)) {
         const slice: []const u8 = children;
-        return &.{Node{ .text = slice }};
+        if (@inComptime()) return &.{Node{ .text = slice }};
+        var singleton: [1]Node = .{Node{ .text = slice }};
+        if (_render_alloc) |alloc| return alloc.dupe(Node, &singleton) catch &singleton;
+        const final: [1]Node = singleton;
+        return &final;
     }
 
     // Already a node slice
@@ -189,7 +210,7 @@ fn coerceChildren(children: anytype) []const Node {
         return children;
     }
 
-    // Tuple of nodes — coerce to slice
+    // Tuple of nodes — coerce to slice.
     if (@typeInfo(T) == .@"struct" and @typeInfo(T).@"struct".is_tuple) {
         const fields = @typeInfo(T).@"struct".fields;
         var nodes: [fields.len]Node = undefined;
@@ -203,6 +224,19 @@ fn coerceChildren(children: anytype) []const Node {
                 nodes[idx] = val;
             }
         }
+        // Comptime path (e.g. `const page_node = page()`): &final lives in the
+        // binary's data section — safe.
+        if (@inComptime()) {
+            const final: [fields.len]Node = nodes;
+            return &final;
+        }
+        // Runtime path: heap-allocate via the thread-local request arena so the
+        // slice survives after coerceChildren returns (avoids dangling-pointer
+        // SIGBUS on nested h.* calls).
+        if (_render_alloc) |alloc| {
+            return alloc.dupe(Node, &nodes) catch &nodes;
+        }
+        // No allocator set — fall back (safe only if there is no nesting).
         const final: [fields.len]Node = nodes;
         return &final;
     }
