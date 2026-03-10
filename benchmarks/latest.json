@@ -1,20 +1,20 @@
 {
-  "timestamp": "2026-03-10T05:06:40Z",
+  "timestamp": "2026-03-10T05:11:51Z",
   "runner": "ubuntu-latest",
   "merjs": {
-    "requests_per_sec": 2437.43,
-    "avg_latency_ms": "40.86ms 2.42ms",
-    "ram_mb": 454.3,
-    "build_time_ms": 7850,
-    "binary_size": "45M",
-    "binary_bytes": 46791864,
-    "source_files": 26
+    "requests_per_sec": 2442.67,
+    "avg_latency_ms": "40.80ms 2.74ms",
+    "ram_mb": 469.6,
+    "build_time_ms": 4127,
+    "binary_size": "33M",
+    "binary_bytes": 34392269,
+    "source_files": 27
   },
   "nextjs": {
-    "requests_per_sec": 1908.89,
-    "avg_latency_ms": "76.41ms 169.17ms",
-    "ram_mb": 72.6,
-    "build_time_ms": 49225,
+    "requests_per_sec": 1861.2,
+    "avg_latency_ms": "76.53ms 166.50ms",
+    "ram_mb": 72.3,
+    "build_time_ms": 51880,
     "node_modules_size": "445M",
     "node_modules_bytes": 399757253,
     "node_modules_files": 20080,
