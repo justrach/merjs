@@ -21,6 +21,9 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
+    // Load .env before threads start — safe to read without mutex after this.
+    @import("mer").loadDotenv(alloc);
+
     var config = Config{
         .host = "127.0.0.1",
         .port = 3000,

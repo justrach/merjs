@@ -80,15 +80,20 @@ pub fn badRequest(msg: []const u8) Response {
 
 // --- Environment ------------------------------------------------------------
 
+const env_mod = @import("env.zig");
+
 /// Read an environment variable. Returns null if not set.
+/// On native: checks .env table first, then the process environment.
+/// On Workers (wasm32): reads from secrets injected via __mer_set_env.
 ///
-///   const api_url = mer.env("MULTICLAW_API_URL") orelse "http://localhost:8443";
-/// Read an environment variable. Returns null if not set.
-///
-///   const api_url = mer.env("MULTICLAW_API_URL") orelse "http://localhost:8443";
+///   const key = mer.env("OPENAI_API_KEY") orelse return mer.badRequest("not configured");
 pub fn env(name: []const u8) ?[]const u8 {
-    return std.posix.getenv(name);
+    return env_mod.get(name);
 }
+
+/// Load a .env file from cwd into the env table. Call once at startup before threads.
+/// Re-exported here so main.zig (root module) can reach env.zig via the mer module.
+pub const loadDotenv = env_mod.loadDotenv;
 
 // --- Session management -----------------------------------------------------
 

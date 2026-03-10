@@ -26,20 +26,39 @@ const securityHeaders = {
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
 };
 
+// Track whether env bindings have been injected into the WASM module.
+let envInjected = false;
+
+function injectEnv(wasm, env) {
+  if (envInjected || !wasm.__mer_set_env) return;
+  envInjected = true;
+  const enc = new TextEncoder();
+  for (const [key, val] of Object.entries(env)) {
+    if (typeof val !== "string") continue;
+    const kb = enc.encode(key);
+    const vb = enc.encode(val);
+    const kp = wasm.alloc(kb.length);
+    const vp = wasm.alloc(vb.length);
+    if (!kp || !vp) continue;
+    const mem = new Uint8Array(wasm.memory.buffer);
+    mem.set(kb, kp);
+    mem.set(vb, vp);
+    wasm.__mer_set_env(kp, kb.length, vp, vb.length);
+    // Originals freed here — Zig already copied into its string_buf.
+    wasm.dealloc(kp, kb.length);
+    wasm.dealloc(vp, vb.length);
+  }
+}
+
 export default {
-  async fetch(request) {
+  async fetch(request, env, _ctx) {
     const url = new URL(request.url);
 
-    // /api/time — return real timestamp from JS (WASM has no clock).
-    if (url.pathname === "/api/time") {
-      const ts = Math.floor(Date.now() / 1000);
-      return new Response(
-        JSON.stringify({ timestamp: ts, unit: "unix_seconds", iso: new Date(ts * 1000).toISOString() }),
-        { status: 200, headers: { "content-type": "application/json", ...securityHeaders } },
-      );
-    }
-
     const wasm = await getInstance();
+
+    // Inject Cloudflare secret bindings into the Zig env table once per cold start.
+    injectEnv(wasm, env);
+
     const input = `${request.method} ${url.pathname}`;
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
@@ -66,17 +85,6 @@ export default {
     const ctLen = resBuf[2] | (resBuf[3] << 8);
     const contentType = decoder.decode(resBuf.slice(4, 4 + ctLen));
     const body = resBuf.slice(4 + ctLen);
-
-    // Patch SSR timestamp for dashboard (WASM has no clock, renders 0).
-    if (url.pathname === "/dashboard" && contentType.startsWith("text/html")) {
-      let html = decoder.decode(body);
-      const ts = Math.floor(Date.now() / 1000);
-      html = html.replace(/(id="ssr-ts"[^>]*>)\s*0\s*(<)/, `$1${ts}$2`);
-      return new Response(html, {
-        status,
-        headers: { "content-type": contentType, ...securityHeaders },
-      });
-    }
 
     return new Response(body, {
       status,
