@@ -12,7 +12,7 @@ const log = std.log.scoped(.server);
 /// Security headers applied to every page/API response.
 pub const security_headers = [_]std.http.Header{
     .{ .name = "strict-transport-security", .value = "max-age=63072000; includeSubDomains; preload" },
-    .{ .name = "content-security-policy", .value = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
+    .{ .name = "content-security-policy", .value = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; connect-src 'self' https://api.open-meteo.com https://cloudflareinsights.com https://api-open.data.gov.sg https://api-production.data.gov.sg https://cdn.jsdelivr.net https://unpkg.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
     .{ .name = "x-frame-options", .value = "DENY" },
     .{ .name = "x-content-type-options", .value = "nosniff" },
     .{ .name = "referrer-policy", .value = "strict-origin-when-cross-origin" },
@@ -169,7 +169,11 @@ fn serveRequest(
     };
 
     // Read request body (up to 4 MiB).
+    // Skip when Content-Length is absent: GET/HEAD have no body, and attempting
+    // to read would block waiting for EOF since the connection stays open.
     const body_bytes: []const u8 = blk: {
+        const cl = std_req.head.content_length orelse break :blk "";
+        if (cl == 0) break :blk "";
         var transfer_buf: [4096]u8 = undefined;
         var br = std_req.server.reader.bodyReader(
             &transfer_buf,
@@ -183,6 +187,10 @@ fn serveRequest(
     req.query_string = query_string;
     req.body         = body_bytes;
     req.cookies_raw  = cookies_raw;
+
+    // Arm the thread-local arena so coerceChildren can heap-allocate runtime
+    // children tuples (avoids dangling-pointer SIGBUS in html.renderNode).
+    mer.h.setRenderAllocator(alloc);
 
     var response = router.dispatch(req);
 

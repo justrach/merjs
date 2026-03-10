@@ -19,8 +19,13 @@ pub fn main() !void {
     try scanDir(alloc, &entries, "app");
     try scanDir(alloc, &entries, "api");
 
+    // Sort routes: static before dynamic, then alphabetically within each group.
+    // This ensures /users/settings always matches before /users/:id.
     std.mem.sort([]u8, entries.items, {}, struct {
         fn lessThan(_: void, a: []u8, b: []u8) bool {
+            const a_dynamic = hasDynamicSegment(a);
+            const b_dynamic = hasDynamicSegment(b);
+            if (a_dynamic != b_dynamic) return !a_dynamic; // static first
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
@@ -137,6 +142,13 @@ fn toImportName(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
 ///   app/blog/post.zig  → "/blog/post"
 ///   api/hello.zig        → "/api/hello"
 ///   api/v1/users.zig     → "/api/v1/users"
+/// URL mapping:
+///   app/index.zig          → "/"
+///   app/about.zig          → "/about"
+///   app/blog/post.zig      → "/blog/post"
+///   app/users/[id].zig     → "/users/:id"   (dynamic segment)
+///   api/hello.zig          → "/api/hello"
+///   api/v1/users.zig       → "/api/v1/users"
 fn toUrl(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     const without_ext = if (std.mem.endsWith(u8, path, ".zig")) path[0 .. path.len - 4] else path;
 
@@ -149,12 +161,29 @@ fn toUrl(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     // "index" at app root → "/"
     if (std.mem.eql(u8, rel, "index")) return alloc.dupe(u8, "/");
 
-    // Build URL: "/" + rel, replacing OS separators with '/'.
+    // Build URL: "/" + rel, replacing OS separators with '/' and [name] → :name.
     var result = try alloc.alloc(u8, rel.len + 1);
     result[0] = '/';
-    for (rel, 0..) |c, i| {
-        result[i + 1] = if (c == std.fs.path.sep) '/' else c;
+    var i: usize = 0;
+    var out: usize = 1;
+    while (i < rel.len) : (i += 1) {
+        const c = rel[i];
+        if (c == '[') {
+            // Replace '[name]' with ':name'.
+            result[out] = ':';
+            out += 1;
+            i += 1; // skip '['
+            while (i < rel.len and rel[i] != ']') : (i += 1) {
+                result[out] = rel[i];
+                out += 1;
+            }
+            // i now points at ']' — loop increment skips it.
+        } else {
+            result[out] = if (c == std.fs.path.sep) '/' else c;
+            out += 1;
+        }
     }
+    result = result[0..out];
 
     // Strip trailing "/index" → parent path.
     const index_suffix = "/index";
@@ -175,4 +204,16 @@ fn toUrl(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
 fn fileExists(path: []const u8) bool {
     std.fs.cwd().access(path, .{}) catch return false;
     return true;
+}
+
+/// Returns true if the path contains a `[name]` dynamic segment.
+fn hasDynamicSegment(path: []const u8) bool {
+    var i: usize = 0;
+    while (i < path.len) : (i += 1) {
+        if (path[i] == '[') {
+            while (i < path.len and path[i] != ']') : (i += 1) {}
+            return true;
+        }
+    }
+    return false;
 }

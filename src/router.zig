@@ -1,6 +1,7 @@
 // router.zig — file-based router.
-// app/index.zig  → "/"
-// app/about.zig  → "/about"
+// app/index.zig    → "/"
+// app/about.zig    → "/about"
+// app/users/[id].zig → "/users/:id"  (dynamic segment)
 
 const std = @import("std");
 const mer = @import("mer");
@@ -28,17 +29,33 @@ pub const Router = struct {
     pub fn deinit(_: *Router) void {}
 
     /// Match a URL path to a route and call its render function.
+    /// Tries exact match first, then dynamic pattern matching (:param segments),
+    /// then trailing-slash normalisation.
     /// If a layout is set and the response is HTML, wraps it automatically.
     pub fn dispatch(self: Router, req: mer.Request) mer.Response {
         var meta: mer.Meta = .{};
+        var params_buf: [8]mer.Param = undefined;
+
         var response: mer.Response = blk: {
+            // 1. Exact match.
             for (self.routes) |route| {
                 if (std.mem.eql(u8, route.path, req.path)) {
                     meta = route.meta;
                     break :blk route.render(req);
                 }
             }
-            // Strip trailing slash and retry (except root).
+
+            // 2. Dynamic pattern match (`:param` segments).
+            for (self.routes) |route| {
+                if (matchRoute(route.path, req.path, &params_buf)) |n| {
+                    meta = route.meta;
+                    var dyn_req = req;
+                    dyn_req.params = req.allocator.dupe(mer.Param, params_buf[0..n]) catch &.{};
+                    break :blk route.render(dyn_req);
+                }
+            }
+
+            // 3. Strip trailing slash and retry (except root).
             if (req.path.len > 1 and req.path[req.path.len - 1] == '/') {
                 const trimmed = req.path[0 .. req.path.len - 1];
                 for (self.routes) |route| {
@@ -47,7 +64,16 @@ pub const Router = struct {
                         break :blk route.render(req);
                     }
                 }
+                for (self.routes) |route| {
+                    if (matchRoute(route.path, trimmed, &params_buf)) |n| {
+                        meta = route.meta;
+                        var dyn_req = req;
+                        dyn_req.params = req.allocator.dupe(mer.Param, params_buf[0..n]) catch &.{};
+                        break :blk route.render(dyn_req);
+                    }
+                }
             }
+
             if (self.not_found) |nf| break :blk nf(req);
             break :blk mer.notFound();
         };
@@ -64,3 +90,32 @@ pub const Router = struct {
         return response;
     }
 };
+
+/// Try to match `req_path` against `route_path` where `:name` segments are wildcards.
+/// Fills `out[0..n]` with extracted params and returns `n`, or null on mismatch.
+/// Returns null for routes with no dynamic segments (use exact match for those).
+fn matchRoute(route_path: []const u8, req_path: []const u8, out: []mer.Param) ?usize {
+    // Quick check: only attempt if route has a ':' segment.
+    if (std.mem.indexOfScalar(u8, route_path, ':') == null) return null;
+
+    var ri = std.mem.splitScalar(u8, route_path, '/');
+    var pi = std.mem.splitScalar(u8, req_path, '/');
+    var n: usize = 0;
+
+    while (true) {
+        const rs = ri.next();
+        const ps = pi.next();
+        if (rs == null and ps == null) return n; // all segments matched
+        if (rs == null or ps == null) return null; // segment count mismatch
+        const r_seg = rs.?;
+        const p_seg = ps.?;
+        if (r_seg.len > 0 and r_seg[0] == ':') {
+            if (p_seg.len == 0) return null; // empty value not allowed
+            if (n >= out.len) return null;   // too many params
+            out[n] = .{ .key = r_seg[1..], .value = p_seg };
+            n += 1;
+        } else {
+            if (!std.mem.eql(u8, r_seg, p_seg)) return null;
+        }
+    }
+}
