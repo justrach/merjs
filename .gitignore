@@ -27,3 +27,7 @@ Thumbs.db
 # Wrangler
 .wrangler/
 node_modules/
+
+# Environment variables (API keys)
+.env
+.env.*

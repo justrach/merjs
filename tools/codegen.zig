@@ -19,8 +19,13 @@ pub fn main() !void {
     try scanDir(alloc, &entries, "app");
     try scanDir(alloc, &entries, "api");
 
+    // Sort routes: static before dynamic, then alphabetically within each group.
+    // This ensures /users/settings always matches before /users/:id.
     std.mem.sort([]u8, entries.items, {}, struct {
         fn lessThan(_: void, a: []u8, b: []u8) bool {
+            const a_dynamic = hasDynamicSegment(a);
+            const b_dynamic = hasDynamicSegment(b);
+            if (a_dynamic != b_dynamic) return !a_dynamic; // static first
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
@@ -199,4 +204,16 @@ fn toUrl(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
 fn fileExists(path: []const u8) bool {
     std.fs.cwd().access(path, .{}) catch return false;
     return true;
+}
+
+/// Returns true if the path contains a `[name]` dynamic segment.
+fn hasDynamicSegment(path: []const u8) bool {
+    var i: usize = 0;
+    while (i < path.len) : (i += 1) {
+        if (path[i] == '[') {
+            while (i < path.len and path[i] != ']') : (i += 1) {}
+            return true;
+        }
+    }
+    return false;
 }
