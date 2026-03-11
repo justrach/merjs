@@ -2,6 +2,10 @@ name = "merjs"
 main = "worker.js"
 compatibility_date = "2024-12-01"
 
+routes = [
+  { pattern = "sgdata.merlionjs.com", custom_domain = true }
+]
+
 [assets]
 directory = "../public"
 

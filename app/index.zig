@@ -200,7 +200,7 @@ const html =
     \\      gen.temperature.low+'\u00B0 \u2013 '+gen.temperature.high+'\u00B0 | '+gen.forecast.text;
     \\  } else { document.getElementById('temp-range').textContent = 'Weather data unavailable'; }
     \\  // 2hr regional forecast
-    \\  const items = twoHrRes.data.items;
+  \\  const items = twoHrRes?.data?.items;
     \\  if(items && items.length){
     \\    const latest = items[items.length-1];
     \\    const regions = latest.forecasts || [];
@@ -232,7 +232,7 @@ const html =
     \\  }
     \\
     \\  // PSI
-    \\  if(psiRes.data.items && psiRes.data.items.length){
+  \\  if(psiRes?.data?.items && psiRes.data.items.length){
     \\    const readings = psiRes.data.items[0].readings;
     \\    const psi24 = readings.psi_twenty_four_hourly;
     \\    const national = Math.round((psi24.west+psi24.east+psi24.central+psi24.south+psi24.north)/5);
@@ -273,7 +273,7 @@ const html =
     \\  }
     \\
     \\  // UV
-    \\  if(uvRes.data.records && uvRes.data.records.length){
+  \\  if(uvRes?.data?.records && uvRes.data.records.length){
     \\    const uvData = uvRes.data.records[0].index;
     \\    if(uvData && uvData.length){
     \\      const latest = uvData[0];

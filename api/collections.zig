@@ -6,6 +6,8 @@ const mer = @import("mer");
 ///   ?page=N       — paginate collections (default 1)
 ///   ?search=term  — search datasets by keyword
 pub fn render(req: mer.Request) mer.Response {
+    if (comptime @import("builtin").target.cpu.arch == .wasm32)
+        return mer.json("{\"error\":\"collections route handled by edge worker\"}");
     const api_key = mer.env("SG_DATA_API_KEY") orelse {
         return mer.json(
             \\{"error":"SG_DATA_API_KEY not configured. Set this environment variable to browse datasets."}
