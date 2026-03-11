@@ -74,9 +74,8 @@ pub fn render(req: mer.Request) mer.Response {
 
     // ── Step 2: Search EmergentDB ─────────────────────────────────────────────
     const search_req = std.fmt.allocPrint(req.allocator,
-        \\{{"vector":{s},"k":5,"include_metadata":true}}
+        \\{{"vector":{s},"k":5,"namespace":"budget2026","include_metadata":true}}
     , .{embedding_json}) catch return mer.internalError("alloc");
-
     { const f = std.fs.createFileAbsolute("/tmp/merjs_search.json", .{})
           catch return mer.internalError("tmpfile");
       f.writeAll(search_req) catch { f.close(); return mer.internalError("tmpwrite"); };
