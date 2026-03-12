@@ -93,6 +93,22 @@ pub fn build(b: *std.Build) void {
     const wasm_step = b.step("wasm", "Compile wasm/counter.zig → public/counter.wasm");
     wasm_step.dependOn(&install_wasm.step);
 
+    // ── WASM: wasm/grep.zig → worker/grep.wasm ────────────────────────────
+    const grep_wasm = b.addExecutable(.{
+        .name = "grep",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("wasm/grep.zig"),
+            .target = wasm_target,
+            .optimize = .ReleaseSmall,
+        }),
+    });
+    grep_wasm.rdynamic = true;
+    grep_wasm.entry = .disabled;
+    const install_grep = b.addInstallFile(grep_wasm.getEmittedBin(), "../worker/grep.wasm");
+    const grep_step = b.step("grep", "Compile wasm/grep.zig → worker/grep.wasm");
+    grep_step.dependOn(&install_grep.step);
+    // Worker step dependency added below (after worker_step is defined)
+
     // ── Worker WASM: src/worker.zig → worker/merjs.wasm ────────────────────
     const worker_mod = b.createModule(.{
         .root_source_file = b.path("src/worker.zig"),
@@ -111,6 +127,7 @@ pub fn build(b: *std.Build) void {
     const install_worker = b.addInstallFile(worker_wasm.getEmittedBin(), "../worker/merjs.wasm");
     const worker_step = b.step("worker", "Compile src/worker.zig → worker/merjs.wasm (Cloudflare Workers)");
     worker_step.dependOn(&install_worker.step);
+    worker_step.dependOn(&install_grep.step);
 
     // ── CSS: Tailwind v4 → public/styles.css ────────────────────────────────
     const run_tw = b.addSystemCommand(&.{

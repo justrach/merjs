@@ -1,8 +1,10 @@
 // worker.js — Cloudflare Workers fetch handler for merjs (merlionjs.com).
 
 import merWasm from "./merjs.wasm";
+import grepWasm from "./grep.wasm";
 
 let instance = null;
+let grepInstance = null;
 
 async function getInstance() {
   if (instance) return instance;
@@ -12,6 +14,15 @@ async function getInstance() {
   instance = mod.exports || mod;
   instance.init();
   return instance;
+}
+
+async function getGrepInstance() {
+  if (grepInstance) return grepInstance;
+  const mod = await WebAssembly.instantiate(grepWasm, {
+    env: { memory: new WebAssembly.Memory({ initial: 64 }) },
+  });
+  grepInstance = mod.exports || mod;
+  return grepInstance;
 }
 
 const securityHeaders = {
@@ -31,7 +42,7 @@ function jsonResp(data, status = 200) {
   });
 }
 
-// ── R2 grep search (no embeddings) ────────────────────────────────────────────
+// ── R2 grep search (WASM-powered, no embeddings) ──────────────────────────────
 
 let cachedChunks = null;
 
@@ -43,29 +54,52 @@ async function getChunks(env) {
   return cachedChunks;
 }
 
-const STOPWORDS = new Set([
-  "the","a","an","is","are","was","were","in","on","at","to","for","of",
-  "and","or","by","with","from","as","it","its","this","that","be","been",
-  "have","has","had","do","does","did","will","would","could","should",
-  "not","no","but","if","so","what","how","much","many","which","who",
-]);
+// Pack chunk texts into length-prefixed binary for WASM: [u32-LE len][text]...
+function packChunks(chunks) {
+  const encoder = new TextEncoder();
+  const encoded = chunks.map(c => encoder.encode(c.text));
+  const totalLen = encoded.reduce((sum, e) => sum + 4 + e.length, 0);
+  const buf = new Uint8Array(totalLen);
+  let off = 0;
+  for (const e of encoded) {
+    buf[off] = e.length & 0xff;
+    buf[off + 1] = (e.length >> 8) & 0xff;
+    buf[off + 2] = (e.length >> 16) & 0xff;
+    buf[off + 3] = (e.length >> 24) & 0xff;
+    off += 4;
+    buf.set(e, off);
+    off += e.length;
+  }
+  return buf;
+}
 
-function grepChunks(chunks, query) {
-  const keywords = query.toLowerCase().split(/\s+/)
-    .filter(w => w.length > 2 && !STOPWORDS.has(w));
-  if (!keywords.length) return [];
+async function grepChunks(chunks, query) {
+  const grep = await getGrepInstance();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
 
-  const scored = chunks.map(chunk => {
-    const lower = chunk.text.toLowerCase();
-    let score = 0;
-    for (const kw of keywords) {
-      let idx = 0;
-      while ((idx = lower.indexOf(kw, idx)) !== -1) { score++; idx += kw.length; }
-    }
-    return { ...chunk, score };
-  });
+  // Write query into WASM memory
+  const qBytes = encoder.encode(query);
+  const qPtr = grep.get_query_ptr();
+  const mem = new Uint8Array(grep.memory.buffer);
+  mem.set(qBytes, qPtr);
 
-  return scored.filter(c => c.score > 0).sort((a, b) => b.score - a.score).slice(0, 8);
+  // Pack and write chunks into WASM memory
+  const packed = packChunks(chunks);
+  const cPtr = grep.get_chunks_ptr();
+  mem.set(packed, cPtr);
+
+  // Run grep in WASM
+  grep.grep(qBytes.length, packed.length);
+
+  // Read results
+  const rPtr = grep.get_result_ptr();
+  const rLen = grep.get_result_len();
+  const resultBytes = new Uint8Array(grep.memory.buffer, rPtr, rLen);
+  const results = JSON.parse(decoder.decode(resultBytes));
+
+  // Map back: [[index, score], ...] → chunk objects with score
+  return results.map(([idx, score]) => ({ ...chunks[idx], score }));
 }
 
 async function handleBudgetAi(request, env) {
@@ -100,7 +134,7 @@ async function handleBudgetAi(request, env) {
 
   // Step 2: Grep R2 chunks
   const chunks = await getChunks(env);
-  const matched = grepChunks(chunks, searchQuery);
+  const matched = await grepChunks(chunks, searchQuery);
 
   let context = "";
   for (const m of matched) {
