@@ -148,10 +148,10 @@ The standalone Tailwind CLI lives at `tools/tailwindcss`. `zig build css` runs i
 | Type safety            | Comptime (Zig + dhi)       | TypeScript (runtime-erased)    |
 | Hot reload             | SSE file watcher (300 ms)  | Webpack/Turbopack HMR          |
 <!-- BENCH:START -->
-| Requests/sec (wrk)    | **2432.28 req/s**     | **2056.23 req/s**          |
-| Avg latency           | **40.99ms 2.88ms**           | **78.23ms 181.10ms**                |
-| RAM usage (under load) | **442.1 MB**        | **72.3 MB**             |
-| Build time             | **1232 ms**                | **34420 ms**                   |
+| Requests/sec (wrk)    | **2433.22 req/s**     | **2060.23 req/s**          |
+| Avg latency           | **40.99ms 2.96ms**           | **77.21ms 178.37ms**                |
+| RAM usage (under load) | **465.3 MB**        | **73.9 MB**             |
+| Build time             | **3194 ms**                | **37795 ms**                   |
 <!-- BENCH:END -->
 
 > Benchmark rows are auto-updated by CI on each push to `main`. Next.js is a mature, production-grade framework — merjs is an early experiment.
