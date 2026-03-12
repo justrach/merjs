@@ -10,6 +10,7 @@ const app_about = @import("app/about");
 const app_counter = @import("app/counter");
 const app_dashboard = @import("app/dashboard");
 const app_index = @import("app/index");
+const app_sandbox = @import("app/sandbox");
 const app_users = @import("app/users");
 const app_weather = @import("app/weather");
 
@@ -21,6 +22,7 @@ pub const routes: []const Route = &.{
     .{ .path = "/counter", .render = app_counter.render, .meta = if (@hasDecl(app_counter, "meta")) app_counter.meta else .{}, .prerender = if (@hasDecl(app_counter, "prerender")) app_counter.prerender else false },
     .{ .path = "/dashboard", .render = app_dashboard.render, .meta = if (@hasDecl(app_dashboard, "meta")) app_dashboard.meta else .{}, .prerender = if (@hasDecl(app_dashboard, "prerender")) app_dashboard.prerender else false },
     .{ .path = "/", .render = app_index.render, .meta = if (@hasDecl(app_index, "meta")) app_index.meta else .{}, .prerender = if (@hasDecl(app_index, "prerender")) app_index.prerender else false },
+    .{ .path = "/sandbox", .render = app_sandbox.render, .meta = if (@hasDecl(app_sandbox, "meta")) app_sandbox.meta else .{}, .prerender = if (@hasDecl(app_sandbox, "prerender")) app_sandbox.prerender else false },
     .{ .path = "/users", .render = app_users.render, .meta = if (@hasDecl(app_users, "meta")) app_users.meta else .{}, .prerender = if (@hasDecl(app_users, "prerender")) app_users.prerender else false },
     .{ .path = "/weather", .render = app_weather.render, .meta = if (@hasDecl(app_weather, "meta")) app_weather.meta else .{}, .prerender = if (@hasDecl(app_weather, "prerender")) app_weather.prerender else false },
 };
@@ -30,6 +32,7 @@ comptime {
     if (!@hasDecl(app_counter, "meta")) @compileError("app/counter.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_dashboard, "meta")) @compileError("app/dashboard.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_index, "meta")) @compileError("app/index.zig must export pub const meta: mer.Meta");
+    if (!@hasDecl(app_sandbox, "meta")) @compileError("app/sandbox.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_users, "meta")) @compileError("app/users.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_weather, "meta")) @compileError("app/weather.zig must export pub const meta: mer.Meta");
 }

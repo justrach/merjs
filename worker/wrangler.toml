@@ -15,3 +15,7 @@ command = "cd .. && /opt/homebrew/bin/zig build worker"
 [[rules]]
 type = "CompiledWasm"
 globs = ["**/*.wasm"]
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "merjs-docs"

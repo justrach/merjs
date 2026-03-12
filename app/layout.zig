@@ -100,6 +100,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\      <a href="/dashboard">Dashboard</a>
         \\      <a href="/weather">Weather</a>
         \\      <a href="/counter">Counter</a>
+        \\      <a href="/sandbox">Sandbox</a>
         \\      <a href="/about">About</a>
         \\    </nav>
         \\  </header>
