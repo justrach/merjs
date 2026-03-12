@@ -45,9 +45,9 @@ fn page() h.Node {
                 h.div(.{ .class = "bench-legend-item" }, .{h.div(.{ .class = "bench-legend-dot next" }, ""), h.text(" Next.js")}),
             }),
             benchRow("Cold Start", "8%", "< 5 ms", "80%", "~1-3 s"),
-            benchRow("Requests / sec", "90%", "2409.15 req/s", "70%", "1895.02 req/s"),
-            benchRow("Avg Latency", "47%", "41.38 ms", "90%", "77.63 ms"),
-            benchRow("Build Time", "8%", "~2.4 s", "90%", "~42 s"),
+            benchRow("Requests / sec", "90%", "2432.28 req/s", "76%", "2056.23 req/s"),
+            benchRow("Avg Latency", "47%", "40.99 ms", "90%", "78.23 ms"),
+            benchRow("Build Time", "8%", "~1.2 s", "90%", "~34 s"),
             benchRow("node_modules", "8%", "0 files", "85%", "~300 MB / 85k files"),
             h.p(.{ .class = "bench-note" }, .{
                 h.text("Next.js is a mature, production-grade framework \u{2014} merjs is an early experiment exploring whether the same DX is possible without the runtime weight. Benchmarks auto-updated by CI on each push to main."),
