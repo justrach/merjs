@@ -1,16 +1,16 @@
-name = "merjs"
+name = "merjs-sgdata"
 main = "worker.js"
 compatibility_date = "2024-12-01"
 
 routes = [
-  { pattern = "merlionjs.com", custom_domain = true }
+  { pattern = "sgdata.merlionjs.com", custom_domain = true }
 ]
 
 [assets]
 directory = "../public"
 
 [build]
-command = "cd .. && /opt/homebrew/bin/zig build worker"
+command = ""
 
 [[rules]]
 type = "CompiledWasm"

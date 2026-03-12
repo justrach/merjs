@@ -16,8 +16,6 @@ const html =
     \\  <a href="/" class="sg-nav-link">Dashboard</a>
     \\  <a href="/weather" class="sg-nav-link">Weather</a>
     \\  <a href="/environment" class="sg-nav-link active">Environment</a>
-    \\  <a href="/explore" class="sg-nav-link">Explore</a>
-    \\  <a href="/ai" class="sg-nav-link">AI</a>
     \\</nav>
     \\
     \\<h1>Singapore <span class="red">Environment</span></h1>
@@ -78,14 +76,16 @@ const html =
     \\const API = 'https://api-open.data.gov.sg/v2/real-time/api';
     \\const chartFont = {family:"'DM Sans',system-ui,sans-serif"};
     \\
+    \\const CACHE_VER = 'v3';
     \\const CACHE_TTL = 30*60*1000;
     \\async function cachedFetch(url){
-    \\  const key = 'sg_cache_'+url;
+    \\  const key = 'sg_'+CACHE_VER+'_'+url;
     \\  try{
     \\    const cached = localStorage.getItem(key);
     \\    if(cached){ const {ts,data}=JSON.parse(cached); if(Date.now()-ts<CACHE_TTL) return data; }
     \\  }catch(e){}
     \\  const res = await fetch(url);
+    \\  if(res.status===429){ console.warn('Rate limited:', url); return null; }
     \\  if(!res.ok) throw new Error(res.status);
     \\  const data = await res.json();
     \\  try{ localStorage.setItem(key, JSON.stringify({ts:Date.now(),data})); }catch(e){}
@@ -144,7 +144,7 @@ const html =
     \\  ]);
     \\
     \\  // PSI hero
-    \\  if(psiRes.data.items && psiRes.data.items.length){
+    \\  if(psiRes?.data?.items && psiRes.data.items.length){
     \\    const r = psiRes.data.items[0].readings;
     \\    const psi = r.psi_twenty_four_hourly;
     \\    let html = '<div class="psi-gauges">';
@@ -176,7 +176,7 @@ const html =
     \\  }
     \\
     \\  // UV
-    \\  if(uvRes.data.records && uvRes.data.records.length){
+    \\  if(uvRes?.data?.records && uvRes.data.records.length){
     \\    const uvData = uvRes.data.records[0].index;
     \\    if(uvData && uvData.length){
     \\      const current = uvData[0];
@@ -202,7 +202,7 @@ const html =
     \\  }
     \\
     \\  // Rainfall
-    \\  if(rainRes.data.readings && rainRes.data.readings.length){
+    \\  if(rainRes?.data?.readings && rainRes.data.readings.length){
     \\    const reading = rainRes.data.readings[0];
     \\    const stations = rainRes.data.stations;
     \\    const all = reading.data;
@@ -233,7 +233,7 @@ const html =
     \\  }
     \\
     \\  // Wind
-    \\  if(windRes.data.readings && windRes.data.readings.length){
+    \\  if(windRes?.data?.readings && windRes.data.readings.length){
     \\    const reading = windRes.data.readings[0];
     \\    const stations = windRes.data.stations;
     \\    const data = reading.data.slice(0,12);

@@ -31,4 +31,18 @@ node_modules/
 # Environment variables (API keys — never commit real keys)
 .env
 .env.local
+.env.local
 .env.*.local
+
+# Socials / content drafts
+socials/
+
+# Stale build artifacts
+test_config.o
+.zigrep_archive
+api.main/
+app.main/
+public/style.css
+*.wasm
+*.o
+tools/*.py
