@@ -28,6 +28,7 @@ Thumbs.db
 .wrangler/
 node_modules/
 
-# Environment variables (API keys)
+# Environment variables (API keys — never commit real keys)
 .env
-.env.*
+.env.local
+.env.*.local
