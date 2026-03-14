@@ -130,6 +130,25 @@ pub fn build(b: *std.Build) void {
     worker_step.dependOn(&install_worker.step);
     worker_step.dependOn(&install_grep.step);
 
+    // ── sgdata Worker WASM: examples/singapore-data-dashboard → worker/merjs.wasm
+    const sgdata_mod = b.createModule(.{
+        .root_source_file = b.path("src/worker.zig"),
+        .target = wasm_target,
+        .optimize = .ReleaseSmall,
+    });
+    sgdata_mod.addImport("mer", mer_mod);
+    addDirModules(b, sgdata_mod, mer_mod, "examples/singapore-data-dashboard/app");
+    addDirModules(b, sgdata_mod, mer_mod, "examples/singapore-data-dashboard/api");
+    const sgdata_wasm = b.addExecutable(.{
+        .name = "merjs",
+        .root_module = sgdata_mod,
+    });
+    sgdata_wasm.rdynamic = true;
+    sgdata_wasm.entry = .disabled;
+    const install_sgdata = b.addInstallFile(sgdata_wasm.getEmittedBin(), "../examples/singapore-data-dashboard/worker/merjs.wasm");
+    const sgdata_step = b.step("sgdata-worker", "Compile sgdata worker WASM");
+    sgdata_step.dependOn(&install_sgdata.step);
+
     // ── CSS: Tailwind v4 → public/styles.css ────────────────────────────────
     const run_tw = b.addSystemCommand(&.{
         "tools/tailwindcss", "--input",           "public/input.css",

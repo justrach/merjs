@@ -4,8 +4,8 @@ pub const meta: mer.Meta = .{
     .title = "SG Weather Map",
     .description = "Live Singapore weather on an interactive map — temperature, rainfall, and forecasts from NEA stations.",
     .extra_head = "<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\">" ++
-        "<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>" ++
-        "<script src=\"https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\"></script>" ++
+        "<script defer src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>" ++
+        "<script defer src=\"https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\"></script>" ++
         "<style>" ++ page_css ++ "</style>",
 };
 

@@ -232,6 +232,43 @@ pub fn fetch(allocator: std.mem.Allocator, opts: FetchRequest) !FetchResponse {
     return .{ .status = result.status, .body = owned };
 }
 
+/// Fetch multiple URLs in parallel. Returns results in the same order as inputs.
+/// Each thread gets its own HTTP client — no shared state.
+///
+///   const results = mer.fetchAll(req.allocator, &.{
+///       .{ .url = "https://api.data.gov.sg/v1/environment/..." },
+///       .{ .url = "https://api.open-meteo.com/v1/forecast?..." },
+///   });
+///   defer for (results) |r| if (r) |ok| ok.deinit(req.allocator);
+///   const weather = results[0] orelse return mer.internalError("weather fetch failed");
+///   const env_data = results[1] orelse return mer.internalError("env fetch failed");
+pub fn fetchAll(allocator: std.mem.Allocator, requests: []const FetchRequest) []?FetchResponse {
+    const results = allocator.alloc(?FetchResponse, requests.len) catch return &.{};
+    @memset(results, null);
+
+    if (requests.len == 1) {
+        results[0] = fetch(allocator, requests[0]) catch null;
+        return results;
+    }
+
+    const threads = allocator.alloc(std.Thread, requests.len) catch return results;
+    defer allocator.free(threads);
+
+    for (requests, 0..) |req_opts, i| {
+        threads[i] = std.Thread.spawn(.{}, fetchWorker, .{ allocator, req_opts, &results[i] }) catch {
+            results[i] = null;
+            continue;
+        };
+    }
+
+    for (threads[0..requests.len]) |t| t.join();
+    return results;
+}
+
+fn fetchWorker(allocator: std.mem.Allocator, opts: FetchRequest, out: *?FetchResponse) void {
+    out.* = fetch(allocator, opts) catch null;
+}
+
 // --- SEO / Meta tags --------------------------------------------------------
 /// Typed metadata for pages. Export `pub const meta: mer.Meta = .{ ... }` from
 /// any page and the framework injects the correct <meta> / OG / Twitter tags.
