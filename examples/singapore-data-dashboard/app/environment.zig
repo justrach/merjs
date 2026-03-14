@@ -3,7 +3,8 @@ const mer = @import("mer");
 pub const meta: mer.Meta = .{
     .title = "SG Environment",
     .description = "Singapore air quality, UV index, and rainfall data from NEA — PSI readings, PM2.5, and weather station reports.",
-    .extra_head = "<script defer src=\"https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\"></script><style>" ++ page_css ++ "</style>",
+    .extra_head = "<link rel=\"preload\" href=\"https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\" as=\"script\">" ++
+        "<script src=\"https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\"></script><style>" ++ page_css ++ "</style>",
 };
 
 pub fn render(req: mer.Request) mer.Response {

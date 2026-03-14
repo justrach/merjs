@@ -7,7 +7,8 @@ pub const meta: mer.Meta = .{
     .og_description = "Real-time government data rendered by a Zig web framework. Zero Node.js.",
     .og_type = "website",
     .twitter_card = "summary_large_image",
-    .extra_head = "<script defer src=\"https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\"></script><style>" ++ page_css ++ "</style>",
+    .extra_head = "<link rel=\"preload\" href=\"https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\" as=\"script\">" ++
+        "<script src=\"https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js\"></script><style>" ++ page_css ++ "</style>",
 };
 
 pub fn render(req: mer.Request) mer.Response {
