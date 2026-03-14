@@ -621,24 +621,38 @@ fn renderNode(out: *std.io.Writer.Allocating, node: Node) !void {
 }
 
 fn escapeHtml(out: *std.io.Writer.Allocating, s: []const u8) !void {
-    for (s) |c| {
-        switch (c) {
-            '&' => try out.writer.writeAll("&amp;"),
-            '<' => try out.writer.writeAll("&lt;"),
-            '>' => try out.writer.writeAll("&gt;"),
-            else => try out.writer.writeByte(c),
+    var start: usize = 0;
+    for (s, 0..) |c, i| {
+        const replacement: ?[]const u8 = switch (c) {
+            '&' => "&amp;",
+            '<' => "&lt;",
+            '>' => "&gt;",
+            else => null,
+        };
+        if (replacement) |r| {
+            if (i > start) try out.writer.writeAll(s[start..i]);
+            try out.writer.writeAll(r);
+            start = i + 1;
         }
     }
+    if (start < s.len) try out.writer.writeAll(s[start..]);
 }
 
 fn escapeAttr(out: *std.io.Writer.Allocating, s: []const u8) !void {
-    for (s) |c| {
-        switch (c) {
-            '&' => try out.writer.writeAll("&amp;"),
-            '"' => try out.writer.writeAll("&quot;"),
-            '<' => try out.writer.writeAll("&lt;"),
-            '>' => try out.writer.writeAll("&gt;"),
-            else => try out.writer.writeByte(c),
+    var start: usize = 0;
+    for (s, 0..) |c, i| {
+        const replacement: ?[]const u8 = switch (c) {
+            '&' => "&amp;",
+            '"' => "&quot;",
+            '<' => "&lt;",
+            '>' => "&gt;",
+            else => null,
+        };
+        if (replacement) |r| {
+            if (i > start) try out.writer.writeAll(s[start..i]);
+            try out.writer.writeAll(r);
+            start = i + 1;
         }
     }
+    if (start < s.len) try out.writer.writeAll(s[start..]);
 }

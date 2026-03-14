@@ -49,14 +49,20 @@ pub const Server = struct {
     }
 
     pub fn listen(self: *Server) !void {
-        try self.pool.init(.{ .allocator = self.allocator, .n_jobs = 128 });
+        // Use CPU count * 2 for I/O-bound workloads (capped at reasonable max).
+        const cpu_count = std.Thread.getCpuCount() catch 4;
+        const n_threads = @min(cpu_count * 2, 64);
+        try self.pool.init(.{ .allocator = self.allocator, .n_jobs = @intCast(n_threads) });
         defer self.pool.deinit();
+
+        // Init static file cache.
+        static.initCache(self.allocator);
 
         const addr = try std.net.Address.parseIp(self.config.host, self.config.port);
         var net_server = try addr.listen(.{ .reuse_address = true, .kernel_backlog = 512 });
         defer net_server.deinit();
 
-        log.info("merjs dev server -> http://{s}:{d}", .{ self.config.host, self.config.port });
+        log.info("merjs dev server -> http://{s}:{d} ({d} threads)", .{ self.config.host, self.config.port, n_threads });
 
         while (true) {
             const conn = net_server.accept() catch |err| {
@@ -98,8 +104,8 @@ fn handleConn(ctx: *ConnCtx) void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var read_buf: [8192]u8 = undefined;
-    var write_buf: [4096]u8 = undefined;
+    var read_buf: [16384]u8 = undefined;
+    var write_buf: [65536]u8 = undefined;
     var in = ctx.conn.stream.reader(&read_buf);
     var out = ctx.conn.stream.writer(&write_buf);
     var http_server = std.http.Server.init(in.interface(), &out.interface);
@@ -116,6 +122,9 @@ fn handleConn(ctx: *ConnCtx) void {
             log.err("serveRequest: {}", .{err});
             return;
         };
+
+        // Reset arena between requests on the same connection (keep-alive).
+        _ = arena.reset(.retain_capacity);
     }
 }
 
