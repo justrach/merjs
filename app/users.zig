@@ -2,9 +2,9 @@ const std = @import("std");
 const mer = @import("mer");
 
 const UserModel = mer.dhi.Model("User", .{
-    .name  = mer.dhi.Str(.{ .min_length = 1, .max_length = 100 }),
+    .name = mer.dhi.Str(.{ .min_length = 1, .max_length = 100 }),
     .email = mer.dhi.EmailStr,
-    .age   = mer.dhi.Int(i32, .{ .gt = 0, .le = 150 }),
+    .age = mer.dhi.Int(i32, .{ .gt = 0, .le = 150 }),
     .score = mer.dhi.Float(f64, .{ .ge = 0.0, .le = 100.0 }),
 });
 
@@ -105,7 +105,10 @@ fn initials(name: []const u8, buf: *[2]u8) []const u8 {
     var count: usize = 0;
     var next = true;
     for (name) |c| {
-        if (c == ' ') { next = true; continue; }
+        if (c == ' ') {
+            next = true;
+            continue;
+        }
         if (next and count < 2) {
             buf[count] = if (c >= 'a' and c <= 'z') c - 32 else c;
             count += 1;
@@ -117,9 +120,9 @@ fn initials(name: []const u8, buf: *[2]u8) []const u8 {
 
 pub fn render(req: mer.Request) mer.Response {
     const user = UserModel.parse(.{
-        .name  = "Alice Johnson",
+        .name = "Alice Johnson",
         .email = "alice@example.com",
-        .age   = @as(i32, 28),
+        .age = @as(i32, 28),
         .score = @as(f64, 95.5),
     }) catch return mer.internalError("dhi validation failed");
 

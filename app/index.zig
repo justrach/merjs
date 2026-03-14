@@ -41,8 +41,8 @@ fn page() h.Node {
             h.div(.{ .class = "bench-title" }, .{h.raw("vs Next.js &mdash; <span class=\"red\">at a glance</span>")}),
             h.p(.{ .class = "bench-sub" }, "Head-to-head on the metrics that matter."),
             h.div(.{ .class = "bench-legend" }, .{
-                h.div(.{ .class = "bench-legend-item" }, .{h.div(.{ .class = "bench-legend-dot mer" }, ""), h.text(" merjs")}),
-                h.div(.{ .class = "bench-legend-item" }, .{h.div(.{ .class = "bench-legend-dot next" }, ""), h.text(" Next.js")}),
+                h.div(.{ .class = "bench-legend-item" }, .{ h.div(.{ .class = "bench-legend-dot mer" }, ""), h.text(" merjs") }),
+                h.div(.{ .class = "bench-legend-item" }, .{ h.div(.{ .class = "bench-legend-dot next" }, ""), h.text(" Next.js") }),
             }),
             benchRow("Cold Start", "8%", "< 5 ms", "80%", "~1-3 s"),
             benchRow("Requests / sec", "90%", "2433.22 req/s", "76%", "2060.23 req/s"),

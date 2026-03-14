@@ -23,15 +23,15 @@ pub const security_headers = [_]std.http.Header{
 pub const Config = struct {
     host: []const u8 = "127.0.0.1",
     port: u16 = 3000,
-    dev:  bool = false,
+    dev: bool = false,
 };
 
 pub const Server = struct {
-    config:    Config,
-    router:    *const Router,
-    watcher:   ?*watcher_mod.Watcher,
+    config: Config,
+    router: *const Router,
+    watcher: ?*watcher_mod.Watcher,
     allocator: std.mem.Allocator,
-    pool:      std.Thread.Pool,
+    pool: std.Thread.Pool,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -41,10 +41,10 @@ pub const Server = struct {
     ) Server {
         return .{
             .allocator = allocator,
-            .config    = config,
-            .router    = router,
-            .watcher   = watcher,
-            .pool      = undefined,
+            .config = config,
+            .router = router,
+            .watcher = watcher,
+            .pool = undefined,
         };
     }
 
@@ -68,11 +68,11 @@ pub const Server = struct {
                 continue;
             };
             ctx.* = .{
-                .conn      = conn,
-                .router    = self.router,
-                .watcher   = self.watcher,
+                .conn = conn,
+                .router = self.router,
+                .watcher = self.watcher,
                 .allocator = self.allocator,
-                .dev       = self.config.dev,
+                .dev = self.config.dev,
             };
             self.pool.spawn(handleConn, .{ctx}) catch {
                 ctx.allocator.destroy(ctx);
@@ -83,11 +83,11 @@ pub const Server = struct {
 };
 
 const ConnCtx = struct {
-    conn:      std.net.Server.Connection,
-    router:    *const Router,
-    watcher:   ?*watcher_mod.Watcher,
+    conn: std.net.Server.Connection,
+    router: *const Router,
+    watcher: ?*watcher_mod.Watcher,
     allocator: std.mem.Allocator,
-    dev:       bool,
+    dev: bool,
 };
 
 fn handleConn(ctx: *ConnCtx) void {
@@ -100,7 +100,7 @@ fn handleConn(ctx: *ConnCtx) void {
 
     var read_buf: [8192]u8 = undefined;
     var write_buf: [4096]u8 = undefined;
-    var in  = ctx.conn.stream.reader(&read_buf);
+    var in = ctx.conn.stream.reader(&read_buf);
     var out = ctx.conn.stream.writer(&write_buf);
     var http_server = std.http.Server.init(in.interface(), &out.interface);
 
@@ -185,8 +185,8 @@ fn serveRequest(
 
     var req = mer.Request.init(alloc, mer.Method.fromStd(std_req.head.method), path);
     req.query_string = query_string;
-    req.body         = body_bytes;
-    req.cookies_raw  = cookies_raw;
+    req.body = body_bytes;
+    req.cookies_raw = cookies_raw;
 
     // Arm the thread-local arena so coerceChildren can heap-allocate runtime
     // children tuples (avoids dangling-pointer SIGBUS in html.renderNode).
@@ -213,11 +213,11 @@ const MAX_COOKIES = 8;
 fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void {
     // Format Set-Cookie header values on the stack.
     var cookie_val_bufs: [MAX_COOKIES][512]u8 = undefined;
-    var cookie_headers:  [MAX_COOKIES]std.http.Header = undefined;
+    var cookie_headers: [MAX_COOKIES]std.http.Header = undefined;
     const n_cookies = @min(response.cookies.len, MAX_COOKIES);
     for (response.cookies[0..n_cookies], 0..) |ck, i| {
         cookie_headers[i] = .{
-            .name  = "set-cookie",
+            .name = "set-cookie",
             .value = ck.headerValue(&cookie_val_bufs[i]),
         };
     }
@@ -226,13 +226,13 @@ fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void
         // Redirect: Location + optional Set-Cookie, no body, no security headers.
         var extra: [1 + MAX_COOKIES]std.http.Header = undefined;
         extra[0] = .{ .name = "location", .value = response.body };
-        @memcpy(extra[1..1 + n_cookies], cookie_headers[0..n_cookies]);
+        @memcpy(extra[1 .. 1 + n_cookies], cookie_headers[0..n_cookies]);
 
         var header_buf: [2048]u8 = undefined;
         var bw = try std_req.respondStreaming(&header_buf, .{
             .respond_options = .{
-                .status        = response.status,
-                .extra_headers = extra[0..1 + n_cookies],
+                .status = response.status,
+                .extra_headers = extra[0 .. 1 + n_cookies],
             },
         });
         try bw.end();
@@ -246,14 +246,14 @@ fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void
 
     var extra: [fixed.len + MAX_COOKIES]std.http.Header = undefined;
     @memcpy(extra[0..fixed.len], &fixed);
-    @memcpy(extra[fixed.len..fixed.len + n_cookies], cookie_headers[0..n_cookies]);
+    @memcpy(extra[fixed.len .. fixed.len + n_cookies], cookie_headers[0..n_cookies]);
 
     var header_buf: [4096]u8 = undefined;
     var bw = try std_req.respondStreaming(&header_buf, .{
         .content_length = response.body.len,
         .respond_options = .{
-            .status        = response.status,
-            .extra_headers = extra[0..fixed.len + n_cookies],
+            .status = response.status,
+            .extra_headers = extra[0 .. fixed.len + n_cookies],
         },
     });
     try bw.writer.writeAll(response.body);
@@ -294,7 +294,7 @@ fn tryServePrerendered(
     var bw = std_req.respondStreaming(&header_buf, .{
         .content_length = body.len,
         .respond_options = .{
-            .status        = .ok,
+            .status = .ok,
             .extra_headers = &.{
                 .{ .name = "content-type", .value = "text/html; charset=utf-8" },
             },
@@ -310,6 +310,6 @@ fn injectHotReload(alloc: std.mem.Allocator, body: []const u8) ![]u8 {
     const marker = "</body>";
     const idx = std.mem.lastIndexOf(u8, body, marker) orelse return error.NoBodyTag;
     const before = body[0..idx];
-    const after  = body[idx + marker.len ..];
+    const after = body[idx + marker.len ..];
     return std.fmt.allocPrint(alloc, "{s}{s}{s}", .{ before, hot_reload_script, after });
 }

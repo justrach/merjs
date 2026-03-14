@@ -8,18 +8,18 @@ const log = std.log.scoped(.static);
 
 const mime_table = [_]struct { ext: []const u8, ct: mer.ContentType }{
     .{ .ext = ".html", .ct = .html },
-    .{ .ext = ".htm",  .ct = .html },
-    .{ .ext = ".css",  .ct = .css },
-    .{ .ext = ".js",   .ct = .js },
+    .{ .ext = ".htm", .ct = .html },
+    .{ .ext = ".css", .ct = .css },
+    .{ .ext = ".js", .ct = .js },
     .{ .ext = ".wasm", .ct = .wasm },
     .{ .ext = ".json", .ct = .json },
-    .{ .ext = ".txt",  .ct = .text },
-    .{ .ext = ".png",  .ct = .png },
-    .{ .ext = ".jpg",  .ct = .jpeg },
+    .{ .ext = ".txt", .ct = .text },
+    .{ .ext = ".png", .ct = .png },
+    .{ .ext = ".jpg", .ct = .jpeg },
     .{ .ext = ".jpeg", .ct = .jpeg },
-    .{ .ext = ".gif",  .ct = .gif },
-    .{ .ext = ".svg",  .ct = .svg },
-    .{ .ext = ".ico",  .ct = .ico },
+    .{ .ext = ".gif", .ct = .gif },
+    .{ .ext = ".svg", .ct = .svg },
+    .{ .ext = ".ico", .ct = .ico },
     .{ .ext = ".webp", .ct = .webp },
 };
 

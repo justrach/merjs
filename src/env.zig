@@ -27,7 +27,10 @@ fn tableGet(name: []const u8) ?[]const u8 {
 
 fn tableSet(key: []const u8, val: []const u8) void {
     for (table[0..table_len]) |*e| {
-        if (std.mem.eql(u8, e.key, key)) { e.val = val; return; }
+        if (std.mem.eql(u8, e.key, key)) {
+            e.val = val;
+            return;
+        }
     }
     if (table_len < MAX_ENTRIES) {
         table[table_len] = .{ .key = key, .val = val };

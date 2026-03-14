@@ -111,7 +111,7 @@ fn matchRoute(route_path: []const u8, req_path: []const u8, out: []mer.Param) ?u
         const p_seg = ps.?;
         if (r_seg.len > 0 and r_seg[0] == ':') {
             if (p_seg.len == 0) return null; // empty value not allowed
-            if (n >= out.len) return null;   // too many params
+            if (n >= out.len) return null; // too many params
             out[n] = .{ .key = r_seg[1..], .value = p_seg };
             n += 1;
         } else {

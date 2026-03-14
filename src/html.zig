@@ -57,45 +57,45 @@ pub const Element = struct {
 
 pub const Props = struct {
     // String attributes
-    class:        ?[]const u8 = null,
-    id:           ?[]const u8 = null,
-    style:        ?[]const u8 = null,
-    href:         ?[]const u8 = null,
-    src:          ?[]const u8 = null,
-    alt:          ?[]const u8 = null,
-    name:         ?[]const u8 = null,
-    content:      ?[]const u8 = null,
-    property:     ?[]const u8 = null,
-    rel:          ?[]const u8 = null,
-    @"type":      ?[]const u8 = null,
-    charset:      ?[]const u8 = null,
-    crossorigin:  ?[]const u8 = null,
-    lang:         ?[]const u8 = null,
-    action:       ?[]const u8 = null,
-    method:       ?[]const u8 = null,
-    value:        ?[]const u8 = null,
-    placeholder:  ?[]const u8 = null,
-    target:       ?[]const u8 = null,
+    class: ?[]const u8 = null,
+    id: ?[]const u8 = null,
+    style: ?[]const u8 = null,
+    href: ?[]const u8 = null,
+    src: ?[]const u8 = null,
+    alt: ?[]const u8 = null,
+    name: ?[]const u8 = null,
+    content: ?[]const u8 = null,
+    property: ?[]const u8 = null,
+    rel: ?[]const u8 = null,
+    type: ?[]const u8 = null,
+    charset: ?[]const u8 = null,
+    crossorigin: ?[]const u8 = null,
+    lang: ?[]const u8 = null,
+    action: ?[]const u8 = null,
+    method: ?[]const u8 = null,
+    value: ?[]const u8 = null,
+    placeholder: ?[]const u8 = null,
+    target: ?[]const u8 = null,
     // Form / input extras
-    @"for":       ?[]const u8 = null,  // <label for="...">
-    rows:         ?[]const u8 = null,
-    cols:         ?[]const u8 = null,
-    role:         ?[]const u8 = null,
-    tabindex:     ?[]const u8 = null,
-    min:          ?[]const u8 = null,
-    max:          ?[]const u8 = null,
-    step:         ?[]const u8 = null,
+    @"for": ?[]const u8 = null, // <label for="...">
+    rows: ?[]const u8 = null,
+    cols: ?[]const u8 = null,
+    role: ?[]const u8 = null,
+    tabindex: ?[]const u8 = null,
+    min: ?[]const u8 = null,
+    max: ?[]const u8 = null,
+    step: ?[]const u8 = null,
     autocomplete: ?[]const u8 = null,
-    size:         ?[]const u8 = null,
+    size: ?[]const u8 = null,
     // Boolean attributes (rendered as `name=""` when true)
-    disabled:     bool = false,
-    required:     bool = false,
-    checked:      bool = false,
-    readonly:     bool = false,
-    multiple:     bool = false,
-    selected:     bool = false,
-    open:         bool = false,  // <details open>
-    hidden:       bool = false,
+    disabled: bool = false,
+    required: bool = false,
+    checked: bool = false,
+    readonly: bool = false,
+    multiple: bool = false,
+    selected: bool = false,
+    open: bool = false, // <details open>
+    hidden: bool = false,
     // Escape hatch for any attr not in the list above
     extra: []const Attr = &.{},
 };
@@ -107,35 +107,35 @@ fn propsToAttrs(comptime props: Props) []const Attr {
 
     // String optional attributes
     inline for (.{
-        .{ "class",        props.class },
-        .{ "id",           props.id },
-        .{ "style",        props.style },
-        .{ "href",         props.href },
-        .{ "src",          props.src },
-        .{ "alt",          props.alt },
-        .{ "name",         props.name },
-        .{ "content",      props.content },
-        .{ "property",     props.property },
-        .{ "rel",          props.rel },
-        .{ "type",         props.@"type" },
-        .{ "charset",      props.charset },
-        .{ "crossorigin",  props.crossorigin },
-        .{ "lang",         props.lang },
-        .{ "action",       props.action },
-        .{ "method",       props.method },
-        .{ "value",        props.value },
-        .{ "placeholder",  props.placeholder },
-        .{ "target",       props.target },
-        .{ "for",          props.@"for" },
-        .{ "rows",         props.rows },
-        .{ "cols",         props.cols },
-        .{ "role",         props.role },
-        .{ "tabindex",     props.tabindex },
-        .{ "min",          props.min },
-        .{ "max",          props.max },
-        .{ "step",         props.step },
+        .{ "class", props.class },
+        .{ "id", props.id },
+        .{ "style", props.style },
+        .{ "href", props.href },
+        .{ "src", props.src },
+        .{ "alt", props.alt },
+        .{ "name", props.name },
+        .{ "content", props.content },
+        .{ "property", props.property },
+        .{ "rel", props.rel },
+        .{ "type", props.type },
+        .{ "charset", props.charset },
+        .{ "crossorigin", props.crossorigin },
+        .{ "lang", props.lang },
+        .{ "action", props.action },
+        .{ "method", props.method },
+        .{ "value", props.value },
+        .{ "placeholder", props.placeholder },
+        .{ "target", props.target },
+        .{ "for", props.@"for" },
+        .{ "rows", props.rows },
+        .{ "cols", props.cols },
+        .{ "role", props.role },
+        .{ "tabindex", props.tabindex },
+        .{ "min", props.min },
+        .{ "max", props.max },
+        .{ "step", props.step },
         .{ "autocomplete", props.autocomplete },
-        .{ "size",         props.size },
+        .{ "size", props.size },
     }) |pair| {
         if (pair[1]) |v| {
             attrs[n] = .{ .name = pair[0], .value = v };
@@ -147,12 +147,12 @@ fn propsToAttrs(comptime props: Props) []const Attr {
     inline for (.{
         .{ "disabled", props.disabled },
         .{ "required", props.required },
-        .{ "checked",  props.checked },
+        .{ "checked", props.checked },
         .{ "readonly", props.readonly },
         .{ "multiple", props.multiple },
         .{ "selected", props.selected },
-        .{ "open",     props.open },
-        .{ "hidden",   props.hidden },
+        .{ "open", props.open },
+        .{ "hidden", props.hidden },
     }) |pair| {
         if (pair[1]) {
             attrs[n] = .{ .name = pair[0], .value = "" };
@@ -168,7 +168,7 @@ fn propsToAttrs(comptime props: Props) []const Attr {
 
 fn isSelfClosing(tag: []const u8) bool {
     const void_tags = [_][]const u8{
-        "area", "base", "br", "col", "embed", "hr", "img",
+        "area",  "base", "br",   "col",    "embed", "hr",  "img",
         "input", "link", "meta", "source", "track", "wbr",
     };
     for (void_tags) |vt| {
@@ -300,100 +300,233 @@ pub fn raw(s: []const u8) Node {
 //   - .{ nodes }   → tuple of children
 //   - &.{ nodes }  → slice of nodes
 
-pub fn div(comptime props: Props, children: anytype) Node { return el("div", props, children); }
-pub fn span(comptime props: Props, children: anytype) Node { return el("span", props, children); }
-pub fn section(comptime props: Props, children: anytype) Node { return el("section", props, children); }
-pub fn header(comptime props: Props, children: anytype) Node { return el("header", props, children); }
-pub fn footer(comptime props: Props, children: anytype) Node { return el("footer", props, children); }
-pub fn nav(comptime props: Props, children: anytype) Node { return el("nav", props, children); }
-pub fn article(comptime props: Props, children: anytype) Node { return el("article", props, children); }
-pub fn aside(comptime props: Props, children: anytype) Node { return el("aside", props, children); }
-pub fn main_el(comptime props: Props, children: anytype) Node { return el("main", props, children); }
+pub fn div(comptime props: Props, children: anytype) Node {
+    return el("div", props, children);
+}
+pub fn span(comptime props: Props, children: anytype) Node {
+    return el("span", props, children);
+}
+pub fn section(comptime props: Props, children: anytype) Node {
+    return el("section", props, children);
+}
+pub fn header(comptime props: Props, children: anytype) Node {
+    return el("header", props, children);
+}
+pub fn footer(comptime props: Props, children: anytype) Node {
+    return el("footer", props, children);
+}
+pub fn nav(comptime props: Props, children: anytype) Node {
+    return el("nav", props, children);
+}
+pub fn article(comptime props: Props, children: anytype) Node {
+    return el("article", props, children);
+}
+pub fn aside(comptime props: Props, children: anytype) Node {
+    return el("aside", props, children);
+}
+pub fn main_el(comptime props: Props, children: anytype) Node {
+    return el("main", props, children);
+}
 
 // Text elements
-pub fn h1(comptime props: Props, children: anytype) Node { return el("h1", props, children); }
-pub fn h2(comptime props: Props, children: anytype) Node { return el("h2", props, children); }
-pub fn h3(comptime props: Props, children: anytype) Node { return el("h3", props, children); }
-pub fn h4(comptime props: Props, children: anytype) Node { return el("h4", props, children); }
-pub fn h5(comptime props: Props, children: anytype) Node { return el("h5", props, children); }
-pub fn h6(comptime props: Props, children: anytype) Node { return el("h6", props, children); }
-pub fn p(comptime props: Props, children: anytype) Node { return el("p", props, children); }
-pub fn em(comptime props: Props, children: anytype) Node { return el("em", props, children); }
-pub fn strong(comptime props: Props, children: anytype) Node { return el("strong", props, children); }
-pub fn code(comptime props: Props, children: anytype) Node { return el("code", props, children); }
-pub fn pre(comptime props: Props, children: anytype) Node { return el("pre", props, children); }
-pub fn br() Node { return elVoid("br", .{}); }
-pub fn hr(comptime props: Props) Node { return elVoid("hr", props); }
+pub fn h1(comptime props: Props, children: anytype) Node {
+    return el("h1", props, children);
+}
+pub fn h2(comptime props: Props, children: anytype) Node {
+    return el("h2", props, children);
+}
+pub fn h3(comptime props: Props, children: anytype) Node {
+    return el("h3", props, children);
+}
+pub fn h4(comptime props: Props, children: anytype) Node {
+    return el("h4", props, children);
+}
+pub fn h5(comptime props: Props, children: anytype) Node {
+    return el("h5", props, children);
+}
+pub fn h6(comptime props: Props, children: anytype) Node {
+    return el("h6", props, children);
+}
+pub fn p(comptime props: Props, children: anytype) Node {
+    return el("p", props, children);
+}
+pub fn em(comptime props: Props, children: anytype) Node {
+    return el("em", props, children);
+}
+pub fn strong(comptime props: Props, children: anytype) Node {
+    return el("strong", props, children);
+}
+pub fn code(comptime props: Props, children: anytype) Node {
+    return el("code", props, children);
+}
+pub fn pre(comptime props: Props, children: anytype) Node {
+    return el("pre", props, children);
+}
+pub fn br() Node {
+    return elVoid("br", .{});
+}
+pub fn hr(comptime props: Props) Node {
+    return elVoid("hr", props);
+}
 
 // Links / media
-pub fn a(comptime props: Props, children: anytype) Node { return el("a", props, children); }
-pub fn img(comptime props: Props) Node { return elVoid("img", props); }
-pub fn button(comptime props: Props, children: anytype) Node { return el("button", props, children); }
+pub fn a(comptime props: Props, children: anytype) Node {
+    return el("a", props, children);
+}
+pub fn img(comptime props: Props) Node {
+    return elVoid("img", props);
+}
+pub fn button(comptime props: Props, children: anytype) Node {
+    return el("button", props, children);
+}
 
 // Lists
-pub fn ul(comptime props: Props, children: anytype) Node { return el("ul", props, children); }
-pub fn ol(comptime props: Props, children: anytype) Node { return el("ol", props, children); }
-pub fn li(comptime props: Props, children: anytype) Node { return el("li", props, children); }
+pub fn ul(comptime props: Props, children: anytype) Node {
+    return el("ul", props, children);
+}
+pub fn ol(comptime props: Props, children: anytype) Node {
+    return el("ol", props, children);
+}
+pub fn li(comptime props: Props, children: anytype) Node {
+    return el("li", props, children);
+}
 
 // Forms
-pub fn form(comptime props: Props, children: anytype) Node { return el("form", props, children); }
-pub fn input(comptime props: Props) Node { return elVoid("input", props); }
-pub fn label(comptime props: Props, children: anytype) Node { return el("label", props, children); }
-pub fn textarea(comptime props: Props, children: anytype) Node { return el("textarea", props, children); }
-pub fn selectEl(comptime props: Props, children: anytype) Node { return el("select", props, children); }
-pub fn option(comptime props: Props, children: anytype) Node { return el("option", props, children); }
+pub fn form(comptime props: Props, children: anytype) Node {
+    return el("form", props, children);
+}
+pub fn input(comptime props: Props) Node {
+    return elVoid("input", props);
+}
+pub fn label(comptime props: Props, children: anytype) Node {
+    return el("label", props, children);
+}
+pub fn textarea(comptime props: Props, children: anytype) Node {
+    return el("textarea", props, children);
+}
+pub fn selectEl(comptime props: Props, children: anytype) Node {
+    return el("select", props, children);
+}
+pub fn option(comptime props: Props, children: anytype) Node {
+    return el("option", props, children);
+}
 
 // Tables
-pub fn table(comptime props: Props, children: anytype) Node { return el("table", props, children); }
-pub fn thead(comptime props: Props, children: anytype) Node { return el("thead", props, children); }
-pub fn tbody(comptime props: Props, children: anytype) Node { return el("tbody", props, children); }
-pub fn tr(comptime props: Props, children: anytype) Node { return el("tr", props, children); }
-pub fn th(comptime props: Props, children: anytype) Node { return el("th", props, children); }
-pub fn td(comptime props: Props, children: anytype) Node { return el("td", props, children); }
+pub fn table(comptime props: Props, children: anytype) Node {
+    return el("table", props, children);
+}
+pub fn thead(comptime props: Props, children: anytype) Node {
+    return el("thead", props, children);
+}
+pub fn tbody(comptime props: Props, children: anytype) Node {
+    return el("tbody", props, children);
+}
+pub fn tr(comptime props: Props, children: anytype) Node {
+    return el("tr", props, children);
+}
+pub fn th(comptime props: Props, children: anytype) Node {
+    return el("th", props, children);
+}
+pub fn td(comptime props: Props, children: anytype) Node {
+    return el("td", props, children);
+}
 
 // Interactive / semantic HTML5
-pub fn dialog(comptime props: Props, children: anytype) Node  { return el("dialog", props, children); }
-pub fn details(comptime props: Props, children: anytype) Node { return el("details", props, children); }
-pub fn summary(comptime props: Props, children: anytype) Node { return el("summary", props, children); }
-pub fn figure(comptime props: Props, children: anytype) Node  { return el("figure", props, children); }
-pub fn figcaption(comptime props: Props, children: anytype) Node { return el("figcaption", props, children); }
-pub fn fieldset(comptime props: Props, children: anytype) Node { return el("fieldset", props, children); }
-pub fn legend(comptime props: Props, children: anytype) Node  { return el("legend", props, children); }
+pub fn dialog(comptime props: Props, children: anytype) Node {
+    return el("dialog", props, children);
+}
+pub fn details(comptime props: Props, children: anytype) Node {
+    return el("details", props, children);
+}
+pub fn summary(comptime props: Props, children: anytype) Node {
+    return el("summary", props, children);
+}
+pub fn figure(comptime props: Props, children: anytype) Node {
+    return el("figure", props, children);
+}
+pub fn figcaption(comptime props: Props, children: anytype) Node {
+    return el("figcaption", props, children);
+}
+pub fn fieldset(comptime props: Props, children: anytype) Node {
+    return el("fieldset", props, children);
+}
+pub fn legend(comptime props: Props, children: anytype) Node {
+    return el("legend", props, children);
+}
 
 // Inline semantics
-pub fn mark(comptime props: Props, children: anytype) Node    { return el("mark", props, children); }
-pub fn time_el(comptime props: Props, children: anytype) Node { return el("time", props, children); }
-pub fn abbr(comptime props: Props, children: anytype) Node    { return el("abbr", props, children); }
-pub fn kbd(comptime props: Props, children: anytype) Node     { return el("kbd", props, children); }
-pub fn samp(comptime props: Props, children: anytype) Node    { return el("samp", props, children); }
-pub fn sub(comptime props: Props, children: anytype) Node     { return el("sub", props, children); }
-pub fn sup(comptime props: Props, children: anytype) Node     { return el("sup", props, children); }
-pub fn del(comptime props: Props, children: anytype) Node     { return el("del", props, children); }
-pub fn ins(comptime props: Props, children: anytype) Node     { return el("ins", props, children); }
-pub fn q(comptime props: Props, children: anytype) Node       { return el("q", props, children); }
-pub fn s_el(comptime props: Props, children: anytype) Node    { return el("s", props, children); }
+pub fn mark(comptime props: Props, children: anytype) Node {
+    return el("mark", props, children);
+}
+pub fn time_el(comptime props: Props, children: anytype) Node {
+    return el("time", props, children);
+}
+pub fn abbr(comptime props: Props, children: anytype) Node {
+    return el("abbr", props, children);
+}
+pub fn kbd(comptime props: Props, children: anytype) Node {
+    return el("kbd", props, children);
+}
+pub fn samp(comptime props: Props, children: anytype) Node {
+    return el("samp", props, children);
+}
+pub fn sub(comptime props: Props, children: anytype) Node {
+    return el("sub", props, children);
+}
+pub fn sup(comptime props: Props, children: anytype) Node {
+    return el("sup", props, children);
+}
+pub fn del(comptime props: Props, children: anytype) Node {
+    return el("del", props, children);
+}
+pub fn ins(comptime props: Props, children: anytype) Node {
+    return el("ins", props, children);
+}
+pub fn q(comptime props: Props, children: anytype) Node {
+    return el("q", props, children);
+}
+pub fn s_el(comptime props: Props, children: anytype) Node {
+    return el("s", props, children);
+}
 
 // Block semantics
-pub fn blockquote(comptime props: Props, children: anytype) Node { return el("blockquote", props, children); }
-pub fn address(comptime props: Props, children: anytype) Node { return el("address", props, children); }
+pub fn blockquote(comptime props: Props, children: anytype) Node {
+    return el("blockquote", props, children);
+}
+pub fn address(comptime props: Props, children: anytype) Node {
+    return el("address", props, children);
+}
 
 // Progress / meter
-pub fn progress(comptime props: Props, children: anytype) Node { return el("progress", props, children); }
-pub fn meter(comptime props: Props, children: anytype) Node   { return el("meter", props, children); }
-
+pub fn progress(comptime props: Props, children: anytype) Node {
+    return el("progress", props, children);
+}
+pub fn meter(comptime props: Props, children: anytype) Node {
+    return el("meter", props, children);
+}
 
 // ── Head / document elements ────────────────────────────────────────────────
 
-pub fn head(comptime props: Props, children: anytype) Node { return el("head", props, children); }
-pub fn body(comptime props: Props, children: anytype) Node { return el("body", props, children); }
-pub fn htmlEl(comptime props: Props, children: anytype) Node { return el("html", props, children); }
+pub fn head(comptime props: Props, children: anytype) Node {
+    return el("head", props, children);
+}
+pub fn body(comptime props: Props, children: anytype) Node {
+    return el("body", props, children);
+}
+pub fn htmlEl(comptime props: Props, children: anytype) Node {
+    return el("html", props, children);
+}
 
 pub fn title(s: []const u8) Node {
     return el("title", .{}, s);
 }
 
-pub fn meta(comptime props: Props) Node { return elVoid("meta", props); }
-pub fn link(comptime props: Props) Node { return elVoid("link", props); }
+pub fn meta(comptime props: Props) Node {
+    return elVoid("meta", props);
+}
+pub fn link(comptime props: Props) Node {
+    return elVoid("link", props);
+}
 
 pub fn script(comptime props: Props, s: []const u8) Node {
     return el("script", props, &[_]Node{raw(s)});

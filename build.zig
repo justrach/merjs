@@ -132,8 +132,8 @@ pub fn build(b: *std.Build) void {
 
     // ── CSS: Tailwind v4 → public/styles.css ────────────────────────────────
     const run_tw = b.addSystemCommand(&.{
-        "tools/tailwindcss", "--input", "public/input.css",
-        "--output", "public/styles.css", "--minify",
+        "tools/tailwindcss", "--input",           "public/input.css",
+        "--output",          "public/styles.css", "--minify",
     });
     const css_step = b.step("css", "Compile Tailwind v4 → public/styles.css");
     css_step.dependOn(&run_tw.step);
@@ -191,7 +191,7 @@ fn addDirModules(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Modu
         if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
         if (std.mem.eql(u8, entry.path, "layout.zig")) continue;
         // entry.path is relative to `dir`, e.g. "about.zig" or "users/[id].zig"
-        const file_path   = b.fmt("{s}/{s}", .{ dir, entry.path });
+        const file_path = b.fmt("{s}/{s}", .{ dir, entry.path });
         const import_name = b.fmt("{s}/{s}", .{ dir, entry.path[0 .. entry.path.len - 4] });
         const route_mod = b.createModule(.{ .root_source_file = b.path(file_path) });
         route_mod.addImport("mer", mer_mod);

@@ -17,7 +17,7 @@ pub fn render(req: mer.Request) mer.Response {
     const iso = std.fmt.allocPrint(req.allocator, "unix+{d}s", .{ts}) catch "unknown";
     return mer.typedJson(req.allocator, TimeResponse{
         .timestamp = ts,
-        .unit      = "unix_seconds",
-        .iso       = iso,
+        .unit = "unix_seconds",
+        .iso = iso,
     });
 }

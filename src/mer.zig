@@ -1,7 +1,7 @@
 // mer.zig — public API for page authors and internal modules.
 // Both app/ and src/ internal files import this as `@import("mer")`.
 
-const std     = @import("std");
+const std = @import("std");
 const req_mod = @import("request.zig");
 const res_mod = @import("response.zig");
 
@@ -9,19 +9,19 @@ const res_mod = @import("response.zig");
 pub const version = "0.1.0";
 
 // --- HTTP types -------------------------------------------------------------
-pub const Method      = req_mod.Method;
-pub const Param       = req_mod.Param;
-pub const Request     = req_mod.Request;
+pub const Method = req_mod.Method;
+pub const Param = req_mod.Param;
+pub const Request = req_mod.Request;
 pub const ContentType = res_mod.ContentType;
-pub const Response    = res_mod.Response;
-pub const SameSite    = res_mod.SameSite;
-pub const SetCookie   = res_mod.SetCookie;
+pub const Response = res_mod.Response;
+pub const SameSite = res_mod.SameSite;
+pub const SetCookie = res_mod.SetCookie;
 
 // --- Response helpers -------------------------------------------------------
-pub const html          = res_mod.html;
-pub const json          = res_mod.json;
-pub const text          = res_mod.text;
-pub const notFound      = res_mod.notFound;
+pub const html = res_mod.html;
+pub const json = res_mod.json;
+pub const text = res_mod.text;
+pub const notFound = res_mod.notFound;
 pub const internalError = res_mod.internalError;
 
 /// HTTP redirect.
@@ -67,7 +67,7 @@ pub fn formParam(body: []const u8, name: []const u8) ?[]const u8 {
     var params = body;
     while (params.len > 0) {
         const amp = std.mem.indexOfScalar(u8, params, '&') orelse params.len;
-        const kv  = params[0..amp];
+        const kv = params[0..amp];
         if (std.mem.indexOfScalar(u8, kv, '=')) |eq| {
             if (std.mem.eql(u8, kv[0..eq], name)) return kv[eq + 1 ..];
         }
@@ -187,17 +187,17 @@ pub fn verifySession(token: []const u8) ?Session {
 // --- SSR HTTP client --------------------------------------------------------
 
 pub const FetchRequest = struct {
-    url:     []const u8,
-    method:  std.http.Method = .GET,
+    url: []const u8,
+    method: std.http.Method = .GET,
     /// Raw request body (optional).
-    body:    ?[]const u8 = null,
+    body: ?[]const u8 = null,
     headers: []const std.http.Header = &.{},
 };
 
 pub const FetchResponse = struct {
     status: std.http.Status,
     /// Response body. Owned by the caller's allocator — call `deinit()` when done.
-    body:   []u8,
+    body: []u8,
 
     pub fn deinit(self: FetchResponse, allocator: std.mem.Allocator) void {
         allocator.free(self.body);
@@ -220,10 +220,10 @@ pub fn fetch(allocator: std.mem.Allocator, opts: FetchRequest) !FetchResponse {
     defer collecting.deinit();
 
     const result = try client.fetch(.{
-        .location        = .{ .url = opts.url },
-        .method          = opts.method,
-        .payload         = opts.body,
-        .extra_headers   = opts.headers,
+        .location = .{ .url = opts.url },
+        .method = opts.method,
+        .payload = opts.body,
+        .extra_headers = opts.headers,
         .response_writer = &collecting.writer,
     });
 
