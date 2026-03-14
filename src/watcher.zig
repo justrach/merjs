@@ -111,9 +111,9 @@ pub fn handleSse(
         .respond_options = .{
             .status = .ok,
             .extra_headers = &.{
-                .{ .name = "content-type",  .value = "text/event-stream" },
+                .{ .name = "content-type", .value = "text/event-stream" },
                 .{ .name = "cache-control", .value = "no-cache" },
-                .{ .name = "connection",    .value = "keep-alive" },
+                .{ .name = "connection", .value = "keep-alive" },
             },
         },
     });

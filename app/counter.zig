@@ -39,9 +39,9 @@ fn page() h.Node {
             h.span(.{ .class = "bound" }, .{h.raw("max: <strong>" ++ comptimeIntStr(cfg.max) ++ "</strong>")}),
         }),
         h.div(.{ .class = "buttons" }, .{
-            h.button(.{ .id = "btn-dec", .class = "btn", .@"type" = "button" }, .{h.raw("&minus;")}),
-            h.button(.{ .id = "btn-reset", .class = "btn btn-reset", .@"type" = "button" }, "reset"),
-            h.button(.{ .id = "btn-inc", .class = "btn btn-inc", .@"type" = "button" }, "+"),
+            h.button(.{ .id = "btn-dec", .class = "btn", .type = "button" }, .{h.raw("&minus;")}),
+            h.button(.{ .id = "btn-reset", .class = "btn btn-reset", .type = "button" }, "reset"),
+            h.button(.{ .id = "btn-inc", .class = "btn btn-inc", .type = "button" }, "+"),
         }),
         h.span(.{ .class = "badge" }, "wasm32-freestanding"),
         h.div(.{ .class = "config-note" }, .{
@@ -61,7 +61,7 @@ fn comptimeIntStr(comptime val: i32) []const u8 {
 const counter_js =
     \\(async function(){
     \\  const display = document.getElementById('count-value');
-    ++ std.fmt.comptimePrint(
+++ std.fmt.comptimePrint(
     \\  const MIN={d}, MAX={d}, STEP={d}, INIT={d};
 , .{ cfg.min, cfg.max, cfg.step, cfg.initial }) ++
     \\  let count = INIT;

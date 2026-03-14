@@ -19,20 +19,20 @@ pub const ContentType = enum {
 
     pub fn mime(self: ContentType) []const u8 {
         return switch (self) {
-            .html         => "text/html; charset=utf-8",
-            .json         => "application/json",
-            .text         => "text/plain; charset=utf-8",
-            .css          => "text/css; charset=utf-8",
-            .js           => "application/javascript",
-            .wasm         => "application/wasm",
-            .png          => "image/png",
-            .jpeg         => "image/jpeg",
-            .gif          => "image/gif",
-            .svg          => "image/svg+xml",
-            .ico          => "image/x-icon",
-            .webp         => "image/webp",
+            .html => "text/html; charset=utf-8",
+            .json => "application/json",
+            .text => "text/plain; charset=utf-8",
+            .css => "text/css; charset=utf-8",
+            .js => "application/javascript",
+            .wasm => "application/wasm",
+            .png => "image/png",
+            .jpeg => "image/jpeg",
+            .gif => "image/gif",
+            .svg => "image/svg+xml",
+            .ico => "image/x-icon",
+            .webp => "image/webp",
             .octet_stream => "application/octet-stream",
-            .redirect     => "text/html; charset=utf-8",
+            .redirect => "text/html; charset=utf-8",
         };
     }
 };
@@ -43,12 +43,12 @@ pub const SameSite = enum { strict, lax, none };
 
 /// A cookie to emit via Set-Cookie. All slices must outlive the Response.
 pub const SetCookie = struct {
-    name:      []const u8,
-    value:     []const u8,
-    path:      []const u8 = "/",
-    max_age:   ?u32 = null,
+    name: []const u8,
+    value: []const u8,
+    path: []const u8 = "/",
+    max_age: ?u32 = null,
     http_only: bool = true,
-    secure:    bool = false,
+    secure: bool = false,
     same_site: SameSite = .lax,
 
     /// Format the Set-Cookie header value into `buf`. Returns the written slice.
@@ -59,11 +59,11 @@ pub const SetCookie = struct {
         w.print("{s}={s}; Path={s}", .{ self.name, self.value, self.path }) catch {};
         if (self.max_age) |age| w.print("; Max-Age={d}", .{age}) catch {};
         if (self.http_only) w.writeAll("; HttpOnly") catch {};
-        if (self.secure)    w.writeAll("; Secure") catch {};
+        if (self.secure) w.writeAll("; Secure") catch {};
         const ss: []const u8 = switch (self.same_site) {
             .strict => "Strict",
-            .lax    => "Lax",
-            .none   => "None",
+            .lax => "Lax",
+            .none => "None",
         };
         w.print("; SameSite={s}", .{ss}) catch {};
         return fbs.getWritten();
@@ -73,11 +73,11 @@ pub const SetCookie = struct {
 // ── Response ───────────────────────────────────────────────────────────────
 
 pub const Response = struct {
-    status:       std.http.Status,
+    status: std.http.Status,
     content_type: ContentType,
-    body:         []const u8,
+    body: []const u8,
     /// Cookies to emit as Set-Cookie headers. Slice must outlive the Response.
-    cookies:      []const SetCookie = &.{},
+    cookies: []const SetCookie = &.{},
 
     pub fn init(status: std.http.Status, ct: ContentType, body: []const u8) Response {
         return .{ .status = status, .content_type = ct, .body = body };

@@ -1,0 +1,31 @@
+#!/bin/sh
+# merjs pre-commit hook
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+echo "pre-commit: checking formatting..."
+
+# Get staged .zig files (excludes deleted files)
+STAGED=$(git diff --cached --name-only --diff-filter=d -- '*.zig')
+
+if [ -n "$STAGED" ]; then
+    # zig fmt --check exits 1 if any file needs formatting
+    if ! echo "$STAGED" | xargs zig fmt --check 2>/dev/null; then
+        echo ""
+        echo "  pre-commit: formatting errors found"
+        echo "  run: zig fmt . "
+        echo ""
+        exit 1
+    fi
+fi
+
+echo "pre-commit: checking compilation..."
+if ! zig build 2>&1; then
+    echo ""
+    echo "  pre-commit: build failed — fix errors before committing"
+    echo ""
+    exit 1
+fi
+
+echo "pre-commit: all checks passed"

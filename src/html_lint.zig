@@ -109,11 +109,11 @@ fn eql(a: []const u8, b: []const u8) bool {
 
 fn isBlockElement(tag: []const u8) bool {
     const block_tags = [_][]const u8{
-        "div",     "section", "article", "aside",   "header",
-        "footer",  "nav",     "main",    "ul",      "ol",
-        "li",      "table",   "form",    "fieldset", "blockquote",
-        "pre",     "h1",      "h2",      "h3",      "h4",
-        "h5",      "h6",      "hr",      "p",
+        "div",    "section", "article", "aside",    "header",
+        "footer", "nav",     "main",    "ul",       "ol",
+        "li",     "table",   "form",    "fieldset", "blockquote",
+        "pre",    "h1",      "h2",      "h3",       "h4",
+        "h5",     "h6",      "hr",      "p",
     };
     for (block_tags) |bt| {
         if (eql(tag, bt)) return true;

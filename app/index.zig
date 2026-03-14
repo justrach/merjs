@@ -37,20 +37,25 @@ fn page() h.Node {
         }),
 
         // Benchmark comparison
+        // Benchmark comparison
         h.div(.{ .class = "bench" }, .{
             h.div(.{ .class = "bench-title" }, .{h.raw("vs Next.js &mdash; <span class=\"red\">at a glance</span>")}),
             h.p(.{ .class = "bench-sub" }, "Head-to-head on the metrics that matter."),
             h.div(.{ .class = "bench-legend" }, .{
-                h.div(.{ .class = "bench-legend-item" }, .{h.div(.{ .class = "bench-legend-dot mer" }, ""), h.text(" merjs")}),
-                h.div(.{ .class = "bench-legend-item" }, .{h.div(.{ .class = "bench-legend-dot next" }, ""), h.text(" Next.js")}),
+                h.div(.{ .class = "bench-legend-item" }, .{ h.div(.{ .class = "bench-legend-dot mer" }, ""), h.text(" merjs") }),
+                h.div(.{ .class = "bench-legend-item" }, .{ h.div(.{ .class = "bench-legend-dot next" }, ""), h.text(" Next.js") }),
             }),
             benchRow("Cold Start", "8%", "< 5 ms", "80%", "~1-3 s"),
-            benchRow("Requests / sec", "90%", "2433.22 req/s", "76%", "2060.23 req/s"),
-            benchRow("Avg Latency", "47%", "40.99 ms", "90%", "77.21 ms"),
+            benchRow("Throughput", "95%", "115,093 req/s", "8%", "2,060 req/s"),
+            benchRow("Avg Latency", "8%", "0.39 ms", "90%", "77.21 ms"),
+            benchRow("Binary Size", "8%", "260 KB", "85%", "~300 MB node_modules"),
             benchRow("Build Time", "8%", "~3.2 s", "90%", "~38 s"),
-            benchRow("node_modules", "8%", "0 files", "85%", "~300 MB / 85k files"),
             h.p(.{ .class = "bench-note" }, .{
-                h.text("Next.js is a mature, production-grade framework \u{2014} merjs is an early experiment exploring whether the same DX is possible without the runtime weight. Benchmarks auto-updated by CI on each push to main."),
+                h.text("Throughput and latency measured locally on Apple M-series with "),
+                h.code(.{}, "wrk -t4 -c50"),
+                h.text(". Next.js numbers from CI (GitHub Actions). merjs is an early experiment \u{2014} Next.js is mature and production-grade. Binary size is the release-stripped native binary ("),
+                h.code(.{}, "-Doptimize=ReleaseSmall"),
+                h.text(")."),
             }),
         }),
 

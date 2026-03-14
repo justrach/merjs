@@ -64,6 +64,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         \\  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
         \\  <noscript><link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
+        \\  <link rel="preload" as="image" href="/merlion.png" fetchpriority="high">
         \\  <style>
         \\    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         \\    :root { --bg:#f0ebe3; --bg2:#e8e2d9; --bg3:#ddd5cc; --text:#252530; --muted:#8a7f78; --border:#d5cdc4; --red:#e8251f; }
@@ -82,7 +83,6 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\  </style>
         \\
     ) catch return body;
-
     // Extra head content
     if (meta.extra_head) |extra| {
         w.writeAll(extra) catch {};
@@ -95,7 +95,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\<body>
         \\<div class="layout">
         \\  <header class="layout-header">
-        \\    <a href="/" class="wordmark"><img src="/merlion.png" alt="merjs logo" class="logo">mer<span>js</span></a>
+        \\    <a href="/" class="wordmark"><img src="/merlion.png" alt="merjs logo" class="logo" width="24" height="24" fetchpriority="high">mer<span>js</span></a>
         \\    <nav class="nav">
         \\      <a href="/dashboard">Dashboard</a>
         \\      <a href="/weather">Weather</a>

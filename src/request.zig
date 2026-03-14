@@ -12,40 +12,40 @@ pub const Method = enum {
 
     pub fn fromStd(m: std.http.Method) Method {
         return switch (m) {
-            .GET     => .GET,
-            .POST    => .POST,
-            .PUT     => .PUT,
-            .DELETE  => .DELETE,
-            .PATCH   => .PATCH,
-            .HEAD    => .HEAD,
+            .GET => .GET,
+            .POST => .POST,
+            .PUT => .PUT,
+            .DELETE => .DELETE,
+            .PATCH => .PATCH,
+            .HEAD => .HEAD,
             .OPTIONS => .OPTIONS,
-            else     => .unknown,
+            else => .unknown,
         };
     }
 };
 
 /// A matched route parameter (e.g. `:id` segment from `/users/:id`).
 pub const Param = struct {
-    key:   []const u8,
+    key: []const u8,
     value: []const u8,
 };
 
 pub const Request = struct {
-    method:       Method,
-    path:         []const u8,
+    method: Method,
+    path: []const u8,
     /// Raw query string (everything after `?`, without the `?`).
     /// Empty slice when no query string is present.
     query_string: []const u8,
     /// Raw request body bytes.
     /// Empty slice for GET / HEAD / requests with no body.
-    body:         []const u8,
+    body: []const u8,
     /// Raw `Cookie:` header value.
     /// Empty slice when no cookie header is present.
-    cookies_raw:  []const u8,
+    cookies_raw: []const u8,
     /// Dynamic route parameters extracted by the router.
     /// E.g. for route `/users/:id` and path `/users/42`, params = [{key:"id", value:"42"}].
-    params:       []const Param,
-    allocator:    std.mem.Allocator,
+    params: []const Param,
+    allocator: std.mem.Allocator,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -53,13 +53,13 @@ pub const Request = struct {
         path: []const u8,
     ) Request {
         return .{
-            .allocator    = allocator,
-            .method       = method,
-            .path         = path,
+            .allocator = allocator,
+            .method = method,
+            .path = path,
             .query_string = "",
-            .body         = "",
-            .cookies_raw  = "",
-            .params       = &.{},
+            .body = "",
+            .cookies_raw = "",
+            .params = &.{},
         };
     }
 
@@ -95,7 +95,7 @@ pub const Request = struct {
         var rest = self.query_string;
         while (rest.len > 0) {
             const amp = std.mem.indexOfScalar(u8, rest, '&') orelse rest.len;
-            const kv  = rest[0..amp];
+            const kv = rest[0..amp];
             if (std.mem.indexOfScalar(u8, kv, '=')) |eq| {
                 map.put(kv[0..eq], kv[eq + 1 ..]) catch {};
             }
@@ -135,7 +135,7 @@ pub fn queryParamFromStr(query: []const u8, name: []const u8) ?[]const u8 {
     var rest = query;
     while (rest.len > 0) {
         const amp = std.mem.indexOfScalar(u8, rest, '&') orelse rest.len;
-        const kv  = rest[0..amp];
+        const kv = rest[0..amp];
         if (std.mem.indexOfScalar(u8, kv, '=')) |eq| {
             if (std.mem.eql(u8, kv[0..eq], name)) return kv[eq + 1 ..];
         }
@@ -150,7 +150,7 @@ test "queryParam: basic key=value" {
     var req = Request.init(std.testing.allocator, .GET, "/search");
     req.query_string = "q=zig&page=2";
     try std.testing.expectEqualStrings("zig", req.queryParam("q").?);
-    try std.testing.expectEqualStrings("2",   req.queryParam("page").?);
+    try std.testing.expectEqualStrings("2", req.queryParam("page").?);
 }
 
 test "queryParam: missing key returns null" {
@@ -174,7 +174,7 @@ test "cookie: basic name=value" {
     var req = Request.init(std.testing.allocator, .GET, "/");
     req.cookies_raw = "session=abc123; theme=dark";
     try std.testing.expectEqualStrings("abc123", req.cookie("session").?);
-    try std.testing.expectEqualStrings("dark",   req.cookie("theme").?);
+    try std.testing.expectEqualStrings("dark", req.cookie("theme").?);
 }
 
 test "cookie: missing name returns null" {
