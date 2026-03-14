@@ -4,6 +4,26 @@ All notable changes to merjs will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Shell-first HTML rendering** — layout splits into head (CSS, meta, nav) and tail (footer, closing tags). The server flushes the head chunk immediately via chunked transfer encoding before the page's `render()` runs. This is NOT true streaming SSR (render still blocks) — it's early shell flushing so the browser can start painting the layout while waiting for page content.
+- **`mer.fetchAll()`** — parallel HTTP fetching. Spawns a thread per request, joins all. Cuts total latency to the slowest single fetch instead of the sum.
+- **`<link rel="preload">` hints** for external scripts on sgdata pages (Leaflet, Chart.js)
+
+### Fixed
+- **sgdata LCP 5.4s → 0.8s** — root cause was render-blocking `<script>` tags in `<head>` for Leaflet (170KB) and Chart.js (200KB). Added `<link rel="preload">` hints so the browser starts downloading them earlier. Layout preload hints and `fetchpriority="high"` also applied.
+- sgdata layout had duplicate wordmark element and missing `<header>` tag
+
+### Lighthouse scores (after all fixes)
+| Site | Score | LCP |
+|------|-------|-----|
+| merlionjs.com | **100/100** | 0.8s |
+| sgdata.merlionjs.com | **99/100** | 0.8s |
+| sgdata.merlionjs.com/weather | 82/100 | 4.7s (Leaflet CSS still blocking) |
+
+---
+
 ## [0.1.0] — 2026-03-14
 
 First stable release.
@@ -55,4 +75,5 @@ First stable release.
 - Static files re-read from disk on every request (now cached)
 - Thread pool hardcoded to 128 threads regardless of CPU count
 
+[Unreleased]: https://github.com/justrach/merjs/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/justrach/merjs/releases/tag/v0.1.0
