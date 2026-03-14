@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    name: Build & publish release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig 0.15.1
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Build check
+        run: |
+          zig build codegen
+          zig build
+
+      - name: Run tests
+        run: zig build test
+
+      - name: Cross-compile CLI
+        run: |
+          mkdir -p release
+          zig build cli -Doptimize=ReleaseSmall -Dtarget=aarch64-macos
+          cp zig-out/bin/mer release/mer-macos-aarch64
+          zig build cli -Doptimize=ReleaseSmall -Dtarget=x86_64-macos
+          cp zig-out/bin/mer release/mer-macos-x86_64
+          zig build cli -Doptimize=ReleaseSmall -Dtarget=x86_64-linux
+          cp zig-out/bin/mer release/mer-linux-x86_64
+          zig build cli -Doptimize=ReleaseSmall -Dtarget=aarch64-linux
+          cp zig-out/bin/mer release/mer-linux-aarch64
+
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum mer-* > checksums.txt
+
+      - name: Create release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            release/mer-macos-aarch64 \
+            release/mer-macos-x86_64 \
+            release/mer-linux-x86_64 \
+            release/mer-linux-aarch64 \
+            release/checksums.txt \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,99 @@
+name: Beta Release
+
+on:
+  push:
+    branches: [beta]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    name: Build & publish beta
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Zig 0.15.1
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+
+      - name: Build check
+        run: |
+          zig build codegen
+          zig build
+
+      - name: Run tests
+        run: zig build test
+
+      - name: Cross-compile CLI
+        run: |
+          mkdir -p release
+          zig build cli -Doptimize=ReleaseSmall -Dtarget=aarch64-macos
+          cp zig-out/bin/mer release/mer-macos-aarch64
+          zig build cli -Doptimize=ReleaseSmall -Dtarget=x86_64-macos
+          cp zig-out/bin/mer release/mer-macos-x86_64
+          zig build cli -Doptimize=ReleaseSmall -Dtarget=x86_64-linux
+          cp zig-out/bin/mer release/mer-linux-x86_64
+          zig build cli -Doptimize=ReleaseSmall -Dtarget=aarch64-linux
+          cp zig-out/bin/mer release/mer-linux-aarch64
+
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum mer-* > checksums.txt
+
+      - name: Generate version tag
+        id: version
+        run: |
+          VERSION=$(grep 'pub const version' src/mer.zig | grep -o '"[^"]*"' | tr -d '"')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BETA_TAG="v${VERSION}-beta.${SHORT_SHA}"
+          echo "tag=${BETA_TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Delete previous beta release
+        run: |
+          # Clean up old beta releases to avoid clutter
+          gh release list --limit 20 | grep beta | awk '{print $1}' | while read tag; do
+            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create beta release
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            release/mer-macos-aarch64 \
+            release/mer-macos-x86_64 \
+            release/mer-linux-x86_64 \
+            release/mer-linux-aarch64 \
+            release/checksums.txt \
+            --prerelease \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes "$(cat <<EOF
+          ## Beta Build — ${{ steps.version.outputs.tag }}
+
+          Auto-built from [\`beta\`](https://github.com/justrach/merjs/tree/beta) branch at $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          | Platform | Binary | Size |
+          |----------|--------|------|
+          | macOS Apple Silicon | \`mer-macos-aarch64\` | $(du -h release/mer-macos-aarch64 | cut -f1) |
+          | macOS Intel | \`mer-macos-x86_64\` | $(du -h release/mer-macos-x86_64 | cut -f1) |
+          | Linux x86_64 | \`mer-linux-x86_64\` | $(du -h release/mer-linux-x86_64 | cut -f1) |
+          | Linux ARM64 | \`mer-linux-aarch64\` | $(du -h release/mer-linux-aarch64 | cut -f1) |
+
+          ### Install
+          \`\`\`bash
+          curl -L https://github.com/justrach/merjs/releases/download/${{ steps.version.outputs.tag }}/mer-linux-x86_64 -o mer
+          chmod +x mer && sudo mv mer /usr/local/bin/
+          \`\`\`
+
+          > ⚠️ This is a pre-release beta build. Use stable releases for production.
+          EOF
+          )"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
