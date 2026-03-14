@@ -9,39 +9,39 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    name: E2E via agentic-browdie
+    name: E2E via kuri
 
     steps:
       - name: Checkout merjs
         uses: actions/checkout@v4
 
-      - name: Checkout agentic-browdie
+      - name: Checkout kuri
         uses: actions/checkout@v4
         with:
-          repository: justrach/agentic-browdie
-          path: agentic-browdie
+          repository: justrach/kuri
+          path: kuri
 
       - name: Setup Zig 0.15.1
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.1
 
-      # ── Unit tests (browdie — no Chrome needed) ──────────────────────────
-      - name: browdie unit tests (163 tests, no Chrome)
-        working-directory: agentic-browdie
+      # ── Unit tests (kuri — no Chrome needed) ──────────────────────────
+      - name: kuri unit tests (no Chrome)
+        working-directory: kuri
         run: zig test src/main.zig
 
-      # ── Build both binaries ───────────────────────────────────────────────
+      # ── Build both binaries ───────────────────────────────────────────
       - name: Build merjs
         run: |
           zig build codegen
           zig build
 
-      - name: Build browdie + merjs-e2e
-        working-directory: agentic-browdie
+      - name: Build kuri + merjs-e2e
+        working-directory: kuri
         run: zig build merjs-e2e
 
-      # ── Start Chrome (headless) ───────────────────────────────────────────
+      # ── Start Chrome (headless) ───────────────────────────────────────
       - name: Install Chromium
         run: sudo apt-get update && sudo apt-get install -y chromium-browser
 
@@ -54,19 +54,19 @@ jobs:
             --remote-debugging-port=9222 &
           sleep 2
 
-      # ── Start merjs ───────────────────────────────────────────────────────
+      # ── Start merjs ───────────────────────────────────────────────────
       - name: Start merjs
         run: |
           ./zig-out/bin/merjs --port 3000 --no-dev &
           sleep 1
 
-      # ── Start browdie ─────────────────────────────────────────────────────
-      - name: Start browdie
+      # ── Start kuri ────────────────────────────────────────────────────
+      - name: Start kuri
         run: |
           CDP_URL=ws://localhost:9222 \
-            agentic-browdie/zig-out/bin/agentic-browdie &
+            kuri/zig-out/bin/kuri &
           sleep 2
 
-      # ── Run E2E suite ─────────────────────────────────────────────────────
+      # ── Run E2E suite ─────────────────────────────────────────────────
       - name: Run merjs E2E tests
-        run: agentic-browdie/zig-out/bin/merjs-e2e
+        run: kuri/zig-out/bin/merjs-e2e
