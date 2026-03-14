@@ -78,6 +78,8 @@ Visit `http://localhost:3000`.
 
 ## Performance
 
+**Local benchmarks** (Apple M-series, `wrk -t4 -c50 -d10s`, `-Doptimize=ReleaseSmall`):
+
 |                        | **merjs**                  | **Next.js**                    |
 | ---------------------- | -------------------------- | ------------------------------ |
 | Throughput             | **115,093 req/s**          | ~2,060 req/s                   |
@@ -87,8 +89,18 @@ Visit `http://localhost:3000`.
 | `node_modules`         | **0 files**                | ~300 MB / ~85k files           |
 | Build time             | **~3.2 s**                 | ~38 s                          |
 
-> Throughput/latency measured locally on Apple M-series with `wrk -t4 -c50 -d10s`, binary built with `-Doptimize=ReleaseSmall`. Next.js numbers from CI (GitHub Actions). merjs is an early experiment — Next.js is mature and production-grade.
+**CI benchmarks** (GitHub Actions, auto-updated on each push to `main`):
 
+|                        | **merjs**                  | **Next.js**                    |
+| ---------------------- | -------------------------- | ------------------------------ |
+<!-- BENCH:START -->
+| Requests/sec (wrk)    | **9171.84 req/s**     | **2059.78 req/s**          |
+| Avg latency           | **0.86ms 391.03us**           | **77.80ms 179.45ms**                |
+| RAM usage (under load) | **3.6 MB**        | **71.4 MB**             |
+| Build time             | **198 ms**                | **29744 ms**                   |
+<!-- BENCH:END -->
+
+> merjs is an early experiment — Next.js is mature and production-grade. Local and CI numbers differ due to hardware (Apple Silicon vs shared GitHub Actions VM).
 ---
 
 ## Features
