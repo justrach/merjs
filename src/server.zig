@@ -250,6 +250,7 @@ fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void
 
     var header_buf: [4096]u8 = undefined;
     var bw = try std_req.respondStreaming(&header_buf, .{
+        .content_length = response.body.len,
         .respond_options = .{
             .status        = response.status,
             .extra_headers = extra[0..fixed.len + n_cookies],
@@ -291,6 +292,7 @@ fn tryServePrerendered(
 
     var header_buf: [512]u8 = undefined;
     var bw = std_req.respondStreaming(&header_buf, .{
+        .content_length = body.len,
         .respond_options = .{
             .status        = .ok,
             .extra_headers = &.{

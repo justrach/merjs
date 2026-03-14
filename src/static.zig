@@ -61,6 +61,7 @@ pub fn tryServe(
     };
     var header_buf: [2048]u8 = undefined;
     var bw = std_req.respondStreaming(&header_buf, .{
+        .content_length = body.len,
         .respond_options = .{
             .status = .ok,
             .extra_headers = &(ct_header ++ server.security_headers),

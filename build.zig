@@ -24,6 +24,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .strip = if (optimize != .Debug) true else null,
     });
     main_mod.addImport("mer", mer_mod);
     addDirModules(b, main_mod, mer_mod, "app");
@@ -137,7 +138,17 @@ pub fn build(b: *std.Build) void {
     const css_step = b.step("css", "Compile Tailwind v4 → public/styles.css");
     css_step.dependOn(&run_tw.step);
 
-    // ── `zig build test` ─────────────────────────────────────────────────────
+    // ── `zig build cli` — standalone CLI binary ─────────────────────────────
+    const cli_mod = b.createModule(.{
+        .root_source_file = b.path("cli.zig"),
+        .target = target,
+        .optimize = optimize,
+        .strip = if (optimize != .Debug) true else null,
+    });
+    const cli_exe = b.addExecutable(.{ .name = "mer", .root_module = cli_mod });
+    const install_cli = b.addInstallArtifact(cli_exe, .{});
+    const cli_step = b.step("cli", "Build the `mer` CLI binary");
+    cli_step.dependOn(&install_cli.step);
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
