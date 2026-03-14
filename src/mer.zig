@@ -11,6 +11,56 @@ pub const version = "0.1.0";
 // --- Streaming SSR ----------------------------------------------------------
 pub const StreamParts = struct { head: []const u8, tail: []const u8 };
 
+/// Writer that flushes directly to the HTTP chunked stream.
+/// Pages export `pub fn renderStream(req: Request, stream: *StreamWriter) void`
+/// to opt into true streaming SSR. Each write() + flush() sends a chunk to the browser.
+pub const StreamWriter = struct {
+    allocator: std.mem.Allocator,
+    /// Opaque pointer to the HTTP body writer (std.http.BodyWriter).
+    ctx: *anyopaque,
+    writeFn: *const fn (ctx: *anyopaque, data: []const u8) void,
+    flushFn: *const fn (ctx: *anyopaque) void,
+
+    /// Write HTML to the stream (buffered until flush).
+    pub fn write(self: *StreamWriter, data: []const u8) void {
+        self.writeFn(self.ctx, data);
+    }
+
+    /// Flush the current buffer to the browser immediately.
+    pub fn flush(self: *StreamWriter) void {
+        self.flushFn(self.ctx);
+    }
+
+    /// Write a placeholder slot that will be replaced when data arrives.
+    /// Returns the slot ID for use with `resolve()`.
+    pub fn placeholder(self: *StreamWriter, id: []const u8, fallback_html: []const u8) void {
+        const prefix = "<div id=\"P:";
+        const mid = "\">";
+        const suffix = "</div>";
+        self.write(prefix);
+        self.write(id);
+        self.write(mid);
+        self.write(fallback_html);
+        self.write(suffix);
+    }
+
+    /// Resolve a placeholder — sends the real content in a hidden div + inline script
+    /// that swaps it into the placeholder. This is the Marko/React $RC pattern.
+    pub fn resolve(self: *StreamWriter, id: []const u8, content: []const u8) void {
+        self.write("<div hidden id=\"S:");
+        self.write(id);
+        self.write("\">");
+        self.write(content);
+        self.write("</div>");
+        self.write("<script>document.getElementById('P:");
+        self.write(id);
+        self.write("').outerHTML=document.getElementById('S:");
+        self.write(id);
+        self.write("').innerHTML</script>");
+        self.flush();
+    }
+};
+
 // --- HTTP types -------------------------------------------------------------
 pub const Method = req_mod.Method;
 pub const Param = req_mod.Param;
@@ -257,14 +307,33 @@ pub fn fetchAll(allocator: std.mem.Allocator, requests: []const FetchRequest) []
     const threads = allocator.alloc(std.Thread, requests.len) catch return results;
     defer allocator.free(threads);
 
+    // Each thread gets its own GPA to avoid arena thread-safety issues.
+    const gpas = allocator.alloc(std.heap.GeneralPurposeAllocator(.{}), requests.len) catch return results;
+    defer allocator.free(gpas);
+    for (gpas) |*g| g.* = .init;
+
     for (requests, 0..) |req_opts, i| {
-        threads[i] = std.Thread.spawn(.{}, fetchWorker, .{ allocator, req_opts, &results[i] }) catch {
+        threads[i] = std.Thread.spawn(.{}, fetchWorker, .{ gpas[i].allocator(), req_opts, &results[i] }) catch {
             results[i] = null;
             continue;
         };
     }
 
     for (threads[0..requests.len]) |t| t.join();
+
+    // Copy results from per-thread GPAs to the caller's allocator.
+    for (results, 0..) |*r, i| {
+        if (r.*) |resp| {
+            const owned = allocator.dupe(u8, resp.body) catch {
+                r.* = null;
+                continue;
+            };
+            r.* = .{ .status = resp.status, .body = owned };
+            gpas[i].allocator().free(resp.body);
+        }
+        _ = gpas[i].deinit();
+    }
+
     return results;
 }
 

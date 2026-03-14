@@ -7,13 +7,16 @@ const std = @import("std");
 const mer = @import("mer");
 
 pub const RenderFn = *const fn (req: mer.Request) mer.Response;
+pub const StreamRenderFn = *const fn (req: mer.Request, stream: *mer.StreamWriter) void;
 pub const LayoutFn = *const fn (std.mem.Allocator, []const u8, []const u8, mer.Meta) []const u8;
 
 pub const StreamParts = mer.StreamParts;
 pub const StreamLayoutFn = *const fn (std.mem.Allocator, []const u8, mer.Meta) StreamParts;
+
 pub const Route = struct {
     path: []const u8,
     render: RenderFn,
+    render_stream: ?StreamRenderFn = null,
     meta: mer.Meta = .{},
     prerender: bool = false,
 };
@@ -49,6 +52,24 @@ pub const Router = struct {
     pub fn deinit(self: *Router) void {
         self.exact_map.deinit(self.allocator);
         self.allocator.free(self.dynamic_routes);
+    }
+
+    /// Find a route by path (exact or dynamic match). Returns null if not found.
+    pub fn findRoute(self: Router, path_arg: []const u8) ?Route {
+        if (self.exact_map.get(path_arg)) |idx| return self.routes[idx];
+        var params_buf: [8]mer.Param = undefined;
+        for (self.dynamic_routes) |route| {
+            if (matchRoute(route.path, path_arg, &params_buf) != null) return route;
+        }
+        // Trailing slash fallback.
+        if (path_arg.len > 1 and path_arg[path_arg.len - 1] == '/') {
+            const trimmed = path_arg[0 .. path_arg.len - 1];
+            if (self.exact_map.get(trimmed)) |idx| return self.routes[idx];
+            for (self.dynamic_routes) |route| {
+                if (matchRoute(route.path, trimmed, &params_buf) != null) return route;
+            }
+        }
+        return null;
     }
 
     /// Match a URL path to a route and call its render function.

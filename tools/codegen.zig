@@ -57,7 +57,7 @@ pub fn main() !void {
         defer alloc.free(ident);
         const url = try toUrl(alloc, path);
         defer alloc.free(url);
-        try w.print("    .{{ .path = \"{s}\", .render = {s}.render, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}}, .prerender = if (@hasDecl({s}, \"prerender\")) {s}.prerender else false }},\n", .{ url, ident, ident, ident, ident, ident });
+        try w.print("    .{{ .path = \"{s}\", .render = {s}.render, .render_stream = if (@hasDecl({s}, \"renderStream\")) {s}.renderStream else null, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}}, .prerender = if (@hasDecl({s}, \"prerender\")) {s}.prerender else false }},\n", .{ url, ident, ident, ident, ident, ident, ident, ident });
     }
     try w.writeAll("};\n\n");
 

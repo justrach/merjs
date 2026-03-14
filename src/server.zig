@@ -137,7 +137,6 @@ fn serveRequest(
 ) !void {
     const raw_target = std_req.head.target;
 
-    // Split path and query string.
     const path: []const u8 = if (std.mem.indexOfScalar(u8, raw_target, '?')) |q|
         raw_target[0..q]
     else
@@ -168,7 +167,6 @@ fn serveRequest(
 
     // ── Build Request ──────────────────────────────────────────────────────
 
-    // Read Cookie header.
     const cookies_raw: []const u8 = blk: {
         var it = std_req.iterateHeaders();
         while (it.next()) |hdr| {
@@ -177,7 +175,6 @@ fn serveRequest(
         break :blk "";
     };
 
-    // Read request body (up to 4 MiB).
     const body_bytes: []const u8 = blk: {
         const cl = std_req.head.content_length orelse break :blk "";
         if (cl == 0) break :blk "";
@@ -195,16 +192,59 @@ fn serveRequest(
     req.body = body_bytes;
     req.cookies_raw = cookies_raw;
 
-    // Arm the thread-local arena so coerceChildren can heap-allocate runtime
-    // children tuples (avoids dangling-pointer SIGBUS in html.renderNode).
     mer.h.setRenderAllocator(alloc);
 
-    // Use streaming dispatch — flushes head before body for faster FCP.
+    // ── Check for true streaming render (renderStream) ─────────────────────
+    // If the matched route exports renderStream and we have a stream_layout,
+    // use the Marko-style placeholder/resolve pattern.
+    if (router.stream_layout) |stream_wrap| {
+        const matched_route = router.findRoute(req.path);
+        if (matched_route) |route| {
+            if (route.render_stream) |stream_fn| {
+                const parts = stream_wrap(alloc, req.path, route.meta);
+
+                const fixed = [1]std.http.Header{
+                    .{ .name = "content-type", .value = "text/html; charset=utf-8" },
+                } ++ security_headers;
+
+                var header_buf: [4096]u8 = undefined;
+                var bw = try std_req.respondStreaming(&header_buf, .{
+                    .respond_options = .{
+                        .status = .ok,
+                        .extra_headers = &fixed,
+                    },
+                });
+
+                // Flush layout head immediately — browser starts rendering shell.
+                try bw.writer.writeAll(parts.head);
+                try bw.flush();
+
+                // Create StreamWriter backed by the HTTP body writer.
+                var stream_writer = mer.StreamWriter{
+                    .allocator = alloc,
+                    .ctx = @ptrCast(&bw),
+                    .writeFn = &streamWriteImpl,
+                    .flushFn = &streamFlushImpl,
+                };
+
+                // Call the page's streaming render — it writes placeholders,
+                // fetches data, and resolves slots progressively.
+                stream_fn(req, &stream_writer);
+
+                // Flush tail + hot reload.
+                if (dev) try bw.writer.writeAll(hot_reload_script);
+                try bw.writer.writeAll(parts.tail);
+                try bw.end();
+                return;
+            }
+        }
+    }
+
+    // ── Shell-first streaming (non-Suspense) ───────────────────────────────
     const result = router.dispatchStreaming(req);
     var response = result.response;
 
     if (result.is_streaming) {
-        // Streaming: flush head → body → tail as chunked transfer.
         var hot_reload_tail: []const u8 = "";
         if (dev) {
             hot_reload_tail = hot_reload_script;
@@ -221,21 +261,17 @@ fn serveRequest(
                 .extra_headers = &fixed,
             },
         });
-        // Flush head (layout shell) — browser can start rendering immediately.
         try bw.writer.writeAll(result.head);
         try bw.flush();
-        // Flush page body content.
         try bw.writer.writeAll(result.body);
         try bw.flush();
-        // Flush tail (footer + closing tags).
         try bw.writer.writeAll(hot_reload_tail);
         try bw.writer.writeAll(result.tail);
         try bw.end();
         return;
     }
 
-    // Non-streaming path (API responses, redirects, full documents).
-    // Dev mode: inject hot-reload script before </body>.
+    // ── Non-streaming path ─────────────────────────────────────────────────
     var owned_body: ?[]u8 = null;
     if (dev and response.content_type == .html) {
         if (injectHotReload(alloc, response.body)) |injected| {
@@ -246,6 +282,16 @@ fn serveRequest(
     defer if (owned_body) |b| alloc.free(b);
 
     try sendResponse(std_req, response);
+}
+
+fn streamWriteImpl(ctx: *anyopaque, data: []const u8) void {
+    const bw: *std.http.BodyWriter = @ptrCast(@alignCast(ctx));
+    bw.writer.writeAll(data) catch {};
+}
+
+fn streamFlushImpl(ctx: *anyopaque) void {
+    const bw: *std.http.BodyWriter = @ptrCast(@alignCast(ctx));
+    bw.flush() catch {};
 }
 
 /// Maximum number of Set-Cookie headers we emit per response.
