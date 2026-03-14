@@ -31,15 +31,15 @@ jobs:
         working-directory: kuri
         run: zig test src/main.zig
 
-      # ── Build both binaries ───────────────────────────────────────────
+      # ── Build all binaries ────────────────────────────────────────────
       - name: Build merjs
         run: |
           zig build codegen
           zig build
 
-      - name: Build kuri + merjs-e2e
+      - name: Build kuri (includes merjs-e2e binary)
         working-directory: kuri
-        run: zig build merjs-e2e
+        run: zig build
 
       # ── Start Chrome (headless) ───────────────────────────────────────
       - name: Install Chromium
