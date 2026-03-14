@@ -23,14 +23,15 @@
   <a href="#-features">Features</a> ·
   <a href="#-demo">Demo</a> ·
   <a href="#-how-it-works">How It Works</a> ·
-  <a href="#-deploy-to-cloudflare-workers">Deploy</a>
+  <a href="#-deploy-to-cloudflare-workers">Deploy</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 ---
 
 ## The Problem
 
-Every Node.js web framework drags in 300 MB of `node_modules`, a 1–3s cold start, and a JavaScript runtime you never asked for. The reason JS won the server was simple: it was already in the browser.
+Every Node.js web framework drags in 300 MB of `node_modules`, a 1-3s cold start, and a JavaScript runtime you never asked for. The reason JS won the server was simple: it was already in the browser.
 
 **WebAssembly changes that.** Zig compiles to `wasm32-freestanding` with a single flag. You can write client-side logic in Zig, compile it to `.wasm`, and ship it directly to the browser — no transpiler, no bundler, no runtime.
 
@@ -43,15 +44,26 @@ merjs is exploring whether you can get the full Next.js developer experience —
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 **Requirements:** [Zig 0.15.1](https://ziglang.org/download/)
+
+### Option A: `mer` CLI (recommended)
+
+Download the `mer` binary from [releases](https://github.com/justrach/merjs/releases/latest), then:
+
+```bash
+mer init my-app
+cd my-app
+mer dev            # codegen + dev server on :3000
+```
+
+### Option B: Clone the repo
 
 ```bash
 git clone https://github.com/justrach/merjs.git
 cd merjs
 
-# Copy env vars (needed for AI/data routes)
 cp .env.example .env
 
 zig build codegen   # scan app/ and api/, generate routes
@@ -64,14 +76,29 @@ Visit `http://localhost:3000`.
 
 ---
 
-## 🚀 Features
+## Performance
+
+|                        | **merjs**                  | **Next.js**                    |
+| ---------------------- | -------------------------- | ------------------------------ |
+| Throughput             | **115,093 req/s**          | ~2,060 req/s                   |
+| Avg latency            | **0.39 ms**                | ~77 ms                         |
+| Cold start             | **< 5 ms**                 | ~1-3 s                         |
+| Binary size            | **260 KB**                 | N/A (interpreted)              |
+| `node_modules`         | **0 files**                | ~300 MB / ~85k files           |
+| Build time             | **~3.2 s**                 | ~38 s                          |
+
+> Throughput/latency measured locally on Apple M-series with `wrk -t4 -c50 -d10s`, binary built with `-Doptimize=ReleaseSmall`. Next.js numbers from CI (GitHub Actions). merjs is an early experiment — Next.js is mature and production-grade.
+
+---
+
+## Features
 
 ### File-based routing — like Next.js
 
 ```
 app/index.zig       →  /
 app/dashboard.zig   →  /dashboard
-app/blog/post.zig   →  /blog/post
+app/users/[id].zig  →  /users/:id
 api/users.zig       →  /api/users
 ```
 
@@ -135,54 +162,48 @@ The standalone Tailwind CLI lives at `tools/tailwindcss`. `zig build css` runs i
 
 ---
 
-## 📊 vs Next.js
+## `mer` CLI
 
-|                        | **merjs**                  | **Next.js**                    |
-| ---------------------- | -------------------------- | ------------------------------ |
-| Runtime                | None (native binary)       | Node.js ≥ 18                   |
-| `node_modules`         | **0 files**                | ~300 MB / ~85k files           |
-| Cold start             | **< 5 ms**                 | ~1–3 s                         |
-| Server binary size     | **~2 MB**                  | N/A (interpreted)              |
-| Client interactivity   | WASM (Zig → `wasm32`)      | JavaScript bundle              |
-| CSS                    | Tailwind v4 standalone CLI | Tailwind via npm               |
-| Type safety            | Comptime (Zig + dhi)       | TypeScript (runtime-erased)    |
-| Hot reload             | SSE file watcher (300 ms)  | Webpack/Turbopack HMR          |
-<!-- BENCH:START -->
-| Requests/sec (wrk)    | **9171.84 req/s**     | **2059.78 req/s**          |
-| Avg latency           | **0.86ms 391.03us**           | **77.80ms 179.45ms**                |
-| RAM usage (under load) | **3.6 MB**        | **71.4 MB**             |
-| Build time             | **198 ms**                | **29744 ms**                   |
-<!-- BENCH:END -->
+```
+mer init <name>      scaffold a new project (131 KB binary, all templates embedded)
+mer dev [--port N]   codegen + dev server with hot reload
+mer build            production build (ReleaseSmall + prerender)
+mer --version        print version
+```
 
-> Benchmark rows are auto-updated by CI on each push to `main`. Next.js is a mature, production-grade framework — merjs is an early experiment.
+Download from [releases](https://github.com/justrach/merjs/releases/latest) — available for macOS (ARM/Intel) and Linux (x86_64/ARM64).
 
----
-
-## 🌐 Demo
-
-Live demo: **[sgdata.merlionjs.com](https://sgdata.merlionjs.com)** — a real-time Singapore government data dashboard built entirely with merjs. SSR pages, JSON APIs, WASM, and a RAG-powered AI chat for Singapore's FY2026 Budget Statement. Deployed on Cloudflare Workers. Zero Node.js.
-
----
-
-## ☁️ Deploy to Cloudflare Workers
+Or build from source:
 
 ```bash
-# Set secrets
+zig build cli -Doptimize=ReleaseSmall   # → zig-out/bin/mer
+```
+---
+
+## Demo
+
+Live demo: **[merlionjs.com](https://merlionjs.com)** — the framework's own site, built with merjs.
+
+Singapore data dashboard: **[sgdata.merlionjs.com](https://sgdata.merlionjs.com)** — real-time government data, SSR pages, JSON APIs, WASM, RAG-powered AI chat. Deployed on Cloudflare Workers. Zero Node.js.
+
+---
+
+## Deploy to Cloudflare Workers
+
+```bash
 cd worker
 wrangler secret put OPENAI_API_KEY
-
-# Build + deploy
 cd ..
 zig build worker
 cd worker
 wrangler deploy
 ```
 
-The `worker/worker.js` shim handles the fetch event and passes requests to the WASM binary. Routes that need outbound network calls (e.g. AI APIs) can be handled directly in the shim — see `worker/worker.js` for the pattern.
+The `worker/worker.js` shim handles the fetch event and passes requests to the WASM binary.
 
 ---
 
-## ⚙️ How It Works
+## How It Works
 
 ```
 zig build codegen
@@ -192,8 +213,8 @@ zig build codegen
 zig build serve
   └── compiles server binary
   └── binds :3000
-  └── serves static files from public/
-  └── dispatches requests → generated route handlers
+  └── serves static files from public/ (in-memory cache)
+  └── dispatches requests → hash-map route lookup (O(1) exact match)
   └── SSE watcher on app/ for hot reload
 
 zig build worker
@@ -201,13 +222,13 @@ zig build worker
   └── worker/worker.js wraps WASM in a CF Workers fetch handler
 ```
 
-**Thread model:** `std.Thread.Pool` with 128 workers, kernel backlog 512.
+**Thread model:** `std.Thread.Pool` with CPU-count-based sizing, kernel backlog 512, 64 KB write buffers.
 
 **Layout convention:** Pages returning HTML fragments are auto-wrapped by `app/layout.zig`. Pages returning full documents (starting with `<!`) bypass it.
 
 ---
 
-## 📁 Structure
+## Structure
 
 ```
 merjs/
@@ -219,29 +240,33 @@ merjs/
 │   └── wrangler.toml
 ├── src/
 │   ├── mer.zig             # public API: Request, Response, h, lint, dhi
-│   ├── server.zig          # HTTP server
+│   ├── server.zig          # HTTP server (in-memory cache, hash-map router)
 │   ├── html.zig            # comptime HTML builder DSL
 │   ├── html_lint.zig       # comptime HTML linter
 │   ├── watcher.zig         # file watcher + SSE hot reload
 │   ├── prerender.zig       # SSG: render pages at build time → dist/
 │   └── generated/
 │       └── routes.zig      # codegen output — do not edit
+├── cli.zig                 # `mer` CLI entry point (init, dev, build)
 ├── tools/
 │   ├── codegen.zig
 │   └── tailwindcss         # Tailwind v4 standalone CLI
-└── public/                 # static assets
+├── public/                 # static assets
+├── .githooks/              # pre-commit (zig fmt + build) + pre-push (test)
+└── CHANGELOG.md
 ```
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Open an issue before submitting a large PR so we can align on the approach.
 
 ```bash
 git clone https://github.com/justrach/merjs.git
 cd merjs
-zig build test   # make sure tests pass before and after your change
+git config core.hooksPath .githooks   # enable pre-commit hooks
+zig build test                        # make sure tests pass
 ```
 
 ---
@@ -250,6 +275,7 @@ zig build test   # make sure tests pass before and after your change
 
 - **[dhi](https://github.com/justrach/dhi)** — Pydantic-style validation for Zig
 - **[Tailwind CSS v4](https://tailwindcss.com)** — standalone CLI, no npm
+- **[kuri](https://github.com/justrach/kuri)** — E2E testing via headless Chrome
 - **Zig 0.15.1** — the whole stack
 
 ## License
