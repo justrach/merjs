@@ -22,24 +22,30 @@ pub fn render(req: mer.Request) mer.Response {
 fn page() h.Node {
     return h.div(.{ .class = "blog" }, .{
         // Header
+        // Header
         h.div(.{ .class = "blog-header" }, .{
             h.div(.{ .class = "blog-date" }, "March 14, 2026"),
             h.h1(.{ .class = "blog-title" }, .{
-                h.text("From 2,400 to "),
-                h.span(.{ .class = "red" }, "115,000"),
-                h.text(" req/s"),
+                h.text("We shipped a web"),
+                h.br(),
+                h.text("framework that does"),
+                h.br(),
+                h.span(.{ .class = "red" }, "115,000 req/s."),
+                h.br(),
+                h.text("Here's how."),
             }),
-            h.p(.{ .class = "blog-subtitle" }, "Six changes. No rewrite. One afternoon."),
+            h.p(.{ .class = "blog-subtitle" }, "It started at 2,400. Six fixes later, we had a 48x improvement. No rewrite. No async runtime. Just Zig."),
         }),
 
         // Intro
         h.div(.{ .class = "blog-body" }, .{
-            h.p(.{}, .{
-                h.text("People told us our benchmarks were weak. "),
-                h.em(.{}, "They were right."),
-                h.text(" merjs was doing 2,400 req/s on CI and shipping a 1.9 MB binary. For a compiled framework, that's embarrassing."),
+            h.p(.{ .class = "blog-lede" }, .{
+                h.text("Last week we posted merjs on Twitter. The response was mostly positive \u{2014} people liked the idea of a Zig web framework with zero node_modules. But the benchmarks? "),
+                h.em(.{}, "\"2,437 req/s? I expected ~1M RPS for a compiled framework.\""),
             }),
-            h.p(.{}, "We profiled the hot path, found 6 bottlenecks, and fixed them all in a single session. Here's exactly what we changed and why."),
+            h.p(.{}, .{
+                h.text("They had a point. We were leaving performance on the table everywhere. So we sat down, profiled the hot path, and found six things that were obviously wrong. We fixed all of them in one afternoon. This is the story of each fix, why it mattered, and what we learned."),
+            }),
             // Before/After
             h.div(.{ .class = "stats-grid" }, .{
                 statCard("Throughput", "2,400", "115,093", "req/s", "48x"),
@@ -47,93 +53,180 @@ fn page() h.Node {
                 statCard("Binary", "1.9 MB", "260 KB", "stripped", "-86%"),
                 statCard("LCP", "5.4 s", "0.8 s", "Lighthouse", "99/100"),
             }),
+            // Divider
+            h.div(.{ .class = "blog-divider" }, .{
+                h.div(.{ .class = "blog-divider-label" }, "THE SIX FIXES"),
+            }),
             // Fix 1
-            section("01", "Static file cache",
-                \\Every request to /style.css or /merlion.png was opening the file,
-                \\reading it into memory, sending it, then freeing it. On the next
-                \\request — same thing. The fix: a global hash map that caches file
-                \\contents on first access. Disk I/O once, memory forever after.
+            section("01", "We were reading files from disk on every request",
+                \\Every request to /style.css or /merlion.png opened the file,
+                \\read it into a buffer, sent it over the socket, and freed the
+                \\buffer. Next request? Same file, same dance.
+                \\
+                \\The fix was embarrassingly simple: a hash map that caches file
+                \\contents on first access. One disk read, then memory forever.
+                \\Three lines of code. Biggest single win.
             ),
             // Fix 2
-            section("02", "Hash map router",
-                \\Route matching was O(N) — iterate all routes, compare strings. With
-                \\10 routes that's fine, with 50 it's not. We replaced the linear scan
-                \\with a StringHashMap for exact matches (O(1)) and only fall back to
-                \\linear scan for dynamic :param routes.
+            section("02", "Route matching was a linear scan",
+                \\To match a URL to a handler, we iterated every route and
+                \\compared strings. With 10 routes that's 10 comparisons per
+                \\request. With 50 routes, 50. For something that happens on
+                \\every single request, O(N) is unacceptable.
+                \\
+                \\We replaced it with a StringHashMap for exact matches \u{2014} O(1)
+                \\lookup. Dynamic :param routes still do a linear scan, but
+                \\those are a small subset.
             ),
             // Fix 3
-            section("03", "Write buffer 4 KB \xe2\x86\x92 64 KB",
-                \\The HTTP write buffer was 4 KB. A typical HTML response is 13 KB.
-                \\That's 3-4 flush syscalls per response instead of 1. We also bumped
-                \\the read buffer from 8 KB to 16 KB. Fewer syscalls = fewer context
-                \\switches = more throughput.
+            section("03", "Our write buffer was comically small",
+                \\The HTTP write buffer was 4 KB. A typical HTML response is
+                \\13 KB. That means 3-4 flush syscalls per response \u{2014} each one
+                \\a context switch to the kernel and back.
+                \\
+                \\We bumped it to 64 KB. Now most responses flush once. We also
+                \\bumped the read buffer from 8 KB to 16 KB. Fewer syscalls,
+                \\more throughput.
             ),
             // Fix 4
-            section("04", "Arena reset for keep-alive",
-                \\Each request allocated a new arena, used it, and freed everything.
-                \\On HTTP keep-alive connections (which is most connections), this
-                \\means allocate-free-allocate-free for every request on the same
-                \\connection. We now call arena.reset(.retain_capacity) between
-                \\requests — the memory is reused, not freed and reallocated.
+            section("04", "We were allocating fresh memory per request",
+                \\Each request created a new arena allocator, used it for the
+                \\entire request lifecycle, then freed everything. On HTTP
+                \\keep-alive connections (most connections), this means
+                \\allocate-free-allocate-free on every single request.
+                \\
+                \\The fix: call arena.reset(.retain_capacity) between requests
+                \\on the same connection. The memory pages stay allocated \u{2014}
+                \\we just reset the bump pointer. Reuse, don't realloc.
             ),
             // Fix 5
-            section("05", "CPU-based thread pool",
-                \\The thread pool was hardcoded to 128 workers. On an 8-core machine,
-                \\that's 120 threads fighting for CPU time. Context switching kills
-                \\throughput. We switched to CPU count \xc3\x97 2, which on Apple Silicon
-                \\gives ~20 threads — enough for I/O concurrency without the overhead.
+            section("05", "128 threads on an 8-core machine",
+                \\The thread pool was hardcoded to 128 workers. On an 8-core
+                \\chip, that's 120 threads fighting for CPU time. The OS spends
+                \\more time context-switching between threads than doing actual
+                \\work.
+                \\
+                \\We switched to CPU count \u{00d7} 2 \u{2014} enough concurrency for I/O
+                \\without the overhead. On Apple Silicon that gives ~20 threads.
             ),
             // Fix 6
-            section("06", "Batch HTML escaping",
-                \\The HTML escaper was calling writeByte() for every character and
-                \\writeAll() for every escape sequence. For a 10 KB page with 5 escaped
-                \\characters, that's ~10,000 function calls instead of ~6. We switched
-                \\to a find-next-escape pattern: scan for the next special character,
-                \\write everything up to it in one call, write the escape, repeat.
+            section("06", "HTML escaping was byte-by-byte",
+                \\Our HTML escaper called writeByte() for every single character
+                \\and writeAll() for each escape sequence. For a 10 KB page with
+                \\5 escaped characters, that's ~10,000 function calls instead
+                \\of ~6.
+                \\
+                \\The fix: scan ahead for the next special character, write
+                \\everything up to it in one writeAll() call, write the escape,
+                \\repeat. Batch writes, not character-by-character.
             ),
+            // Divider
+            h.div(.{ .class = "blog-divider" }, .{
+                h.div(.{ .class = "blog-divider-label" }, "BEYOND THROUGHPUT"),
+            }),
             // LCP section
             h.div(.{ .class = "section" }, .{
                 h.div(.{ .class = "section-num" }, "07"),
                 h.div(.{ .class = "section-body" }, .{
-                    h.div(.{ .class = "section-heading" }, .{h.raw("The LCP <span class=\"red\">mystery</span>")}),
+                    h.div(.{ .class = "section-heading" }, .{h.raw("The 5-second LCP that wasn't <span class=\"red\">what we thought</span>")}),
                     h.p(.{ .class = "section-text" }, .{
-                        h.text("Our Singapore data dashboard had a 5.4 second LCP. We assumed it was SSR data fetching. "),
-                        h.strong(.{}, "It wasn't."),
+                        h.text("Our Singapore data dashboard had a 5.4 second Largest Contentful Paint. We assumed it was SSR \u{2014} the pages fetch live weather data from government APIs during render, so obviously that's the bottleneck, right?"),
                     }),
                     h.p(.{ .class = "section-text" }, .{
-                        h.text("The real culprit: two "),
+                        h.strong(.{}, "Wrong."),
+                        h.text(" The pages return static HTML. The data fetching happens client-side. The real culprit was two "),
                         h.code(.{}, "<script>"),
                         h.text(" tags in the "),
                         h.code(.{}, "<head>"),
-                        h.text(" loading Leaflet (170 KB) and Chart.js (200 KB). These are render-blocking \u{2014} the browser won't paint a single pixel until both finish downloading. Adding "),
-                        h.code(.{}, "<link rel=\"preload\">"),
-                        h.text(" hints dropped LCP from 5.4s to 0.8s. Lighthouse went from 72 to 99."),
+                        h.text(" \u{2014} Leaflet (170 KB) and Chart.js (200 KB). Both are render-blocking: the browser won't paint a single pixel until they finish downloading."),
                     }),
+                    h.p(.{ .class = "section-text" }, .{
+                        h.text("Adding "),
+                        h.code(.{}, "<link rel=\"preload\">"),
+                        h.text(" hints dropped LCP from 5.4s to 0.8s. Lighthouse went from 72 to 99. The lesson: always check "),
+                        h.em(.{}, "what's actually slow"),
+                        h.text(" before assuming."),
+                    }),
+                }),
+            }),
+            // Shell-first SSR section
+            h.div(.{ .class = "section" }, .{
+                h.div(.{ .class = "section-num" }, "08"),
+                h.div(.{ .class = "section-body" }, .{
+                    h.div(.{ .class = "section-heading" }, .{h.raw("Shell-first rendering <span class=\"red\">(not Suspense)</span>")}),
+                    h.p(.{ .class = "section-text" }, .{
+                        h.text("We split the layout into two parts: the "),
+                        h.strong(.{}, "head"),
+                        h.text(" (everything up to the header \u{2014} CSS, meta tags, preload hints, navigation) and the "),
+                        h.strong(.{}, "tail"),
+                        h.text(" (footer, closing tags). The server flushes the head as a chunk immediately via "),
+                        h.code(.{}, "transfer-encoding: chunked"),
+                        h.text(", before the page's render() function even runs."),
+                    }),
+                    h.pre(.{ .class = "code-block" }, .{h.code(.{},
+                        \\Browser timeline:
+                        \\  0ms  - request sent
+                        \\  1ms  - head chunk arrives (CSS, nav)
+                        \\  1ms  - browser starts painting layout
+                        \\  2ms  - body chunk arrives (page content)
+                        \\  2ms  - tail chunk arrives (footer)
+                    )}),
+                    h.p(.{ .class = "section-text" }, .{
+                        h.text("To be clear: this is "),
+                        h.strong(.{}, "not"),
+                        h.text(" React Suspense. The render function still blocks \u{2014} if it calls mer.fetch(), nothing streams until it returns. It's early shell flushing, not async streaming. But for pages where the shell is the LCP element (most pages), this means FCP happens before any page logic runs."),
+                    }),
+                }),
+            }),
+            // fetchAll section
+            h.div(.{ .class = "section" }, .{
+                h.div(.{ .class = "section-num" }, "09"),
+                h.div(.{ .class = "section-body" }, .{
+                    h.div(.{ .class = "section-heading" }, .{h.raw("<code>mer.fetchAll()</code> \u{2014} parallel data fetching")}),
+                    h.p(.{ .class = "section-text" }, .{
+                        h.text("For pages that need data from multiple APIs, sequential fetching is a killer. If weather takes 800ms and air quality takes 1.2s, that's 2 seconds of waiting. We added "),
+                        h.code(.{}, "mer.fetchAll()"),
+                        h.text(" which spawns a thread per request and joins them all:"),
+                    }),
+                    h.pre(.{ .class = "code-block" }, .{h.code(.{},
+                        \\const results = mer.fetchAll(alloc, &.{
+                        \\    .{ .url = "https://api.weather.gov/..." },
+                        \\    .{ .url = "https://api.air-quality/..." },
+                        \\});
+                        \\// Both resolve in ~1.2s (slowest), not 2.0s
+                    )}),
                 }),
             }),
             // CLI section
             h.div(.{ .class = "section" }, .{
-                h.div(.{ .class = "section-num" }, "08"),
+                h.div(.{ .class = "section-num" }, "10"),
                 h.div(.{ .class = "section-body" }, .{
-                    h.div(.{ .class = "section-heading" }, .{h.raw("The <code>mer</code> CLI")}),
+                    h.div(.{ .class = "section-heading" }, .{h.raw("The <code>mer</code> CLI in 131 KB")}),
                     h.p(.{ .class = "section-text" }, .{
-                        h.text("While we were at it, we built a CLI. 131 KB binary with the starter template embedded at compile time via "),
+                        h.text("We also built a CLI that scaffolds new projects. The entire starter template is embedded at compile time via "),
                         h.code(.{}, "@embedFile"),
-                        h.text(". Cross-compiled for 4 platforms in CI."),
+                        h.text(" \u{2014} no runtime file access, no network calls, no package registry. Cross-compiled for macOS and Linux in CI."),
                     }),
                     h.pre(.{ .class = "code-block" }, .{h.code(.{},
-                        \\mer init my-app
-                        \\cd my-app
-                        \\mer dev
+                        \\$ mer init my-app
+                        \\
+                        \\  mer project created in ./my-app
+                        \\
+                        \\  next steps:
+                        \\    cd my-app
+                        \\    mer dev
                     )}),
                 }),
             }),
             // Takeaway
             h.div(.{ .class = "takeaway" }, .{
                 h.p(.{ .class = "takeaway-text" }, .{
-                    h.text("The lesson: "),
-                    h.strong(.{}, "measure before you rewrite."),
-                    h.text(" We didn't change the architecture. We didn't add async I/O or io_uring. We just stopped doing obviously wasteful things on the hot path. The biggest win (static file cache) was 3 lines of code."),
+                    h.strong(.{}, "The takeaway:"),
+                    h.text(" we didn't change the architecture. We didn't add io_uring or rewrite in Rust. We just stopped doing six obviously wasteful things. The static file cache was 3 lines. The buffer resize was changing a number. The total diff was ~130 lines across 4 files."),
+                }),
+                h.p(.{ .class = "takeaway-text", .style = "margin-top: 12px;" }, .{
+                    h.text("If your compiled web framework does fewer than 10,000 req/s, you probably have a bug. "),
+                    h.strong(.{}, "Measure before you rewrite."),
                 }),
             }),
             // Footer links
@@ -177,6 +270,10 @@ const page_css =
     \\}
     \\.blog-title .red { color: var(--red); }
     \\.blog-subtitle { font-size: 18px; color: var(--muted); line-height: 1.5; }
+    \\.blog-lede { font-size: 18px; line-height: 1.7; color: var(--text); }
+    \\.blog-lede em { font-style: italic; color: var(--muted); }
+    \\.blog-divider { text-align: center; margin: 48px 0 8px; }
+    \\.blog-divider-label { font-size: 10px; letter-spacing: 0.15em; color: var(--red); font-weight: 700; }
     \\.blog-body p { font-size: 16px; line-height: 1.8; color: var(--text); margin-bottom: 20px; max-width: 100%; }
     \\.blog-body p em { font-style: italic; }
     \\.blog-body p code {
