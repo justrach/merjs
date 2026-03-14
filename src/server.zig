@@ -178,8 +178,6 @@ fn serveRequest(
     };
 
     // Read request body (up to 4 MiB).
-    // Skip when Content-Length is absent: GET/HEAD have no body, and attempting
-    // to read would block waiting for EOF since the connection stays open.
     const body_bytes: []const u8 = blk: {
         const cl = std_req.head.content_length orelse break :blk "";
         if (cl == 0) break :blk "";
@@ -201,8 +199,42 @@ fn serveRequest(
     // children tuples (avoids dangling-pointer SIGBUS in html.renderNode).
     mer.h.setRenderAllocator(alloc);
 
-    var response = router.dispatch(req);
+    // Use streaming dispatch — flushes head before body for faster FCP.
+    const result = router.dispatchStreaming(req);
+    var response = result.response;
 
+    if (result.is_streaming) {
+        // Streaming: flush head → body → tail as chunked transfer.
+        var hot_reload_tail: []const u8 = "";
+        if (dev) {
+            hot_reload_tail = hot_reload_script;
+        }
+
+        const fixed = [1]std.http.Header{
+            .{ .name = "content-type", .value = "text/html; charset=utf-8" },
+        } ++ security_headers;
+
+        var header_buf: [4096]u8 = undefined;
+        var bw = try std_req.respondStreaming(&header_buf, .{
+            .respond_options = .{
+                .status = response.status,
+                .extra_headers = &fixed,
+            },
+        });
+        // Flush head (layout shell) — browser can start rendering immediately.
+        try bw.writer.writeAll(result.head);
+        try bw.flush();
+        // Flush page body content.
+        try bw.writer.writeAll(result.body);
+        try bw.flush();
+        // Flush tail (footer + closing tags).
+        try bw.writer.writeAll(hot_reload_tail);
+        try bw.writer.writeAll(result.tail);
+        try bw.end();
+        return;
+    }
+
+    // Non-streaming path (API responses, redirects, full documents).
     // Dev mode: inject hot-reload script before </body>.
     var owned_body: ?[]u8 = null;
     if (dev and response.content_type == .html) {

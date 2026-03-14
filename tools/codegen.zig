@@ -44,7 +44,7 @@ pub fn main() !void {
     );
 
     for (entries.items) |path| {
-        const ident       = try toIdent(alloc, path);
+        const ident = try toIdent(alloc, path);
         defer alloc.free(ident);
         const import_name = try toImportName(alloc, path);
         defer alloc.free(import_name);
@@ -55,7 +55,7 @@ pub fn main() !void {
     for (entries.items) |path| {
         const ident = try toIdent(alloc, path);
         defer alloc.free(ident);
-        const url   = try toUrl(alloc, path);
+        const url = try toUrl(alloc, path);
         defer alloc.free(url);
         try w.print("    .{{ .path = \"{s}\", .render = {s}.render, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}}, .prerender = if (@hasDecl({s}, \"prerender\")) {s}.prerender else false }},\n", .{ url, ident, ident, ident, ident, ident });
     }
@@ -74,9 +74,11 @@ pub fn main() !void {
     // --- Framework primitives (auto-detected) ---
 
     // Layout — if app/layout.zig exists, export its wrap function.
+    // Also export streamWrap for streaming SSR if the layout provides it.
     if (fileExists("app/layout.zig")) {
         try w.writeAll("const app_layout = @import(\"app/layout\");\n");
         try w.writeAll("pub const layout = app_layout.wrap;\n");
+        try w.writeAll("pub const streamLayout = if (@hasDecl(app_layout, \"streamWrap\")) app_layout.streamWrap else null;\n");
     }
 
     // Error handlers — if app/404.zig exists, export its render function.
@@ -131,9 +133,7 @@ fn toIdent(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
 /// "app/about.zig" → "app/about"   (module import name)
 /// "api/hello.zig" → "api/hello"
 fn toImportName(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
-    return alloc.dupe(u8,
-        if (std.mem.endsWith(u8, path, ".zig")) path[0 .. path.len - 4] else path
-    );
+    return alloc.dupe(u8, if (std.mem.endsWith(u8, path, ".zig")) path[0 .. path.len - 4] else path);
 }
 
 /// URL mapping:

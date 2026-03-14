@@ -8,6 +8,9 @@ const res_mod = @import("response.zig");
 /// Framework version — kept in sync with build.zig.zon.
 pub const version = "0.1.0";
 
+// --- Streaming SSR ----------------------------------------------------------
+pub const StreamParts = struct { head: []const u8, tail: []const u8 };
+
 // --- HTTP types -------------------------------------------------------------
 pub const Method = req_mod.Method;
 pub const Param = req_mod.Param;

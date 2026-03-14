@@ -11,6 +11,10 @@ pub fn buildRouter(allocator: std.mem.Allocator) Router {
     if (@hasDecl(generated, "layout")) {
         r.layout = generated.layout;
     }
+    // Enable streaming SSR if the layout exports streamWrap.
+    if (@hasDecl(generated, "streamLayout")) {
+        r.stream_layout = generated.streamLayout;
+    }
     if (@hasDecl(generated, "notFound")) {
         r.not_found = generated.notFound;
     }

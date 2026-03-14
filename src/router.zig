@@ -9,6 +9,8 @@ const mer = @import("mer");
 pub const RenderFn = *const fn (req: mer.Request) mer.Response;
 pub const LayoutFn = *const fn (std.mem.Allocator, []const u8, []const u8, mer.Meta) []const u8;
 
+pub const StreamParts = mer.StreamParts;
+pub const StreamLayoutFn = *const fn (std.mem.Allocator, []const u8, mer.Meta) StreamParts;
 pub const Route = struct {
     path: []const u8,
     render: RenderFn,
@@ -21,6 +23,7 @@ pub const Router = struct {
     allocator: std.mem.Allocator,
     not_found: ?RenderFn = null,
     layout: ?LayoutFn = null,
+    stream_layout: ?StreamLayoutFn = null,
     /// Hash map for O(1) exact route lookups.
     exact_map: std.StringHashMapUnmanaged(usize) = .{},
     /// Subset of routes containing dynamic segments (`:param`).
@@ -101,6 +104,82 @@ pub const Router = struct {
         }
 
         return response;
+    }
+
+    /// Result of a streaming dispatch — head/body/tail are separate for chunked flushing.
+    pub const StreamResult = struct {
+        head: []const u8,
+        body: []const u8,
+        tail: []const u8,
+        response: mer.Response,
+        is_streaming: bool,
+    };
+
+    /// Dispatch with streaming layout support. If stream_layout is set and the
+    /// response is HTML, returns head/body/tail separately for chunked flushing.
+    /// Otherwise falls back to the normal assembled response.
+    pub fn dispatchStreaming(self: Router, req: mer.Request) StreamResult {
+        var meta: mer.Meta = .{};
+        var params_buf: [8]mer.Param = undefined;
+
+        var response: mer.Response = blk: {
+            if (self.exact_map.get(req.path)) |idx| {
+                meta = self.routes[idx].meta;
+                break :blk self.routes[idx].render(req);
+            }
+            for (self.dynamic_routes) |route| {
+                if (matchRoute(route.path, req.path, &params_buf)) |n| {
+                    meta = route.meta;
+                    var dyn_req = req;
+                    dyn_req.params = req.allocator.dupe(mer.Param, params_buf[0..n]) catch &.{};
+                    break :blk route.render(dyn_req);
+                }
+            }
+            if (req.path.len > 1 and req.path[req.path.len - 1] == '/') {
+                const trimmed = req.path[0 .. req.path.len - 1];
+                if (self.exact_map.get(trimmed)) |idx| {
+                    meta = self.routes[idx].meta;
+                    break :blk self.routes[idx].render(req);
+                }
+                for (self.dynamic_routes) |route| {
+                    if (matchRoute(route.path, trimmed, &params_buf)) |n| {
+                        meta = route.meta;
+                        var dyn_req = req;
+                        dyn_req.params = req.allocator.dupe(mer.Param, params_buf[0..n]) catch &.{};
+                        break :blk route.render(dyn_req);
+                    }
+                }
+            }
+            if (self.not_found) |nf| break :blk nf(req);
+            break :blk mer.notFound();
+        };
+
+        // Use streaming layout if available and response is an HTML fragment.
+        if (self.stream_layout) |stream_wrap| {
+            if (response.content_type == .html and response.body.len > 0) {
+                if (!std.mem.startsWith(u8, response.body, "<!")) {
+                    const parts = stream_wrap(req.allocator, req.path, meta);
+                    return .{
+                        .head = parts.head,
+                        .body = response.body,
+                        .tail = parts.tail,
+                        .response = response,
+                        .is_streaming = true,
+                    };
+                }
+            }
+        }
+
+        // Fallback: use regular layout wrapping.
+        if (self.layout) |wrap| {
+            if (response.content_type == .html and response.body.len > 0) {
+                if (!std.mem.startsWith(u8, response.body, "<!")) {
+                    response.body = wrap(req.allocator, req.path, response.body, meta);
+                }
+            }
+        }
+
+        return .{ .head = "", .body = response.body, .tail = "", .response = response, .is_streaming = false };
     }
 };
 
