@@ -51,6 +51,30 @@ pub fn renderStream(req: mer.Request, stream: *mer.StreamWriter) void {
         \\  <p>The server sent this entire page shell immediately via <code>transfer-encoding: chunked</code>. The skeleton cards above are real DOM elements with shimmer animations. Right now the server is fetching weather data from 3 different API endpoints in parallel. As each resolves, an inline <code>&lt;script&gt;</code> swaps the skeleton with real content. No React. No hydration. Just HTML.</p>
         \\</div>
     );
+
+    // ── Comparison timeline — visible in shell, before any data ─────
+    stream.write(
+        \\<div class="compare">
+        \\  <h3>Streaming vs Traditional SSR</h3>
+        \\  <p class="compare-desc">Traditional SSR waits for every fetch before sending a single byte. merjs streams the shell immediately — skeletons resolve as each fetch completes.</p>
+        \\  <div class="tl">
+        \\    <div class="tl-label">merjs</div>
+        \\    <div class="tl-track">
+        \\      <div class="tl-shell">shell</div>
+        \\      <div class="tl-card tl-c1">card 1</div>
+        \\      <div class="tl-card tl-c2">card 2</div>
+        \\      <div class="tl-card tl-c3">card 3</div>
+        \\    </div>
+        \\    <div class="tl-label gray">Next.js</div>
+        \\    <div class="tl-track">
+        \\      <div class="tl-wait">waiting for all 3 fetches...</div>
+        \\      <div class="tl-full">page</div>
+        \\    </div>
+        \\  </div>
+        \\  <div class="tl-axis"><span>0ms</span><span>200ms</span><span>400ms</span><span>600ms</span></div>
+        \\  <p class="tl-note">* Timeline simulates 3 parallel 200ms API calls. Animation plays on load.</p>
+        \\</div>
+    );
     // ^^^ Everything above is in the browser NOW, before any fetch.
 
     // ── Fetch weather for 3 cities in parallel ─────────────────────
@@ -140,4 +164,25 @@ const page_css =
     \\.explainer p { font-size:14px; color:var(--muted); line-height:1.7; }
     \\.explainer code { font-family:'SF Mono','Fira Code',monospace; font-size:12px; background:var(--bg3); padding:1px 5px; border-radius:3px; }
     \\@media(max-width:600px) { .cards { grid-template-columns:1fr; } .card-temp { font-size:32px; } }
+    \\.compare { margin-top:28px; background:var(--bg2); border-radius:10px; padding:22px 24px; }
+    \\.compare h3 { font-family:'DM Serif Display',Georgia,serif; font-size:16px; margin-bottom:6px; }
+    \\.compare-desc { font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:18px; }
+    \\.tl { display:grid; grid-template-columns:64px 1fr; gap:6px 10px; align-items:center; }
+    \\.tl-label { font-size:11px; font-weight:700; color:var(--text); text-align:right; letter-spacing:0.03em; }
+    \\.tl-label.gray { color:var(--muted); font-weight:400; }
+    \\.tl-track { position:relative; height:30px; background:var(--bg3); border-radius:4px; overflow:hidden; }
+    \\.tl-shell { position:absolute; left:1%; top:4px; height:22px; width:5%; min-width:36px; background:#22c55e; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:600; color:#fff; white-space:nowrap; opacity:0; animation:tlPop 0.25s 0.1s forwards; }
+    \\.tl-card { position:absolute; top:4px; height:22px; background:var(--red); border-radius:3px; display:flex; align-items:center; justify-content:center; padding:0 5px; font-size:9px; font-weight:600; color:#fff; white-space:nowrap; opacity:0; }
+    \\.tl-c1 { left:33%; width:9%; animation:tlPop 0.25s 0.6s forwards; }
+    \\.tl-c2 { left:55%; width:9%; animation:tlPop 0.25s 1.0s forwards; }
+    \\.tl-c3 { left:78%; width:9%; animation:tlPop 0.25s 1.4s forwards; }
+    \\.tl-wait { position:absolute; left:0; top:4px; height:22px; width:0; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:3px; display:flex; align-items:center; padding:0 8px; font-size:9px; color:var(--muted); overflow:hidden; white-space:nowrap; animation:tlGrow 1.7s 0.1s forwards; }
+    \\.tl-full { position:absolute; left:87%; top:4px; height:22px; width:10%; background:#3b82f6; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:600; color:#fff; opacity:0; animation:tlPop 0.25s 1.8s forwards; }
+    \\@keyframes tlPop { from{opacity:0;transform:scale(0.8)} to{opacity:1;transform:scale(1)} }
+    \\@keyframes tlGrow { to{width:87%} }
+    \\.tl-axis { display:grid; grid-template-columns:64px 1fr; gap:0 10px; margin-top:4px; }
+    \\.tl-axis span { display:inline-block; }
+    \\.tl-axis > span:first-child { display:block; }
+    \\.tl-ruler { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); padding:0 1px; }
+    \\.tl-note { font-size:11px; color:var(--muted); margin-top:10px; opacity:0.7; }
 ;
