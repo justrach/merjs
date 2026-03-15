@@ -271,6 +271,7 @@ pub const FetchResponse = struct {
 ///   defer res.deinit(req.allocator);
 ///   if (res.status != .ok) return mer.internalError("upstream error");
 pub fn fetch(allocator: std.mem.Allocator, opts: FetchRequest) !FetchResponse {
+    if (comptime @import("builtin").os.tag == .freestanding) return error.NotSupported;
     var client = std.http.Client{ .allocator = allocator };
     defer client.deinit();
 
@@ -303,6 +304,14 @@ pub fn fetch(allocator: std.mem.Allocator, opts: FetchRequest) !FetchResponse {
 pub fn fetchAll(allocator: std.mem.Allocator, requests: []const FetchRequest) []?FetchResponse {
     const results = allocator.alloc(?FetchResponse, requests.len) catch return &.{};
     @memset(results, null);
+
+    // WASM (wasm32-freestanding) is single-threaded — fetch sequentially.
+    if (comptime @import("builtin").single_threaded) {
+        for (requests, 0..) |req_opts, i| {
+            results[i] = fetch(allocator, req_opts) catch null;
+        }
+        return results;
+    }
 
     if (requests.len == 1) {
         results[0] = fetch(allocator, requests[0]) catch null;
