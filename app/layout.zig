@@ -80,6 +80,12 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\    .nav a:hover { color:var(--text); }
         \\    .layout-footer { margin-top:64px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--muted); text-align:center; }
         \\    .layout-footer a { text-decoration:underline; text-underline-offset:2px; }
+        \\    @media (max-width:600px) {
+        \\      .layout { padding:24px 16px 64px; }
+        \\      .layout-header { flex-wrap:wrap; gap:12px; margin-bottom:32px; }
+        \\      .nav { gap:10px; flex-wrap:wrap; }
+        \\      .nav a { font-size:12px; }
+        \\    }
         \\  </style>
         \\
     ) catch return body;
@@ -182,6 +188,12 @@ pub fn streamWrap(allocator: std.mem.Allocator, path: []const u8, meta: mer.Meta
         \\    .nav a:hover { color:var(--text); }
         \\    .layout-footer { margin-top:64px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--muted); text-align:center; }
         \\    .layout-footer a { text-decoration:underline; text-underline-offset:2px; }
+        \\    @media (max-width:600px) {
+        \\      .layout { padding:24px 16px 64px; }
+        \\      .layout-header { flex-wrap:wrap; gap:12px; margin-bottom:32px; }
+        \\      .nav { gap:10px; flex-wrap:wrap; }
+        \\      .nav a { font-size:12px; }
+        \\    }
         \\  </style>
         \\
     ) catch {};
