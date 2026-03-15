@@ -82,7 +82,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\    .layout-footer a { text-decoration:underline; text-underline-offset:2px; }
         \\    @media (max-width:600px) {
         \\      .layout { padding:24px 16px 64px; }
-        \\      .layout-header { flex-wrap:wrap; gap:12px; margin-bottom:32px; }
+        \\      .layout-header { flex-direction:column; align-items:flex-start; gap:8px; margin-bottom:24px; }
         \\      .nav { gap:10px; flex-wrap:wrap; }
         \\      .nav a { font-size:12px; }
         \\    }
@@ -190,7 +190,7 @@ pub fn streamWrap(allocator: std.mem.Allocator, path: []const u8, meta: mer.Meta
         \\    .layout-footer a { text-decoration:underline; text-underline-offset:2px; }
         \\    @media (max-width:600px) {
         \\      .layout { padding:24px 16px 64px; }
-        \\      .layout-header { flex-wrap:wrap; gap:12px; margin-bottom:32px; }
+        \\      .layout-header { flex-direction:column; align-items:flex-start; gap:8px; margin-bottom:24px; }
         \\      .nav { gap:10px; flex-wrap:wrap; }
         \\      .nav a { font-size:12px; }
         \\    }
