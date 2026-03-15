@@ -305,7 +305,26 @@ pub fn fetchAll(allocator: std.mem.Allocator, requests: []const FetchRequest) []
     const results = allocator.alloc(?FetchResponse, requests.len) catch return &.{};
     @memset(results, null);
 
-    // WASM (wasm32-freestanding) is single-threaded — fetch sequentially.
+    // Freestanding (Cloudflare Workers): two-phase fetch via JS bridge.
+    if (comptime @import("builtin").os.tag == .freestanding) {
+        if (wasm_collect_mode) {
+            // Phase 1 — record URLs, return nulls (JS will fetch them).
+            for (requests) |req_opts| {
+                const url = wasm_alloc.dupe(u8, req_opts.url) catch continue;
+                wasm_collected_urls.append(wasm_alloc, url) catch {};
+            }
+        } else {
+            // Phase 2 — look up pre-fetched results from JS.
+            for (requests, 0..) |req_opts, i| {
+                if (wasm_fetch_cache.get(req_opts.url)) |body| {
+                    results[i] = .{ .status = .ok, .body = @constCast(body) };
+                }
+            }
+        }
+        return results;
+    }
+
+    // WASM single-threaded (non-freestanding) — fetch sequentially.
     if (comptime @import("builtin").single_threaded) {
         for (requests, 0..) |req_opts, i| {
             results[i] = fetch(allocator, req_opts) catch null;
@@ -349,6 +368,50 @@ pub fn fetchAll(allocator: std.mem.Allocator, requests: []const FetchRequest) []
     }
 
     return results;
+}
+
+// ── Freestanding (Workers) two-phase fetch state ─────────────────────────────
+// Populated and cleared by worker.zig exports between requests.
+
+const wasm_alloc = if (@import("builtin").os.tag == .freestanding)
+    std.heap.wasm_allocator
+else
+    @as(std.mem.Allocator, undefined);
+
+var wasm_collect_mode: bool = false;
+var wasm_collected_urls: std.ArrayListUnmanaged([]const u8) = .{};
+var wasm_fetch_cache: std.StringHashMapUnmanaged([]const u8) = .{};
+var wasm_urls_buf: []const u8 = "";
+
+/// Begin URL collection pass. fetchAll() will record URLs instead of fetching.
+pub fn wasmBeginCollect() void {
+    wasm_collect_mode = true;
+    wasm_collected_urls.clearRetainingCapacity();
+}
+
+/// End collection pass. Returns newline-delimited URL list (WASM memory).
+pub fn wasmEndCollect() []const u8 {
+    wasm_collect_mode = false;
+    if (wasm_urls_buf.len > 0) wasm_alloc.free(wasm_urls_buf);
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    for (wasm_collected_urls.items) |url| {
+        buf.appendSlice(wasm_alloc, url) catch {};
+        buf.append(wasm_alloc, '\n') catch {};
+    }
+    wasm_urls_buf = buf.toOwnedSlice(wasm_alloc) catch "";
+    return wasm_urls_buf;
+}
+
+/// Store a pre-fetched result (called by JS before the render pass).
+pub fn wasmProvideResult(url: []const u8, body: []const u8) void {
+    const u = wasm_alloc.dupe(u8, url) catch return;
+    const b = wasm_alloc.dupe(u8, body) catch return;
+    wasm_fetch_cache.put(wasm_alloc, u, b) catch {};
+}
+
+/// Clear the fetch cache after rendering.
+pub fn wasmClearCache() void {
+    wasm_fetch_cache.clearRetainingCapacity();
 }
 
 fn fetchWorker(allocator: std.mem.Allocator, opts: FetchRequest, out: *?FetchResponse) void {

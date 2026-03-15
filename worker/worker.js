@@ -250,10 +250,34 @@ export default {
 
     const ptr = wasm.alloc(encoded.length);
     if (!ptr) return new Response("WASM alloc failed", { status: 500 });
+    new Uint8Array(wasm.memory.buffer).set(encoded, ptr);
 
-    const mem = new Uint8Array(wasm.memory.buffer);
-    mem.set(encoded, ptr);
+    // Phase 1: collect URLs this page needs (WASM dry-run, no actual fetch)
+    const urlsPtr = wasm.collect_fetch_urls(ptr, encoded.length);
+    const urlsLen = wasm.collect_urls_len();
+    const urlsStr = decoder.decode(new Uint8Array(wasm.memory.buffer, urlsPtr, urlsLen));
+    const urls = urlsStr.split("\n").filter(Boolean);
 
+    // Phase 2: fetch all URLs in parallel using Workers native fetch
+    if (urls.length > 0) {
+      await Promise.all(urls.map(async (fetchUrl) => {
+        try {
+          const res = await fetch(fetchUrl);
+          const text = await res.text();
+          const uBuf = encoder.encode(fetchUrl);
+          const bBuf = encoder.encode(text);
+          const uPtr = wasm.alloc(uBuf.length);
+          const bPtr = wasm.alloc(bBuf.length);
+          new Uint8Array(wasm.memory.buffer).set(uBuf, uPtr);
+          new Uint8Array(wasm.memory.buffer).set(bBuf, bPtr);
+          wasm.provide_fetch_result(uPtr, uBuf.length, bPtr, bBuf.length);
+          wasm.dealloc(uPtr, uBuf.length);
+          wasm.dealloc(bPtr, bBuf.length);
+        } catch (_) { /* page will render error card */ }
+      }));
+    }
+
+    // Phase 3: render with pre-fetched data in cache
     const resPtr = wasm.handle(ptr, encoded.length);
     wasm.dealloc(ptr, encoded.length);
 
