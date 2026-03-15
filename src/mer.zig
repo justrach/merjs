@@ -9,6 +9,9 @@ const res_mod = @import("response.zig");
 pub const version = "0.1.0";
 
 // --- Streaming SSR ----------------------------------------------------------
+
+/// Head/tail pair returned by `streamWrap` in layout.zig. The server flushes
+/// `head` immediately, streams the page body, then sends `tail`.
 pub const StreamParts = struct { head: []const u8, tail: []const u8 };
 
 /// Writer that flushes directly to the HTTP chunked stream.
@@ -65,21 +68,43 @@ pub const StreamWriter = struct {
         self.flush();
     }
 };
-
-// --- HTTP types -------------------------------------------------------------
+/// HTTP method enum: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS, unknown.
 pub const Method = req_mod.Method;
+
+/// A single matched route parameter (key/value pair from `:param` segments).
 pub const Param = req_mod.Param;
+
+/// Incoming HTTP request. Provides path, method, query params, cookies, body,
+/// and a per-request arena allocator.
 pub const Request = req_mod.Request;
+
+/// Content-Type enum used by Response (html, json, text, css, js, wasm, ...).
 pub const ContentType = res_mod.ContentType;
+
+/// HTTP response returned by page render functions.
 pub const Response = res_mod.Response;
+
+/// SameSite cookie attribute: strict, lax, or none.
 pub const SameSite = res_mod.SameSite;
+
+/// A cookie to emit via Set-Cookie header.
 pub const SetCookie = res_mod.SetCookie;
 
 // --- Response helpers -------------------------------------------------------
+
+/// Return a 200 OK response with `text/html` content type.
 pub const html = res_mod.html;
+
+/// Return a 200 OK response with `application/json` content type.
 pub const json = res_mod.json;
+
+/// Return a response with `text/plain` content type and a custom status code.
 pub const text = res_mod.text;
+
+/// Return a 404 Not Found HTML response.
 pub const notFound = res_mod.notFound;
+
+/// Return a 500 Internal Server Error HTML response.
 pub const internalError = res_mod.internalError;
 
 /// HTTP redirect.
@@ -244,6 +269,7 @@ pub fn verifySession(token: []const u8) ?Session {
 
 // --- SSR HTTP client --------------------------------------------------------
 
+/// Options for a single HTTP request made during server-side rendering.
 pub const FetchRequest = struct {
     url: []const u8,
     method: std.http.Method = .GET,
@@ -252,6 +278,7 @@ pub const FetchRequest = struct {
     headers: []const std.http.Header = &.{},
 };
 
+/// Response from an HTTP fetch. Owns the body — call `deinit()` when done.
 pub const FetchResponse = struct {
     status: std.http.Status,
     /// Response body. Owned by the caller's allocator — call `deinit()` when done.

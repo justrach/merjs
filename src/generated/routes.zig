@@ -10,6 +10,7 @@ const app_about = @import("app/about");
 const app_blog = @import("app/blog");
 const app_counter = @import("app/counter");
 const app_dashboard = @import("app/dashboard");
+const app_docs = @import("app/docs");
 const app_index = @import("app/index");
 const app_map_demo = @import("app/map-demo");
 const app_sandbox = @import("app/sandbox");
@@ -25,6 +26,7 @@ pub const routes: []const Route = &.{
     .{ .path = "/blog", .render = app_blog.render, .render_stream = if (@hasDecl(app_blog, "renderStream")) app_blog.renderStream else null, .meta = if (@hasDecl(app_blog, "meta")) app_blog.meta else .{}, .prerender = if (@hasDecl(app_blog, "prerender")) app_blog.prerender else false },
     .{ .path = "/counter", .render = app_counter.render, .render_stream = if (@hasDecl(app_counter, "renderStream")) app_counter.renderStream else null, .meta = if (@hasDecl(app_counter, "meta")) app_counter.meta else .{}, .prerender = if (@hasDecl(app_counter, "prerender")) app_counter.prerender else false },
     .{ .path = "/dashboard", .render = app_dashboard.render, .render_stream = if (@hasDecl(app_dashboard, "renderStream")) app_dashboard.renderStream else null, .meta = if (@hasDecl(app_dashboard, "meta")) app_dashboard.meta else .{}, .prerender = if (@hasDecl(app_dashboard, "prerender")) app_dashboard.prerender else false },
+    .{ .path = "/docs", .render = app_docs.render, .render_stream = if (@hasDecl(app_docs, "renderStream")) app_docs.renderStream else null, .meta = if (@hasDecl(app_docs, "meta")) app_docs.meta else .{}, .prerender = if (@hasDecl(app_docs, "prerender")) app_docs.prerender else false },
     .{ .path = "/", .render = app_index.render, .render_stream = if (@hasDecl(app_index, "renderStream")) app_index.renderStream else null, .meta = if (@hasDecl(app_index, "meta")) app_index.meta else .{}, .prerender = if (@hasDecl(app_index, "prerender")) app_index.prerender else false },
     .{ .path = "/map-demo", .render = app_map_demo.render, .render_stream = if (@hasDecl(app_map_demo, "renderStream")) app_map_demo.renderStream else null, .meta = if (@hasDecl(app_map_demo, "meta")) app_map_demo.meta else .{}, .prerender = if (@hasDecl(app_map_demo, "prerender")) app_map_demo.prerender else false },
     .{ .path = "/sandbox", .render = app_sandbox.render, .render_stream = if (@hasDecl(app_sandbox, "renderStream")) app_sandbox.renderStream else null, .meta = if (@hasDecl(app_sandbox, "meta")) app_sandbox.meta else .{}, .prerender = if (@hasDecl(app_sandbox, "prerender")) app_sandbox.prerender else false },
@@ -38,6 +40,7 @@ comptime {
     if (!@hasDecl(app_blog, "meta")) @compileError("app/blog.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_counter, "meta")) @compileError("app/counter.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_dashboard, "meta")) @compileError("app/dashboard.zig must export pub const meta: mer.Meta");
+    if (!@hasDecl(app_docs, "meta")) @compileError("app/docs.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_index, "meta")) @compileError("app/index.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_map_demo, "meta")) @compileError("app/map-demo.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_sandbox, "meta")) @compileError("app/sandbox.zig must export pub const meta: mer.Meta");

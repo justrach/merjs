@@ -101,6 +101,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\      <a href="/dashboard">Dashboard</a>
         \\      <a href="/counter">Counter</a>
         \\      <a href="/about">About</a>
+        \\      <a href="/docs">Docs</a>
         \\    </nav>
         \\  </header>
         \\
@@ -200,6 +201,7 @@ pub fn streamWrap(allocator: std.mem.Allocator, path: []const u8, meta: mer.Meta
         \\      <a href="/dashboard">Dashboard</a>
         \\      <a href="/counter">Counter</a>
         \\      <a href="/about">About</a>
+        \\      <a href="/docs">Docs</a>
         \\    </nav>
         \\  </header>
         \\
