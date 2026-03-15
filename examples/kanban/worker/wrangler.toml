@@ -1,0 +1,17 @@
+name = "merjs-kanban"
+main = "worker.js"
+compatibility_date = "2024-12-01"
+
+routes = [
+  { pattern = "merboard.merlionjs.com", custom_domain = true }
+]
+
+[assets]
+directory = "../public"
+
+[build]
+command = "cd ../../../ && zig build worker-example-kanban"
+
+[[rules]]
+type = "CompiledWasm"
+globs = ["**/*.wasm"]
