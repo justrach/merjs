@@ -94,10 +94,10 @@ Visit `http://localhost:3000`.
 |                        | **merjs**                  | **Next.js**                    |
 | ---------------------- | -------------------------- | ------------------------------ |
 <!-- BENCH:START -->
-| Requests/sec (wrk)    | **195.16 req/s**     | **2090.46 req/s**          |
-| Avg latency           | **40.86ms 2.38ms**           | **77.47ms 180.43ms**                |
-| RAM usage (under load) | **4.4 MB**        | **72.0 MB**             |
-| Build time             | **3318 ms**                | **29580 ms**                   |
+| Requests/sec (wrk)    | **195.17 req/s**     | **2051.60 req/s**          |
+| Avg latency           | **40.88ms 1.94ms**           | **77.19ms 177.83ms**                |
+| RAM usage (under load) | **4.3 MB**        | **72.6 MB**             |
+| Build time             | **3468 ms**                | **29521 ms**                   |
 <!-- BENCH:END -->
 
 > merjs is an early experiment — Next.js is mature and production-grade. Local and CI numbers differ due to hardware (Apple Silicon vs shared GitHub Actions VM).
