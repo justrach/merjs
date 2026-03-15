@@ -202,7 +202,81 @@ pub const Router = struct {
 
         return .{ .head = "", .body = response.body, .tail = "", .response = response, .is_streaming = false };
     }
+
+    /// Like dispatch() but calls renderStream (if present) with a buffering writer,
+    /// so pages that only export renderStream work on Cloudflare Workers.
+    pub fn dispatchBuffered(self: Router, req: mer.Request) mer.Response {
+        var meta: mer.Meta = .{};
+        var params_buf: [8]mer.Param = undefined;
+
+        // Find the route.
+        const route: ?Route = blk: {
+            if (self.exact_map.get(req.path)) |idx| {
+                meta = self.routes[idx].meta;
+                break :blk self.routes[idx];
+            }
+            for (self.dynamic_routes) |route| {
+                if (matchRoute(route.path, req.path, &params_buf)) |n| {
+                    meta = route.meta;
+                    var dyn_req = req;
+                    dyn_req.params = req.allocator.dupe(mer.Param, params_buf[0..n]) catch &.{};
+                    break :blk route;
+                }
+            }
+            if (req.path.len > 1 and req.path[req.path.len - 1] == '/') {
+                const trimmed = req.path[0 .. req.path.len - 1];
+                if (self.exact_map.get(trimmed)) |idx| {
+                    meta = self.routes[idx].meta;
+                    break :blk self.routes[idx];
+                }
+            }
+            break :blk null;
+        };
+
+        // If the route has renderStream, buffer it into a full response.
+        if (route) |r| {
+            if (r.render_stream) |rs| {
+                var ctx = BufCtx{ .alloc = req.allocator };
+                var stream = mer.StreamWriter{
+                    .allocator = req.allocator,
+                    .ctx = &ctx,
+                    .writeFn = bufWriteFn,
+                    .flushFn = bufFlushFn,
+                };
+                rs(req, &stream);
+                const body = ctx.list.toOwnedSlice(req.allocator) catch "";
+
+                // Wrap with stream layout (head + body + tail).
+                if (self.stream_layout) |wrap| {
+                    const parts = wrap(req.allocator, req.path, meta);
+                    const full = std.mem.concat(req.allocator, u8, &.{ parts.head, body, parts.tail }) catch body;
+                    return .{ .status = .ok, .content_type = .html, .body = full };
+                }
+                if (self.layout) |wrap| {
+                    return .{ .status = .ok, .content_type = .html, .body = wrap(req.allocator, req.path, body, meta) };
+                }
+                return .{ .status = .ok, .content_type = .html, .body = body };
+            }
+        }
+
+        // No renderStream — fall back to regular dispatch.
+        return self.dispatch(req);
+    }
 };
+
+const BufCtx = struct {
+    list: std.ArrayListUnmanaged(u8) = .{},
+    alloc: std.mem.Allocator,
+};
+
+fn bufWriteFn(ctx: *anyopaque, data: []const u8) void {
+    const bc: *BufCtx = @ptrCast(@alignCast(ctx));
+    bc.list.appendSlice(bc.alloc, data) catch {};
+}
+
+fn bufFlushFn(ctx: *anyopaque) void {
+    _ = ctx;
+}
 
 /// Try to match `req_path` against `route_path` where `:name` segments are wildcards.
 fn matchRoute(route_path: []const u8, req_path: []const u8, out: []mer.Param) ?usize {

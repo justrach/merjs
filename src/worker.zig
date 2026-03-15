@@ -68,7 +68,7 @@ export fn handle(req_ptr: [*]const u8, req_len: u32) ?[*]const u8 {
 
     const r = router orelse return null;
     const req = mer.Request.init(allocator, method, path);
-    const response = r.dispatch(req);
+    const response = r.dispatchBuffered(req);
 
     // Encode response: status_u16 LE | ct_len_u16 LE | content-type | body
     const ct_str = response.content_type.mime();
