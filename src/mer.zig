@@ -46,17 +46,22 @@ pub const StreamWriter = struct {
 
     /// Resolve a placeholder — sends the real content in a hidden div + inline script
     /// that swaps it into the placeholder. This is the Marko/React $RC pattern.
+    /// Resolve a placeholder with real content.
+    /// Writes a hidden div with the content + a script that swaps it in.
     pub fn resolve(self: *StreamWriter, id: []const u8, content: []const u8) void {
+        // Write resolved content hidden
         self.write("<div hidden id=\"S:");
         self.write(id);
         self.write("\">");
         self.write(content);
-        self.write("</div>");
-        self.write("<script>document.getElementById('P:");
+        self.write("</div><script>");
+        // Swap: move children from hidden div to replace placeholder
+        self.write("(function(){var p=document.getElementById('P:");
         self.write(id);
-        self.write("').outerHTML=document.getElementById('S:");
+        self.write("'),s=document.getElementById('S:");
         self.write(id);
-        self.write("').innerHTML</script>");
+        self.write("');if(p&&s){p.outerHTML=s.innerHTML;s.remove()}}())");
+        self.write("</script>");
         self.flush();
     }
 };
