@@ -98,6 +98,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\    <a href="/" class="wordmark"><img src="/merlion.png" alt="merjs logo" class="logo" width="24" height="24" fetchpriority="high">mer<span>js</span></a>
         \\    <nav class="nav">
         \\      <a href="/blog">Blog</a>
+        \\      <a href="/stream-demo">Stream</a>
         \\      <a href="/dashboard">Dashboard</a>
         \\      <a href="/counter">Counter</a>
         \\      <a href="/about">About</a>
@@ -198,6 +199,7 @@ pub fn streamWrap(allocator: std.mem.Allocator, path: []const u8, meta: mer.Meta
         \\    <a href="/" class="wordmark"><img src="/merlion.png" alt="merjs logo" class="logo" width="24" height="24" fetchpriority="high">mer<span>js</span></a>
         \\    <nav class="nav">
         \\      <a href="/blog">Blog</a>
+        \\      <a href="/stream-demo">Stream</a>
         \\      <a href="/dashboard">Dashboard</a>
         \\      <a href="/counter">Counter</a>
         \\      <a href="/about">About</a>

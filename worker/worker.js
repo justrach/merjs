@@ -253,10 +253,16 @@ export default {
     new Uint8Array(wasm.memory.buffer).set(encoded, ptr);
 
     // Phase 1: collect URLs this page needs (WASM dry-run, no actual fetch)
-    const urlsPtr = wasm.collect_fetch_urls(ptr, encoded.length);
-    const urlsLen = wasm.collect_urls_len();
-    const urlsStr = decoder.decode(new Uint8Array(wasm.memory.buffer, urlsPtr, urlsLen));
-    const urls = urlsStr.split("\n").filter(Boolean);
+    let urls = [];
+    try {
+      const urlsPtr = wasm.collect_fetch_urls(ptr, encoded.length);
+      const urlsLen = wasm.collect_urls_len();
+      const urlsStr = decoder.decode(new Uint8Array(wasm.memory.buffer, urlsPtr, urlsLen));
+      urls = urlsStr.split("\n").filter(Boolean);
+    } catch (_) {
+      // collect phase failed (WASM trap) — reset instance and re-init for next request
+      instance = null;
+    }
 
     // Phase 2: fetch all URLs in parallel using Workers native fetch
     if (urls.length > 0) {
@@ -278,7 +284,13 @@ export default {
     }
 
     // Phase 3: render with pre-fetched data in cache
-    const resPtr = wasm.handle(ptr, encoded.length);
+    let resPtr;
+    try {
+      resPtr = wasm.handle(ptr, encoded.length);
+    } catch (_) {
+      instance = null;
+      return new Response("Internal Server Error", { status: 500 });
+    }
     wasm.dealloc(ptr, encoded.length);
 
     if (!resPtr) return new Response("Not Found", { status: 404 });

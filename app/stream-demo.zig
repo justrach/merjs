@@ -56,7 +56,7 @@ pub fn renderStream(req: mer.Request, stream: *mer.StreamWriter) void {
     stream.write(
         \\<div class="compare">
         \\  <h3>Streaming vs Traditional SSR</h3>
-        \\  <p class="compare-desc">Traditional SSR waits for every fetch before sending a single byte. merjs streams the shell immediately — skeletons resolve as each fetch completes.</p>
+        \\  <p class="compare-desc">Next.js App Router (React Suspense) also streams — props to them. The real difference: merjs does it with zero React, zero Node.js, zero hydration. Just Zig compiled to WASM and chunked HTML. Next.js Pages Router (<code>getServerSideProps</code>) still blocks until all data resolves.</p>
         \\  <div class="tl">
         \\    <div class="tl-label">merjs</div>
         \\    <div class="tl-track">
@@ -65,14 +65,21 @@ pub fn renderStream(req: mer.Request, stream: *mer.StreamWriter) void {
         \\      <div class="tl-card tl-c2">card 2</div>
         \\      <div class="tl-card tl-c3">card 3</div>
         \\    </div>
-        \\    <div class="tl-label gray">Next.js</div>
+        \\    <div class="tl-label gray">Next.js<br>App</div>
+        \\    <div class="tl-track">
+        \\      <div class="tl-shell tl-shell-gray">shell</div>
+        \\      <div class="tl-card tl-c1 tl-gray">card 1</div>
+        \\      <div class="tl-card tl-c2 tl-gray">card 2</div>
+        \\      <div class="tl-card tl-c3 tl-gray">card 3</div>
+        \\    </div>
+        \\    <div class="tl-label gray">Next.js<br>Pages</div>
         \\    <div class="tl-track">
         \\      <div class="tl-wait">waiting for all 3 fetches...</div>
         \\      <div class="tl-full">page</div>
         \\    </div>
         \\  </div>
         \\  <div class="tl-axis"><span>0ms</span><span>200ms</span><span>400ms</span><span>600ms</span></div>
-        \\  <p class="tl-note">* Timeline simulates 3 parallel 200ms API calls. Animation plays on load.</p>
+        \\  <p class="tl-note">* merjs and Next.js App Router both stream. merjs: Zig/WASM, no JS runtime, no hydration. Next.js App: React 18 + Suspense + Node.js + hydration.</p>
         \\</div>
     );
     // ^^^ Everything above is in the browser NOW, before any fetch.
@@ -185,4 +192,6 @@ const page_css =
     \\.tl-axis > span:first-child { display:block; }
     \\.tl-ruler { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); padding:0 1px; }
     \\.tl-note { font-size:11px; color:var(--muted); margin-top:10px; opacity:0.7; }
+    \\.tl-shell-gray { position:absolute; left:1%; top:4px; height:22px; width:5%; min-width:36px; background:#6b7280; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:600; color:#fff; white-space:nowrap; opacity:0; animation:tlPop 0.25s 0.1s forwards; }
+    \\.tl-gray { background:#6b7280 !important; }
 ;
