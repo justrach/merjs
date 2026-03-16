@@ -358,7 +358,7 @@ pub fn parseIso8601(s: []const u8) ParseError!i64 {
     const sc = @as(i64, secs);
 
     const dim = [_]i64{ 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-    const ilp: i64 = if ((y % 4 == 0 and y % 100 != 0) or (y % 400 == 0)) 1 else 0;
+    const ilp: i64 = if ((@rem(y, 4) == 0 and @rem(y, 100) != 0) or (@rem(y, 400) == 0)) 1 else 0;
     const yse = y - 1970;
     const leaps: i64 = blk: {
         if (y <= 1970) break :blk 0;

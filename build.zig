@@ -201,6 +201,17 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
+    // ── merjs-auth: wire + test ──────────────────────────────────────────────
+    const merjs_auth_mod = b.createModule(.{
+        .root_source_file = b.path("packages/merjs-auth/src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    merjs_auth_mod.addImport("mer", mer_mod);
+    const merjs_auth_tests = b.addTest(.{ .root_module = merjs_auth_mod });
+    const run_auth_tests = b.addRunArtifact(merjs_auth_tests);
+    const auth_test_step = b.step("test-auth", "Run merjs-auth unit tests");
+    auth_test_step.dependOn(&run_auth_tests.step);
 }
 
 /// Scan dir/ and add each *.zig as a named module import.
