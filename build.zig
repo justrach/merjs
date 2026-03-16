@@ -94,6 +94,20 @@ pub fn build(b: *std.Build) void {
     const wasm_step = b.step("wasm", "Compile wasm/counter.zig → public/counter.wasm");
     wasm_step.dependOn(&install_wasm.step);
 
+    // ── WASM: wasm/synth.zig → public/synth.wasm ──────────────────────────────
+    const synth_wasm = b.addExecutable(.{
+        .name = "synth",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("wasm/synth.zig"),
+            .target = wasm_target,
+            .optimize = .ReleaseSmall,
+        }),
+    });
+    synth_wasm.rdynamic = true;
+    synth_wasm.entry = .disabled;
+    const install_synth = b.addInstallFile(synth_wasm.getEmittedBin(), "../public/synth.wasm");
+    wasm_step.dependOn(&install_synth.step);
+
     // ── WASM: wasm/grep.zig → worker/grep.wasm ────────────────────────────
     const grep_wasm = b.addExecutable(.{
         .name = "grep",
