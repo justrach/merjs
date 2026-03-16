@@ -1,0 +1,12 @@
+.{
+    .name = .@"merjs-auth",
+    .version = "0.1.0",
+    .fingerprint = 0x0000000000000000,
+    .paths = .{
+        "src",
+        "schema",
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{},
+}
