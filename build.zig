@@ -211,4 +211,20 @@ pub fn build(b: *std.Build) void {
 
     // ── Packages ────────────────────────────────────────────────────────────
     packages.addPackages(b, target, optimize, mer_mod);
+
+    // ── `zig build desktop-spike` — macOS native app research (#50) ─────────
+    if (target.result.os.tag == .macos) {
+        const spike_mod = b.createModule(.{
+            .root_source_file = b.path("examples/desktop/spike.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        const spike_exe = b.addExecutable(.{ .name = "desktop-spike", .root_module = spike_mod });
+        spike_exe.linkFramework("AppKit");
+        spike_exe.linkFramework("WebKit");
+        spike_exe.linkFramework("Foundation");
+        spike_exe.linkLibC();
+        const spike_step = b.step("desktop-spike", "Research spike: Zig ObjC bridge for AppKit/WebKit (#50)");
+        spike_step.dependOn(&b.addInstallArtifact(spike_exe, .{}).step);
+    }
 }
