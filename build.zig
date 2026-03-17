@@ -187,7 +187,36 @@ pub fn build(b: *std.Build) void {
         desktop_exe.linkFramework("WebKit");
         desktop_exe.linkFramework("Foundation");
         desktop_exe.linkLibC();
-        const desktop_step = b.step("desktop", "Build native macOS desktop app");
-        desktop_step.dependOn(&b.addInstallArtifact(desktop_exe, .{}).step);
+        const desktop_install = b.addInstallArtifact(desktop_exe, .{});
+        const desktop_step = b.step("desktop", "Build native macOS desktop app (also produces MerApp.app bundle)");
+        desktop_step.dependOn(&desktop_install.step);
+
+        // ── .app bundle — MerApp.app/Contents/MacOS/merapp + Info.plist ──────
+        const plist = b.addWriteFile("MerApp.app/Contents/Info.plist",
+            \\<?xml version="1.0" encoding="UTF-8"?>
+            \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            \\<plist version="1.0">
+            \\<dict>
+            \\  <key>CFBundleExecutable</key>    <string>merapp</string>
+            \\  <key>CFBundleIdentifier</key>    <string>com.merjs.desktop</string>
+            \\  <key>CFBundleName</key>          <string>MerApp</string>
+            \\  <key>CFBundleVersion</key>       <string>0.2.0</string>
+            \\  <key>NSHighResolutionCapable</key><true/>
+            \\  <key>NSPrincipalClass</key>      <string>NSApplication</string>
+            \\</dict>
+            \\</plist>
+        );
+        const bundle_bin = b.addInstallFile(
+            desktop_exe.getEmittedBin(),
+            "MerApp.app/Contents/MacOS/merapp",
+        );
+        bundle_bin.step.dependOn(&desktop_install.step);
+        const bundle_plist = b.addInstallDirectory(.{
+            .source_dir = plist.getDirectory(),
+            .install_dir = .prefix,
+            .install_subdir = "",
+        });
+        desktop_step.dependOn(&bundle_bin.step);
+        desktop_step.dependOn(&bundle_plist.step);
     }
 }
