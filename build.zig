@@ -227,4 +227,30 @@ pub fn build(b: *std.Build) void {
         const spike_step = b.step("desktop-spike", "Research spike: Zig ObjC bridge for AppKit/WebKit (#50)");
         spike_step.dependOn(&b.addInstallArtifact(spike_exe, .{}).step);
     }
+
+    // ── `zig build desktop` — native macOS desktop app ──────────────────────
+    if (target.result.os.tag == .macos) {
+        const desktop_mod = b.createModule(.{
+            .root_source_file = b.path("examples/desktop/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        desktop_mod.addImport("mer", mer_mod);
+        const merjs_internal = b.createModule(.{
+            .root_source_file = b.path("src/desktop_shim.zig"),
+        });
+        merjs_internal.addImport("mer", mer_mod);
+        helpers.addDirModules(b, merjs_internal, mer_mod, "examples/site/app", "app", site_extras);
+        helpers.addDirModules(b, merjs_internal, mer_mod, "examples/site/api", "api", &.{});
+        desktop_mod.addImport("merjs_internal", merjs_internal);
+        helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/app", "app", site_extras);
+        helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/api", "api", &.{});
+        const desktop_exe = b.addExecutable(.{ .name = "merapp", .root_module = desktop_mod });
+        desktop_exe.linkFramework("AppKit");
+        desktop_exe.linkFramework("WebKit");
+        desktop_exe.linkFramework("Foundation");
+        desktop_exe.linkLibC();
+        const desktop_step = b.step("desktop", "Build native macOS desktop app");
+        desktop_step.dependOn(&b.addInstallArtifact(desktop_exe, .{}).step);
+    }
 }

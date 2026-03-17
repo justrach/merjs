@@ -24,6 +24,13 @@ pub const security_headers = [_]std.http.Header{
     .{ .name = "permissions-policy", .value = "camera=(), microphone=(), geolocation=()" },
 };
 
+/// Passed (optional) to Server.listen() so callers can wait for the server
+/// to be ready and read back the actual bound port (useful when port=0).
+pub const ServerReady = struct {
+    event: std.Thread.ResetEvent = .{},
+    port: u16 = 0,
+};
+
 pub const Config = struct {
     host: []const u8 = "127.0.0.1",
     port: u16 = 3000,
@@ -31,6 +38,8 @@ pub const Config = struct {
     verbose: bool = false,
     debug: bool = false,
     kuri_port: u16 = 9222,
+    /// If non-null, listen() sets .port to the actual bound port then signals .event.
+    ready: ?*ServerReady = null,
 };
 
 pub const Server = struct {
@@ -77,7 +86,13 @@ pub const Server = struct {
         var net_server = try addr.listen(.{ .reuse_address = true, .kernel_backlog = 512 });
         defer net_server.deinit();
 
-        log.info("merjs dev server -> http://{s}:{d} ({d} threads)", .{ self.config.host, self.config.port, n_threads });
+        // Signal readiness with actual bound port (supports port=0 for desktop/testing).
+        if (self.config.ready) |r| {
+            r.port = net_server.listen_address.getPort();
+            r.event.set();
+        }
+
+        log.info("merjs dev server -> http://{s}:{d} ({d} threads)", .{ self.config.host, net_server.listen_address.getPort(), n_threads });
 
         while (true) {
             const conn = net_server.accept() catch |err| {
