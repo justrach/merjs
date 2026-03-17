@@ -8,8 +8,14 @@ src/generated/
 # Built assets (recreated by build steps)
 public/styles.css
 public/counter.wasm
-worker/merjs.wasm
+public/synth.wasm
 dist/
+
+# Cloudflare Workers — compiled WASM output
+worker/merjs.wasm
+worker/grep.wasm
+examples/kanban/worker/merjs.wasm
+examples/singapore-data-dashboard/worker/merjs.wasm
 
 # Toolchain binaries (downloaded on first build)
 tools/tailwindcss
@@ -30,13 +36,14 @@ examples/**/worker/.wrangler/
 examples/**/worker/.dev.vars
 node_modules/
 
-# Environment variables (API keys — never commit real keys)
+# Environment variables and secrets — never commit real values
 .env
 .env.local
-.env.local
 .env.*.local
+worker/.dev.vars
+packages/merjs-auth/.dev.vars
 
-# Socials / content drafts
+# Socials / content drafts (internal)
 socials/
 
 # Stale build artifacts
@@ -45,6 +52,5 @@ test_config.o
 api.main/
 app.main/
 public/style.css
-*.wasm
 *.o
-tools/*.py
+--version

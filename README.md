@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/justrach/merjs/releases/latest"><img src="https://img.shields.io/github/v/release/justrach/merjs?style=flat-square&label=version" alt="Latest Release" /></a>
   <a href="https://github.com/justrach/merjs/blob/main/LICENSE"><img src="https://img.shields.io/github/license/justrach/merjs?style=flat-square" alt="License" /></a>
-  <img src="https://img.shields.io/badge/zig-0.15.1-f7a41d?style=flat-square" alt="Zig 0.15.1" />
+  <img src="https://img.shields.io/badge/zig-0.15-f7a41d?style=flat-square" alt="Zig 0.15" />
   <img src="https://img.shields.io/badge/node__modules-0_files-brightgreen?style=flat-square" alt="Zero node_modules" />
   <img src="https://img.shields.io/badge/status-experimental-orange?style=flat-square" alt="Experimental" />
 </p>
@@ -46,7 +46,7 @@ merjs is exploring whether you can get the full Next.js developer experience —
 
 ## Quick Start
 
-**Requirements:** [Zig 0.15.1](https://ziglang.org/download/)
+**Requirements:** [Zig 0.15](https://ziglang.org/download/)
 
 ### Option A: `mer` CLI (recommended)
 
@@ -248,42 +248,71 @@ zig build worker
 
 ```
 merjs/
-├── app/                    # file-based page routes (SSR HTML)
-├── api/                    # file-based API routes (JSON)
-├── wasm/                   # client-side WASM modules (Zig → wasm32)
-├── worker/
-│   ├── worker.js           # Cloudflare Workers fetch handler
-│   └── wrangler.toml
-├── src/
+├── src/                    # framework runtime
 │   ├── mer.zig             # public API: Request, Response, h, lint, dhi
-│   ├── server.zig          # HTTP server (in-memory cache, hash-map router)
+│   ├── server.zig          # HTTP server (thread pool, hash-map router)
+│   ├── ssr.zig             # SSR engine + router builder
 │   ├── html.zig            # comptime HTML builder DSL
 │   ├── html_lint.zig       # comptime HTML linter
 │   ├── watcher.zig         # file watcher + SSE hot reload
 │   ├── prerender.zig       # SSG: render pages at build time → dist/
 │   └── generated/
-│       └── routes.zig      # codegen output — do not edit
+│       └── routes.zig      # codegen output (zig build codegen) — do not edit
 ├── cli.zig                 # `mer` CLI entry point (init, dev, build)
+├── packages/
+│   └── merjs-auth/         # optional auth package
+├── examples/
+│   ├── desktop/            # native macOS app (experimental) — zig build desktop
+│   ├── kanban/             # Kanban board demo (merboard.merlionjs.com)
+│   └── singapore-data-dashboard/
 ├── tools/
 │   ├── codegen.zig
-│   └── tailwindcss         # Tailwind v4 standalone CLI
+│   └── tailwindcss         # Tailwind v4 standalone CLI (no npm)
+│
+│   ── merjs website (dogfooding the framework) ──
+├── app/                    # website pages
+├── api/                    # website API routes
+├── wasm/                   # website client WASM modules
+├── worker/                 # Cloudflare Workers deploy target
 ├── public/                 # static assets
-├── .githooks/              # pre-commit (zig fmt + build) + pre-push (test)
+│
+├── docs/
+│   └── architecture.md     # deep-dive on internals
+├── .githooks/              # pre-commit (fmt+build) + pre-push (test)
 └── CHANGELOG.md
 ```
+
+See [docs/architecture.md](docs/architecture.md) for a full breakdown of the request lifecycle, module system, streaming SSR, and desktop bridge.
+
+---
+
+## Desktop (experimental)
+
+merjs can run as a native macOS app — no Electron, no npm, one binary:
+
+```bash
+zig build desktop
+open zig-out/MerApp.app
+```
+
+See [examples/desktop/README.md](examples/desktop/README.md) for details.
 
 ---
 
 ## Contributing
 
-Open an issue before submitting a large PR so we can align on the approach.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, build commands, and branch conventions.
+
+Quick start:
 
 ```bash
 git clone https://github.com/justrach/merjs.git
 cd merjs
-git config core.hooksPath .githooks   # enable pre-commit hooks
-zig build test                        # make sure tests pass
+git config core.hooksPath .githooks   # enable pre-commit (fmt+build) and pre-push (test)
+zig build test                        # run unit tests
 ```
+
+Open an issue before submitting a large PR.
 
 ---
 
@@ -292,7 +321,7 @@ zig build test                        # make sure tests pass
 - **[dhi](https://github.com/justrach/dhi)** — Pydantic-style validation for Zig
 - **[Tailwind CSS v4](https://tailwindcss.com)** — standalone CLI, no npm
 - **[kuri](https://github.com/justrach/kuri)** — E2E testing via headless Chrome
-- **Zig 0.15.1** — the whole stack
+- **Zig 0.15** — the whole stack
 
 ## License
 
