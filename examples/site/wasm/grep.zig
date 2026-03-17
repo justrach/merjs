@@ -26,10 +26,10 @@ export fn get_result_len() u32 {
 // ── Stopwords ──────────────────────────────────────────────────────────────
 fn isStopword(w: []const u8) bool {
     const stops = [_][]const u8{
-        "the", "and", "for", "are", "was", "were", "been", "have", "has",
-        "had", "not", "but", "with", "from", "this", "that", "its",
-        "which", "who", "how", "much", "many", "what", "does", "did",
-        "will", "would", "could", "should",
+        "the",   "and",    "for",  "are",  "was",  "were", "been", "have", "has",
+        "had",   "not",    "but",  "with", "from", "this", "that", "its",  "which",
+        "who",   "how",    "much", "many", "what", "does", "did",  "will", "would",
+        "could", "should",
     };
     for (stops) |s| {
         if (std.mem.eql(u8, w, s)) return true;

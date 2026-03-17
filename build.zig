@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
     mer_mod.addImport("dhi_model", dhi_model_mod);
     mer_mod.addImport("dhi_validator", dhi_validator_mod);
     mer_mod.addImport("counter_config", b.addModule("counter_config", .{
-        .root_source_file = b.path("wasm/counter_config.zig"),
+        .root_source_file = b.path("examples/site/wasm/counter_config.zig"),
     }));
 
     // ── Main module ─────────────────────────────────────────────────────────
@@ -27,8 +27,8 @@ pub fn build(b: *std.Build) void {
         .strip = if (optimize != .Debug) true else null,
     });
     main_mod.addImport("mer", mer_mod);
-    addDirModules(b, main_mod, mer_mod, "app");
-    addDirModules(b, main_mod, mer_mod, "api");
+    addDirModules(b, main_mod, mer_mod, "examples/site/app");
+    addDirModules(b, main_mod, mer_mod, "examples/site/api");
 
     // ── Main executable ─────────────────────────────────────────────────────
     const exe = b.addExecutable(.{
@@ -83,7 +83,7 @@ pub fn build(b: *std.Build) void {
     const counter_wasm = b.addExecutable(.{
         .name = "counter",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("wasm/counter.zig"),
+            .root_source_file = b.path("examples/site/wasm/counter.zig"),
             .target = wasm_target,
             .optimize = .ReleaseSmall,
         }),
@@ -91,14 +91,14 @@ pub fn build(b: *std.Build) void {
     counter_wasm.rdynamic = true;
     counter_wasm.entry = .disabled;
     const install_wasm = b.addInstallFile(counter_wasm.getEmittedBin(), "../public/counter.wasm");
-    const wasm_step = b.step("wasm", "Compile wasm/counter.zig → public/counter.wasm");
+    const wasm_step = b.step("wasm", "Compile examples/site/wasm/counter.zig → public/counter.wasm");
     wasm_step.dependOn(&install_wasm.step);
 
     // ── WASM: wasm/synth.zig → public/synth.wasm ──────────────────────────────
     const synth_wasm = b.addExecutable(.{
         .name = "synth",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("wasm/synth.zig"),
+            .root_source_file = b.path("examples/site/wasm/synth.zig"),
             .target = wasm_target,
             .optimize = .ReleaseSmall,
         }),
@@ -112,15 +112,15 @@ pub fn build(b: *std.Build) void {
     const grep_wasm = b.addExecutable(.{
         .name = "grep",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("wasm/grep.zig"),
+            .root_source_file = b.path("examples/site/wasm/grep.zig"),
             .target = wasm_target,
             .optimize = .ReleaseSmall,
         }),
     });
     grep_wasm.rdynamic = true;
     grep_wasm.entry = .disabled;
-    const install_grep = b.addInstallFile(grep_wasm.getEmittedBin(), "../worker/grep.wasm");
-    const grep_step = b.step("grep", "Compile wasm/grep.zig → worker/grep.wasm");
+    const install_grep = b.addInstallFile(grep_wasm.getEmittedBin(), "../examples/site/worker/grep.wasm");
+    const grep_step = b.step("grep", "Compile examples/site/wasm/grep.zig → examples/site/worker/grep.wasm");
     grep_step.dependOn(&install_grep.step);
     // Worker step dependency added below (after worker_step is defined)
 
@@ -131,16 +131,16 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseSmall,
     });
     worker_mod.addImport("mer", mer_mod);
-    addDirModules(b, worker_mod, mer_mod, "app");
-    addDirModules(b, worker_mod, mer_mod, "api");
+    addDirModules(b, worker_mod, mer_mod, "examples/site/app");
+    addDirModules(b, worker_mod, mer_mod, "examples/site/api");
     const worker_wasm = b.addExecutable(.{
         .name = "merjs",
         .root_module = worker_mod,
     });
     worker_wasm.rdynamic = true;
     worker_wasm.entry = .disabled;
-    const install_worker = b.addInstallFile(worker_wasm.getEmittedBin(), "../worker/merjs.wasm");
-    const worker_step = b.step("worker", "Compile src/worker.zig → worker/merjs.wasm (Cloudflare Workers)");
+    const install_worker = b.addInstallFile(worker_wasm.getEmittedBin(), "../examples/site/worker/merjs.wasm");
+    const worker_step = b.step("worker", "Compile src/worker.zig → examples/site/worker/merjs.wasm (Cloudflare Workers)");
     worker_step.dependOn(&install_worker.step);
     worker_step.dependOn(&install_grep.step);
 

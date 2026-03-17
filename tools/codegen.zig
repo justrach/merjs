@@ -1,4 +1,4 @@
-// tools/codegen.zig — scans app/ and api/, writes src/generated/routes.zig.
+// tools/codegen.zig — scans examples/site/app/ and examples/site/api/, writes src/generated/routes.zig.
 // Run via: zig build codegen
 
 const std = @import("std");
@@ -16,8 +16,8 @@ pub fn main() !void {
         entries.deinit(alloc);
     }
 
-    try scanDir(alloc, &entries, "app");
-    try scanDir(alloc, &entries, "api");
+    try scanDir(alloc, &entries, "examples/site/app");
+    try scanDir(alloc, &entries, "examples/site/api");
 
     // Sort routes: static before dynamic, then alphabetically within each group.
     // This ensures /users/settings always matches before /users/:id.
@@ -64,7 +64,7 @@ pub fn main() !void {
     // Enforce: every app/ page must export `pub const meta: mer.Meta`.
     try w.writeAll("comptime {\n");
     for (entries.items) |path| {
-        if (!std.mem.startsWith(u8, path, "app/")) continue;
+        if (!std.mem.startsWith(u8, path, "examples/site/app/")) continue;
         const ident = try toIdent(alloc, path);
         defer alloc.free(ident);
         try w.print("    if (!@hasDecl({s}, \"meta\")) @compileError(\"{s} must export pub const meta: mer.Meta\");\n", .{ ident, path });
@@ -75,15 +75,15 @@ pub fn main() !void {
 
     // Layout — if app/layout.zig exists, export its wrap function.
     // Also export streamWrap for streaming SSR if the layout provides it.
-    if (fileExists("app/layout.zig")) {
-        try w.writeAll("const app_layout = @import(\"app/layout\");\n");
+    if (fileExists("examples/site/app/layout.zig")) {
+        try w.writeAll("const app_layout = @import(\"examples/site/app/layout\");\n");
         try w.writeAll("pub const layout = app_layout.wrap;\n");
         try w.writeAll("pub const streamLayout = if (@hasDecl(app_layout, \"streamWrap\")) app_layout.streamWrap else null;\n");
     }
 
-    // Error handlers — if app/404.zig exists, export its render function.
-    if (fileExists("app/404.zig")) {
-        try w.writeAll("const app_404 = @import(\"app/404\");\n");
+    // Error handlers — if examples/site/app/404.zig exists, export its render function.
+    if (fileExists("examples/site/app/404.zig")) {
+        try w.writeAll("const app_404 = @import(\"examples/site/app/404\");\n");
         try w.writeAll("pub const notFound = app_404.render;\n");
     }
 
@@ -152,11 +152,14 @@ fn toImportName(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
 fn toUrl(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     const without_ext = if (std.mem.endsWith(u8, path, ".zig")) path[0 .. path.len - 4] else path;
 
-    // Strip "app/" prefix, keep "api/" as part of the URL.
-    const rel = if (std.mem.startsWith(u8, without_ext, "app/"))
-        without_ext["app/".len..]
+    // Strip "examples/site/app/" prefix for app routes.
+    // Strip "examples/site/" prefix for api routes (keeping "api/" in the URL).
+    const rel = if (std.mem.startsWith(u8, without_ext, "examples/site/app/"))
+        without_ext["examples/site/app/".len..]
+    else if (std.mem.startsWith(u8, without_ext, "examples/site/"))
+        without_ext["examples/site/".len..] // "api/hello" — stays as /api/hello
     else
-        without_ext; // "api/hello" — stays as-is
+        without_ext;
 
     // "index" at app root → "/"
     if (std.mem.eql(u8, rel, "index")) return alloc.dupe(u8, "/");

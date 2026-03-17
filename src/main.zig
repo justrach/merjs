@@ -55,13 +55,14 @@ pub fn main() !void {
     }
 
     // File watcher (dev mode only).
-    var watcher = watcher_mod.Watcher.init(alloc, "app");
+    // File watcher (dev mode only).
+    var watcher = watcher_mod.Watcher.init(alloc, "examples/site/app");
     defer watcher.deinit();
 
     if (config.dev) {
         const wt = try std.Thread.spawn(.{}, watcher_mod.Watcher.run, .{&watcher});
         wt.detach();
-        log.info("hot reload active — watching app/", .{});
+        log.info("hot reload active — watching examples/site/app/", .{});
     }
 
     var server = Server.init(alloc, config, &router, if (config.dev) &watcher else null);
