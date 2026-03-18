@@ -1,7 +1,7 @@
 .{
     .name = .merjs,
     .fingerprint = 0xaa135c45924bbfa8,
-    .version = "0.1.0",
+    .version = "0.1.1",
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .dhi = .{
@@ -14,6 +14,7 @@
         "build.zig.zon",
         "src",
         "app",
+        "wasm",
         "public",
         "tools",
     },
