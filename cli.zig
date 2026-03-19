@@ -244,6 +244,8 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
         try file.writeAll(
             \\zig-out/
             \\.zig-cache/
+            \\src/generated/
+            \\tools/
             \\dist/
             \\.env
             \\
@@ -260,7 +262,8 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     if (!use_cwd) print("    cd {s}\n", .{name});
     print("    zig build codegen     # generate routes\n", .{});
     print("    zig build serve       # start dev server on :3000\n", .{});
-    print("\n  or just: mer dev\n\n", .{});
+    print("\n  or just: mer dev\n", .{});
+    print("\n  optional: mer add css | wasm | worker\n\n", .{});
 }
 
 // ── dev ─────────────────────────────────────────────────────────────────────

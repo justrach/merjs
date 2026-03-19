@@ -69,9 +69,8 @@ zig build wasm      # compile wasm/ → public/*.wasm
 zig build serve     # dev server on :3000 with hot reload
 ```
 
-> **Optional:** To compile Tailwind CSS (no npm required), download the
-> [standalone Tailwind v4 CLI](https://github.com/tailwindlabs/tailwindcss/releases)
-> for your platform, place it at `tools/tailwindcss`, then run `zig build css`.
+> **Optional:** `zig build css` compiles Tailwind v4 (no npm). The standalone CLI is
+> auto-downloaded on first run, or you can install it manually via `mer add css`.
 
 Visit `http://localhost:3000`.
 
