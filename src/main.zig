@@ -42,6 +42,8 @@ pub fn main() !void {
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--no-dev")) {
             config.dev = false;
+        } else if (std.mem.eql(u8, args[i], "--verbose") or std.mem.eql(u8, args[i], "-v")) {
+            config.verbose = true;
         } else if (std.mem.eql(u8, args[i], "--prerender")) {
             do_prerender = true;
         }

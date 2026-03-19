@@ -24,6 +24,7 @@ pub const Config = struct {
     host: []const u8 = "127.0.0.1",
     port: u16 = 3000,
     dev: bool = false,
+    verbose: bool = false,
 };
 
 pub const Server = struct {
@@ -79,6 +80,7 @@ pub const Server = struct {
                 .watcher = self.watcher,
                 .allocator = self.allocator,
                 .dev = self.config.dev,
+                .verbose = self.config.verbose,
             };
             self.pool.spawn(handleConn, .{ctx}) catch {
                 ctx.allocator.destroy(ctx);
@@ -94,6 +96,7 @@ const ConnCtx = struct {
     watcher: ?*watcher_mod.Watcher,
     allocator: std.mem.Allocator,
     dev: bool,
+    verbose: bool,
 };
 
 fn handleConn(ctx: *ConnCtx) void {
@@ -118,10 +121,21 @@ fn handleConn(ctx: *ConnCtx) void {
             return;
         };
 
-        serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.dev) catch |err| {
+        const start = std.time.nanoTimestamp();
+        serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.dev, ctx.verbose) catch |err| {
             log.err("serveRequest: {}", .{err});
             return;
         };
+
+        if (ctx.verbose) {
+            const elapsed_ns = std.time.nanoTimestamp() - start;
+            const elapsed_us: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1000.0;
+            if (elapsed_us < 1000.0) {
+                log.info("{s} {s} {d:.0}µs", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_us });
+            } else {
+                log.info("{s} {s} {d:.1}ms", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_us / 1000.0 });
+            }
+        }
 
         // Reset arena between requests on the same connection (keep-alive).
         _ = arena.reset(.retain_capacity);
@@ -134,7 +148,9 @@ fn serveRequest(
     router: *const Router,
     watcher: ?*watcher_mod.Watcher,
     dev: bool,
+    verbose: bool,
 ) !void {
+    _ = verbose;
     const raw_target = std_req.head.target;
 
     const path: []const u8 = if (std.mem.indexOfScalar(u8, raw_target, '?')) |q|
@@ -154,6 +170,49 @@ fn serveRequest(
                 log.err("SSE handler: {}", .{err});
             };
         }
+        return;
+    }
+
+    // Debug endpoint — shows registered routes, config, memory.
+    if (dev and std.mem.eql(u8, path, "/_mer/debug")) {
+        var body: std.ArrayListUnmanaged(u8) = .{};
+        const w = body.writer(alloc);
+        try w.writeAll("<html><head><title>merjs debug</title><style>");
+        try w.writeAll("body{font-family:monospace;max-width:720px;margin:2em auto;background:#1a1a2e;color:#e0e0e0}");
+        try w.writeAll("h1{color:#64ffda}h2{color:#82b1ff;margin-top:1.5em}table{border-collapse:collapse;width:100%}");
+        try w.writeAll("td,th{text-align:left;padding:4px 12px;border-bottom:1px solid #333}th{color:#aaa}");
+        try w.writeAll("</style></head><body>");
+        try w.writeAll("<h1>merjs debug</h1>");
+
+        // Routes
+        try w.writeAll("<h2>Routes</h2><table><tr><th>Path</th><th>Type</th></tr>");
+        for (router.routes) |route| {
+            const rtype: []const u8 = if (std.mem.startsWith(u8, route.path, "/api/")) "API" else "Page";
+            try w.print("<tr><td>{s}</td><td>{s}</td></tr>", .{ route.path, rtype });
+        }
+        try w.writeAll("</table>");
+
+        // Config
+        try w.writeAll("<h2>Config</h2><table>");
+        try w.print("<tr><td>Version</td><td>{s}</td></tr>", .{mer.version});
+        try w.print("<tr><td>Zig</td><td>{s}</td></tr>", .{@import("builtin").zig_version_string});
+        try w.print("<tr><td>Routes</td><td>{d} exact + {d} dynamic</td></tr>", .{ router.exact_map.count(), router.dynamic_routes.len });
+        try w.writeAll("</table>");
+
+        // Memory (GPA stats not available here, but we can show arena-level info)
+        try w.writeAll("<h2>Hints</h2><ul>");
+        try w.writeAll("<li>Run with <code>--verbose</code> to log per-request timing</li>");
+        try w.writeAll("<li>Use <code>std.log.scoped(.mypage)</code> in page handlers for route-level logs</li>");
+        try w.writeAll("<li><code>/_mer/events</code> — SSE hot reload stream</li>");
+        try w.writeAll("</ul>");
+
+        try w.writeAll("</body></html>");
+
+        try sendResponse(std_req, mer.Response{
+            .status = .ok,
+            .body = body.items,
+            .content_type = .html,
+        });
         return;
     }
 
