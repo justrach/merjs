@@ -197,35 +197,82 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     }
 
     // Write build.zig.zon.
+    // Sanitize project name to a valid Zig bare identifier (replace non-alnum with _).
+    const zig_name = try alloc.dupe(u8, name);
+    defer alloc.free(zig_name);
+    for (zig_name) |*c| {
+        if (!std.ascii.isAlphanumeric(c.*) and c.* != '_') c.* = '_';
+    }
     {
-        const zon = try std.fmt.allocPrint(alloc,
-            \\.{{
-            \\    .name = .@"{s}",
+        const file = try dir.createFile("build.zig.zon", .{});
+        defer file.close();
+        try file.writeAll(".{\n    .name = .");
+        try file.writeAll(zig_name);
+        try file.writeAll(
+            \\,
             \\    .version = "0.1.0",
             \\    .minimum_zig_version = "0.15.1",
-            \\    .dependencies = .{{
-            \\        .merjs = .{{
+            \\    .dependencies = .{
+            \\        .merjs = .{
             \\            .url = "git+https://github.com/justrach/merjs.git",
-            \\        }},
-            \\    }},
-            \\    .paths = .{{
+            \\        },
+            \\    },
+            \\    .paths = .{
             \\        "build.zig",
             \\        "build.zig.zon",
             \\        "src",
             \\        "app",
             \\        "api",
             \\        "public",
-            \\    }},
-            \\}}
+            \\    },
+            \\}
             \\
-        , .{name});
-        defer alloc.free(zon);
-        const file = try dir.createFile("build.zig.zon", .{});
-        defer file.close();
-        try file.writeAll(zon);
+        );
     }
 
-    // Write src/generated/.gitkeep + src/main.zig.
+    // Patch in the fingerprint: run zig build to get the suggested value.
+    {
+        const cwd_path = if (use_cwd) "." else name;
+        const result = try std.process.Child.run(.{
+            .allocator = alloc,
+            .argv = &.{ "zig", "build" },
+            .cwd = cwd_path,
+        });
+        defer alloc.free(result.stdout);
+        defer alloc.free(result.stderr);
+        // Parse "suggested value: 0x..." from stderr.
+        if (std.mem.indexOf(u8, result.stderr, "suggested value: ")) |idx| {
+            const start = idx + "suggested value: ".len;
+            const end = std.mem.indexOfPos(u8, result.stderr, start, "\n") orelse result.stderr.len;
+            const fp_value = result.stderr[start..end];
+            // Read the zon, insert fingerprint after the name line.
+            const zon_file = if (use_cwd)
+                try std.fs.cwd().openFile("build.zig.zon", .{ .mode = .read_only })
+            else
+                try (try std.fs.cwd().openDir(name, .{})).openFile("build.zig.zon", .{ .mode = .read_only });
+            const zon_content = try zon_file.readToEndAlloc(alloc, 4096);
+            zon_file.close();
+            defer alloc.free(zon_content);
+            // Insert ".fingerprint = 0x...,\n" after first ",\n"
+            if (std.mem.indexOf(u8, zon_content, ",\n")) |comma_pos| {
+                const insert_pos = comma_pos + 2; // after ",\n"
+                const fp_line = try std.fmt.allocPrint(alloc, "    .fingerprint = {s},\n", .{fp_value});
+                defer alloc.free(fp_line);
+                const new_content = try std.mem.concat(alloc, u8, &.{
+                    zon_content[0..insert_pos],
+                    fp_line,
+                    zon_content[insert_pos..],
+                });
+                defer alloc.free(new_content);
+                const out_file = if (use_cwd)
+                    try std.fs.cwd().createFile("build.zig.zon", .{})
+                else
+                    try (try std.fs.cwd().openDir(name, .{})).createFile("build.zig.zon", .{});
+                defer out_file.close();
+                try out_file.writeAll(new_content);
+            }
+        }
+    }
     dir.makePath("src/generated") catch {};
     {
         const file = try dir.createFile("src/generated/.gitkeep", .{});
