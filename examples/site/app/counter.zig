@@ -1,7 +1,7 @@
 const std = @import("std");
 const mer = @import("mer");
 const h = mer.h;
-const cfg = mer.counter_config.config;
+const cfg = @import("counter_config").config;
 
 pub const meta: mer.Meta = .{
     .title = "Counter",

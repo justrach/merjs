@@ -488,6 +488,3 @@ pub fn render(allocator: std.mem.Allocator, node: h.Node) Response {
 // --- Validation (dhi) -------------------------------------------------------
 /// Pydantic-style validation types. Define typed models and validate them.
 pub const dhi = @import("dhi.zig");
-
-// --- Counter config (shared with WASM module) --------------------------------
-pub const counter_config = @import("counter_config");
