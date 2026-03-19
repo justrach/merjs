@@ -64,13 +64,14 @@ mer dev            # codegen + dev server on :3000
 git clone https://github.com/justrach/merjs.git
 cd merjs
 
-cp .env.example .env
-
 zig build codegen   # scan app/ and api/, generate routes
-zig build css       # compile Tailwind v4 (no npm)
 zig build wasm      # compile wasm/ → public/*.wasm
 zig build serve     # dev server on :3000 with hot reload
 ```
+
+> **Optional:** To compile Tailwind CSS (no npm required), download the
+> [standalone Tailwind v4 CLI](https://github.com/tailwindlabs/tailwindcss/releases)
+> for your platform, place it at `tools/tailwindcss`, then run `zig build css`.
 
 Visit `http://localhost:3000`.
 
@@ -170,7 +171,7 @@ The watcher polls `app/` every 300ms, detects mtime changes, and fires an SSE ev
 
 ### Tailwind v4 — zero Node.js
 
-The standalone Tailwind CLI lives at `tools/tailwindcss`. `zig build css` runs it. No `npm install`.
+Download the [standalone Tailwind v4 CLI](https://github.com/tailwindlabs/tailwindcss/releases) and place it at `tools/tailwindcss`. Then `zig build css` runs it — no `npm install`.
 
 ---
 
@@ -180,6 +181,8 @@ The standalone Tailwind CLI lives at `tools/tailwindcss`. `zig build css` runs i
 mer init <name>      scaffold a new project (131 KB binary, all templates embedded)
 mer dev [--port N]   codegen + dev server with hot reload
 mer build            production build (ReleaseSmall + prerender)
+mer add <feature>    add optional features (css, wasm, worker)
+mer update           update merjs dependency to latest
 mer --version        print version
 ```
 
@@ -202,14 +205,16 @@ Singapore data dashboard: **[sgdata.merlionjs.com](https://sgdata.merlionjs.com)
 
 ## Deploy to Cloudflare Workers
 
+1. Edit `worker/wrangler.toml` — set your project name, route/domain, and any R2 bindings you need.
+2. Build and deploy:
+
 ```bash
-cd worker
-wrangler secret put OPENAI_API_KEY
-cd ..
-zig build worker
+zig build worker        # compile to WASM
 cd worker
 wrangler deploy
 ```
+
+If your routes use secrets (API keys, etc.), set them first: `wrangler secret put MY_API_KEY`
 
 The `worker/worker.js` shim handles the fetch event and passes requests to the WASM binary.
 

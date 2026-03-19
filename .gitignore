@@ -26,6 +26,8 @@ Thumbs.db
 
 # Wrangler
 .wrangler/
+examples/**/worker/.wrangler/
+examples/**/worker/.dev.vars
 node_modules/
 
 # Environment variables (API keys — never commit real keys)

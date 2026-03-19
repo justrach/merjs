@@ -1,21 +1,26 @@
-name = "merjs"
+# merjs Cloudflare Workers config
+# Customise these for your project before deploying.
+
+name = "merjs"           # ← your Workers project name
 main = "worker.js"
 compatibility_date = "2024-12-01"
 
-routes = [
-  { pattern = "merlionjs.com", custom_domain = true }
-]
+# Uncomment and set your custom domain or route:
+# routes = [
+#   { pattern = "example.com", custom_domain = true }
+# ]
 
 [assets]
 directory = "../public"
 
 [build]
-command = "cd .. && /opt/homebrew/bin/zig build worker"
+command = "cd .. && zig build worker"
 
 [[rules]]
 type = "CompiledWasm"
 globs = ["**/*.wasm"]
 
-[[r2_buckets]]
-binding = "BUCKET"
-bucket_name = "merjs-docs"
+# Uncomment if you need R2 storage:
+# [[r2_buckets]]
+# binding = "BUCKET"
+# bucket_name = "my-bucket"

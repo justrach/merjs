@@ -37,6 +37,9 @@ pub fn main() !void {
         if (std.mem.eql(u8, args[i], "--port") and i + 1 < args.len) {
             config.port = try std.fmt.parseInt(u16, args[i + 1], 10);
             i += 1;
+        } else if (std.mem.eql(u8, args[i], "--host") and i + 1 < args.len) {
+            config.host = args[i + 1];
+            i += 1;
         } else if (std.mem.eql(u8, args[i], "--no-dev")) {
             config.dev = false;
         } else if (std.mem.eql(u8, args[i], "--prerender")) {

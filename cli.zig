@@ -3,11 +3,14 @@
 //   mer init <name>      Scaffold a new merjs project
 //   mer dev              Run codegen + start dev server
 //   mer build            Production build (codegen + compile + prerender)
+//   mer add <feature>    Add optional features (css, wasm, worker)
+//   mer update           Update merjs dependency to latest
 //   mer --version        Print version
 
 const std = @import("std");
+const builtin = @import("builtin");
 
-pub const version = "0.1.0";
+pub const version = "0.1.1";
 
 const print = std.debug.print;
 
@@ -44,6 +47,20 @@ pub fn main() !void {
 
     if (std.mem.eql(u8, cmd, "build")) {
         try cmdBuild(alloc);
+        return;
+    }
+
+    if (std.mem.eql(u8, cmd, "add")) {
+        if (args.len < 3) {
+            print("mer: missing feature name\n\n  usage: mer add <feature>\n  features: css, wasm, worker\n\n", .{});
+            std.process.exit(1);
+        }
+        try cmdAdd(alloc, args[2]);
+        return;
+    }
+
+    if (std.mem.eql(u8, cmd, "update")) {
+        try cmdUpdate(alloc);
         return;
     }
 
@@ -185,7 +202,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
             \\.{{
             \\    .name = .@"{s}",
             \\    .version = "0.1.0",
-            \\    .minimum_zig_version = "0.15.0",
+            \\    .minimum_zig_version = "0.15.1",
             \\    .dependencies = .{{
             \\        .merjs = .{{
             \\            .url = "git+https://github.com/justrach/merjs.git",
@@ -310,6 +327,161 @@ fn cmdBuild(alloc: std.mem.Allocator) !void {
     print("mer: build complete → zig-out/bin/ + dist/\n", .{});
 }
 
+// ── update ──────────────────────────────────────────────────────────────────
+
+fn cmdUpdate(alloc: std.mem.Allocator) !void {
+    std.fs.cwd().access("build.zig.zon", .{}) catch {
+        print("mer: no build.zig.zon found — are you in a merjs project?\n", .{});
+        std.process.exit(1);
+    };
+
+    print("mer: updating merjs to latest...\n", .{});
+    var child = std.process.Child.init(
+        &.{ "zig", "fetch", "--save=merjs", "git+https://github.com/justrach/merjs.git" },
+        alloc,
+    );
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+    try child.spawn();
+    const term = try child.wait();
+    const exited = term == .Exited;
+    if (!exited or term.Exited != 0) {
+        print("mer: update failed\n", .{});
+        std.process.exit(1);
+    }
+    print("mer: updated — run `zig build` to rebuild\n", .{});
+}
+
+// ── add ─────────────────────────────────────────────────────────────────────
+
+const tailwind_url = "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-" ++
+    (switch (builtin.os.tag) {
+        .macos => "macos",
+        .linux => "linux",
+        else => "unsupported",
+    }) ++ "-" ++
+    (switch (builtin.cpu.arch) {
+        .aarch64 => "arm64",
+        .x86_64 => "x64",
+        else => "unsupported",
+    });
+
+fn cmdAdd(alloc: std.mem.Allocator, feature: []const u8) !void {
+    if (std.mem.eql(u8, feature, "css")) {
+        try cmdAddCss(alloc);
+    } else if (std.mem.eql(u8, feature, "wasm")) {
+        try cmdAddWasm();
+    } else if (std.mem.eql(u8, feature, "worker")) {
+        try cmdAddWorker();
+    } else {
+        print("mer: unknown feature '{s}'\n\n  available: css, wasm, worker\n\n", .{feature});
+        std.process.exit(1);
+    }
+}
+
+fn cmdAddCss(alloc: std.mem.Allocator) !void {
+    const exists = if (std.fs.cwd().access("tools/tailwindcss", .{})) true else |_| false;
+    if (exists) {
+        print("  tools/tailwindcss already exists\n", .{});
+    } else {
+        print("  downloading Tailwind CSS standalone CLI...\n", .{});
+        std.fs.cwd().makePath("tools") catch {};
+        var child = std.process.Child.init(
+            &.{ "sh", "-c", "curl -sLo tools/tailwindcss " ++ tailwind_url ++ " && chmod +x tools/tailwindcss" },
+            alloc,
+        );
+        child.stdout_behavior = .Inherit;
+        child.stderr_behavior = .Inherit;
+        try child.spawn();
+        const term = try child.wait();
+        const exited = term == .Exited;
+        if (!exited or term.Exited != 0) {
+            print("  failed to download Tailwind CLI\n", .{});
+            std.process.exit(1);
+        }
+        print("  saved to tools/tailwindcss\n", .{});
+    }
+
+    const input_exists = if (std.fs.cwd().access("public/input.css", .{})) true else |_| false;
+    if (!input_exists) {
+        std.fs.cwd().makePath("public") catch {};
+        const file = try std.fs.cwd().createFile("public/input.css", .{});
+        defer file.close();
+        try file.writeAll("@import \"tailwindcss\";\n");
+        print("  created public/input.css\n", .{});
+    }
+
+    print("\n  run `zig build css` to compile Tailwind → public/styles.css\n\n", .{});
+}
+
+fn cmdAddWasm() !void {
+    std.fs.cwd().makePath("wasm") catch {};
+    const exists = if (std.fs.cwd().access("wasm/counter.zig", .{})) true else |_| false;
+    if (exists) {
+        print("  wasm/counter.zig already exists\n", .{});
+    } else {
+        const file = try std.fs.cwd().createFile("wasm/counter.zig", .{});
+        defer file.close();
+        try file.writeAll(
+            \\export fn increment(n: i32) i32 {
+            \\    return n + 1;
+            \\}
+            \\
+        );
+        print("  created wasm/counter.zig\n", .{});
+    }
+    print("\n  add a wasm build step to build.zig, then run `zig build wasm`\n\n", .{});
+}
+
+fn cmdAddWorker() !void {
+    std.fs.cwd().makePath("worker") catch {};
+    const exists = if (std.fs.cwd().access("worker/wrangler.toml", .{})) true else |_| false;
+    if (exists) {
+        print("  worker/wrangler.toml already exists\n", .{});
+    } else {
+        {
+            const file = try std.fs.cwd().createFile("worker/wrangler.toml", .{});
+            defer file.close();
+            try file.writeAll(
+                \\name = "my-app"
+                \\main = "worker.js"
+                \\compatibility_date = "2024-12-01"
+                \\
+                \\[assets]
+                \\directory = "../public"
+                \\
+                \\[build]
+                \\command = "cd .. && zig build worker"
+                \\
+                \\[[rules]]
+                \\type = "CompiledWasm"
+                \\globs = ["**/*.wasm"]
+                \\
+            );
+            print("  created worker/wrangler.toml\n", .{});
+        }
+        {
+            const file = try std.fs.cwd().createFile("worker/worker.js", .{});
+            defer file.close();
+            try file.writeAll(
+                \\import wasm from "./merjs.wasm";
+                \\
+                \\export default {
+                \\  async fetch(request, env) {
+                \\    // TODO: wire up WASM-based request handling
+                \\    return new Response("Hello from merjs worker!", {
+                \\      headers: { "content-type": "text/plain" },
+                \\    });
+                \\  },
+                \\};
+                \\
+            );
+            print("  created worker/worker.js\n", .{});
+        }
+    }
+    print("\n  edit worker/wrangler.toml, then: zig build worker && cd worker && wrangler deploy\n\n", .{});
+}
+
 // ── help ────────────────────────────────────────────────────────────────────
 
 fn printUsage() void {
@@ -321,6 +493,8 @@ fn printUsage() void {
         \\    mer init <name>      scaffold a new project
         \\    mer dev [--port N]   codegen + dev server with hot reload
         \\    mer build            production build (ReleaseSmall + prerender)
+        \\    mer add <feature>    add optional features (css, wasm, worker)
+        \\    mer update           update merjs to latest version
         \\    mer --version        print version
         \\
         \\  https://github.com/justrach/merjs
