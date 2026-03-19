@@ -124,6 +124,9 @@ fn handleConn(ctx: *ConnCtx) void {
         const start = std.time.nanoTimestamp();
         serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.dev, ctx.verbose) catch |err| {
             log.err("serveRequest: {}", .{err});
+            if (ctx.dev) {
+                sendErrorOverlay(&std_req, std_req.head.target, err) catch {};
+            }
             return;
         };
 
@@ -458,4 +461,64 @@ fn injectHotReload(alloc: std.mem.Allocator, body: []const u8) ![]u8 {
     const before = body[0..idx];
     const after = body[idx + marker.len ..];
     return std.fmt.allocPrint(alloc, "{s}{s}{s}", .{ before, hot_reload_script, after });
+}
+
+/// Dev error overlay — renders a styled error page in the browser when a route handler fails.
+fn sendErrorOverlay(std_req: *std.http.Server.Request, target: []const u8, err: anyerror) !void {
+    const error_name = @errorName(err);
+
+    const fixed = [1]std.http.Header{
+        .{ .name = "content-type", .value = "text/html; charset=utf-8" },
+    };
+    var header_buf: [4096]u8 = undefined;
+    var bw = try std_req.respondStreaming(&header_buf, .{
+        .respond_options = .{
+            .status = .internal_server_error,
+            .extra_headers = &fixed,
+        },
+    });
+
+    try bw.writer.writeAll(
+        \\<!DOCTYPE html><html><head><meta charset="UTF-8"><title>merjs error</title>
+        \\<style>
+        \\*{margin:0;padding:0;box-sizing:border-box}
+        \\body{font-family:-apple-system,system-ui,monospace;background:#1a1a2e;color:#e0e0e0;padding:2em}
+        \\.err-box{max-width:720px;margin:3em auto;border:2px solid #ff5555;border-radius:12px;overflow:hidden}
+        \\.err-header{background:#ff5555;color:#fff;padding:16px 24px;font-size:14px;font-weight:600;letter-spacing:0.5px}
+        \\.err-body{padding:24px}
+        \\.err-name{font-size:28px;color:#ff7979;margin-bottom:12px}
+        \\.err-path{color:#82b1ff;font-size:16px;margin-bottom:24px}
+        \\.err-hint{background:#222244;border-radius:8px;padding:16px;margin-top:16px;font-size:13px;line-height:1.6;color:#aaa}
+        \\.err-hint code{color:#64ffda;background:#1a1a2e;padding:2px 6px;border-radius:3px}
+        \\.err-footer{border-top:1px solid #333;padding:16px 24px;font-size:12px;color:#666}
+        \\</style></head><body>
+        \\<div class="err-box">
+        \\<div class="err-header">MERJS DEV ERROR</div>
+        \\<div class="err-body">
+        \\<div class="err-name">
+    );
+    try bw.writer.writeAll(error_name);
+    try bw.writer.writeAll(
+        \\</div>
+        \\<div class="err-path">
+    );
+    try bw.writer.writeAll(target);
+    try bw.writer.writeAll(
+        \\</div>
+        \\<div class="err-hint">
+        \\<strong>Debugging tips:</strong><br>
+        \\&bull; Run with <code>--verbose</code> to see per-request timing<br>
+        \\&bull; Visit <code>/_mer/debug</code> to see all registered routes<br>
+        \\&bull; Check the terminal for the full error log<br>
+        \\&bull; Use <code>std.log.scoped(.mypage)</code> in your page handler for custom logs
+        \\</div>
+        \\</div>
+        \\<div class="err-footer">merjs v
+    );
+    try bw.writer.writeAll(mer.version);
+    try bw.writer.writeAll(
+        \\ &mdash; this error page is only shown in dev mode</div>
+        \\</div></body></html>
+    );
+    try bw.end();
 }
