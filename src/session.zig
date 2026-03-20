@@ -1,7 +1,7 @@
 // session.zig — HMAC-based session tokens.
 
 const std = @import("std");
-const env = @import("env.zig").env;
+const env = @import("env.zig").get;
 
 const SessionHmac = std.crypto.auth.hmac.sha2.HmacSha256;
 const SESSION_HMAC_HEX_LEN = SessionHmac.mac_length * 2;
@@ -65,4 +65,49 @@ pub fn verifySession(token: []const u8) ?Session {
     )) return null;
 
     return .{ .user_id = user_id, .expires_at = expires_at };
+}
+
+test "session: sign and verify roundtrip" {
+    const env_mod = @import("env.zig");
+    const k = "MULTICLAW_SESSION_SECRET";
+    const v = "s3cr3t-test";
+    env_mod.__mer_set_env(k.ptr, k.len, v.ptr, v.len);
+
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const token = try signSession(fba.allocator(), "alice", 3600);
+    const session = verifySession(token) orelse return error.TestUnexpectedNull;
+    try std.testing.expectEqualStrings("alice", session.user_id);
+}
+
+test "session: expired token returns null" {
+    const env_mod = @import("env.zig");
+    const k = "MULTICLAW_SESSION_SECRET";
+    const v = "s3cr3t-test";
+    env_mod.__mer_set_env(k.ptr, k.len, v.ptr, v.len);
+
+    // Craft a token with expires_at=1 (Jan 1, 1970 — well in the past).
+    const msg = "alice.1";
+    var mac: [SessionHmac.mac_length]u8 = undefined;
+    SessionHmac.create(&mac, msg, v);
+    const hex = std.fmt.bytesToHex(mac, .lower);
+    var token_buf: [256]u8 = undefined;
+    const token = try std.fmt.bufPrint(&token_buf, "{s}.{s}", .{ msg, &hex });
+    try std.testing.expect(verifySession(token) == null);
+}
+
+test "session: tampered HMAC returns null" {
+    const env_mod = @import("env.zig");
+    const k = "MULTICLAW_SESSION_SECRET";
+    const v = "s3cr3t-test";
+    env_mod.__mer_set_env(k.ptr, k.len, v.ptr, v.len);
+
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const token = try signSession(fba.allocator(), "alice", 3600);
+    // Flip the last byte of the HMAC hex portion.
+    var tampered: [256]u8 = undefined;
+    @memcpy(tampered[0..token.len], token);
+    tampered[token.len - 1] ^= 1;
+    try std.testing.expect(verifySession(tampered[0..token.len]) == null);
 }

@@ -134,7 +134,17 @@ pub fn build(b: *std.Build) void {
     helpers.addDirModules(b, test_mod, mer_mod, "examples/site/app", "app", site_extras);
     helpers.addDirModules(b, test_mod, mer_mod, "examples/site/api", "api", &.{});
     const run_tests = b.addRunArtifact(b.addTest(.{ .root_module = test_mod }));
-    b.step("test", "Run unit tests").dependOn(&run_tests.step);
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_tests.step);
+    // Run inline tests in individual framework source files.
+    for ([_][]const u8{ "src/css.zig", "src/session.zig", "src/telemetry.zig" }) |src_path| {
+        const file_test_mod = b.createModule(.{
+            .root_source_file = b.path(src_path),
+            .target = target,
+            .optimize = optimize,
+        });
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = file_test_mod })).step);
+    }
 
     // ── Packages ────────────────────────────────────────────────────────────
     packages.addPackages(b, target, optimize, mer_mod);

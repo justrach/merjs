@@ -21,7 +21,7 @@ const SentryConfig = struct {
     project_id: []const u8,
 };
 
-fn parseSentryDsn(dsn: []const u8) ?SentryConfig {
+pub fn parseSentryDsn(dsn: []const u8) ?SentryConfig {
     // Format: https://<key>@<host>/<project_id>
     const after_scheme = if (std.mem.indexOf(u8, dsn, "://")) |i| dsn[i + 3 ..] else return null;
     const at = std.mem.indexOfScalar(u8, after_scheme, '@') orelse return null;
@@ -144,4 +144,31 @@ pub fn ddError(path: []const u8, method: []const u8, error_name: []const u8) voi
     ) catch return;
 
     _ = std.posix.sendto(sock, msg, 0, &addr.any, addr.getOsSockLen()) catch {};
+}
+
+test "parseSentryDsn: valid DSN" {
+    const cfg = parseSentryDsn("https://abc123@o1234.ingest.sentry.io/456789").?;
+    try std.testing.expectEqualStrings("abc123", cfg.key);
+    try std.testing.expectEqualStrings("o1234.ingest.sentry.io", cfg.host);
+    try std.testing.expectEqualStrings("456789", cfg.project_id);
+}
+
+test "parseSentryDsn: missing scheme returns null" {
+    try std.testing.expect(parseSentryDsn("abc123@o1234.ingest.sentry.io/456789") == null);
+}
+
+test "parseSentryDsn: missing at-sign returns null" {
+    try std.testing.expect(parseSentryDsn("https://o1234.ingest.sentry.io/456789") == null);
+}
+
+test "parseSentryDsn: missing project slash returns null" {
+    try std.testing.expect(parseSentryDsn("https://abc123@o1234.ingest.sentry.io") == null);
+}
+
+test "parseSentryDsn: empty key returns null" {
+    try std.testing.expect(parseSentryDsn("https://@o1234.ingest.sentry.io/456789") == null);
+}
+
+test "parseSentryDsn: empty project_id returns null" {
+    try std.testing.expect(parseSentryDsn("https://abc123@o1234.ingest.sentry.io/") == null);
 }
