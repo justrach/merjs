@@ -154,6 +154,10 @@ pub const Meta = struct {
 pub const h = @import("html.zig");
 pub const lint = @import("html_lint.zig");
 
+// --- CSS helpers (comptime inline styles + class names) ----------------------
+
+pub const css = @import("css.zig");
+
 pub fn render(allocator: std.mem.Allocator, node: h.Node) Response {
     const body = h.render(allocator, node) catch return internalError("html render failed");
     return Response.init(.ok, .html, body);
