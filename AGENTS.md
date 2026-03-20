@@ -67,7 +67,7 @@ zig build prod
 ### Dev endpoints (only active in dev mode)
 
 - `http://localhost:3000/_mer/debug` — shows all routes, framework version, Zig version, route counts
-- `http://localhost:3000/_mer/debug?format=json` — same as above, JSON format (TODO)
+- `http://localhost:3000/_mer/debug?format=json` — same as above, machine-readable JSON
 - `http://localhost:3000/_mer/events` — SSE hot reload stream
 
 ### Verbose mode
@@ -100,6 +100,22 @@ In production (`--no-dev`), errors log to stderr and return a clean 500.
 | CSS not working | Run `zig build css` (auto-downloads Tailwind CLI) or `mer add css` |
 | WASM not loading | Run `zig build wasm` to compile `.wasm` files to `public/` |
 
+### Telemetry (Sentry + Datadog)
+
+Both are opt-in via env vars — zero overhead when not configured.
+
+**Sentry** (error tracking):
+```bash
+SENTRY_DSN=https://your-key@sentry.io/your-project-id
+```
+Route handler errors are automatically reported with error name, request path, and framework version.
+
+**Datadog** (request metrics via DogStatsD):
+```bash
+DD_AGENT_HOST=127.0.0.1
+DD_DOGSTATSD_PORT=8125    # default
+```
+Sends per-request timing (`merjs.request.duration`) and error counts (`merjs.request.error`) with path/method/status tags.
 ### Docker
 
 ```bash

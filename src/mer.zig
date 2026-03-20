@@ -162,3 +162,7 @@ pub fn render(allocator: std.mem.Allocator, node: h.Node) Response {
 // --- Validation (dhi) -------------------------------------------------------
 
 pub const dhi = @import("dhi.zig");
+
+// --- Telemetry (Sentry + Datadog) -------------------------------------------
+
+pub const telemetry = @import("telemetry.zig");

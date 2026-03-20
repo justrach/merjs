@@ -6,6 +6,7 @@ const mer = @import("mer");
 const Router = @import("router.zig").Router;
 const static = @import("static.zig");
 const watcher_mod = @import("watcher.zig");
+const telemetry = mer.telemetry;
 
 const log = std.log.scoped(.server);
 
@@ -127,16 +128,24 @@ fn handleConn(ctx: *ConnCtx) void {
             if (ctx.dev) {
                 sendErrorOverlay(&std_req, std_req.head.target, err) catch {};
             }
+            // Telemetry: report error to Sentry + Datadog.
+            telemetry.sentryCapture(@errorName(err), std_req.head.target, mer.version);
+            telemetry.ddError(std_req.head.target, @tagName(std_req.head.method), @errorName(err));
             return;
         };
 
+        const elapsed_ns = std.time.nanoTimestamp() - start;
+        const elapsed_us: u64 = @intCast(@divFloor(elapsed_ns, 1000));
+
+        // Telemetry: send request timing to Datadog.
+        telemetry.ddTiming(std_req.head.target, @tagName(std_req.head.method), 200, elapsed_us);
+
         if (ctx.verbose) {
-            const elapsed_ns = std.time.nanoTimestamp() - start;
-            const elapsed_us: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1000.0;
-            if (elapsed_us < 1000.0) {
-                log.info("{s} {s} {d:.0}µs", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_us });
+            const elapsed_f: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1000.0;
+            if (elapsed_f < 1000.0) {
+                log.info("{s} {s} {d:.0}µs", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f });
             } else {
-                log.info("{s} {s} {d:.1}ms", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_us / 1000.0 });
+                log.info("{s} {s} {d:.1}ms", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f / 1000.0 });
             }
         }
 
