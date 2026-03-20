@@ -7,6 +7,7 @@
 const std = @import("std");
 const mer = @import("mer");
 const Router = @import("router.zig").Router;
+const dispatch_mod = @import("dispatch.zig");
 
 const log = std.log.scoped(.prerender);
 
@@ -30,7 +31,7 @@ pub fn run(alloc: std.mem.Allocator, router: *const Router) !void {
 
         // Call render via the router dispatch so layout wrapping applies.
         const req = mer.Request.init(arena_alloc, .GET, route.path);
-        const response = router.dispatch(req);
+        const response = dispatch_mod.dispatch(router.*, req);
 
         if (response.content_type != .html) {
             log.info("skip {s} (not HTML)", .{route.path});

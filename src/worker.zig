@@ -11,6 +11,7 @@ const std = @import("std");
 const mer = @import("mer");
 const ssr = @import("ssr.zig");
 const Router = @import("router.zig").Router;
+const dispatch_mod = @import("dispatch.zig");
 
 var router: ?Router = null;
 
@@ -48,7 +49,7 @@ export fn collect_fetch_urls(req_ptr: [*]const u8, req_len: u32) [*]const u8 {
     const r = router orelse return "".ptr;
     const req = mer.Request.init(allocator, method, path);
     mer.wasmBeginCollect();
-    _ = r.dispatchBuffered(req);
+    _ = dispatch_mod.dispatchBuffered(r, req);
     last_urls = mer.wasmEndCollect();
     return last_urls.ptr;
 }
@@ -75,7 +76,7 @@ export fn handle(req_ptr: [*]const u8, req_len: u32) ?[*]const u8 {
 
     const r = router orelse return null;
     const req = mer.Request.init(allocator, method, path);
-    const response = r.dispatchBuffered(req);
+    const response = dispatch_mod.dispatchBuffered(r, req);
 
     // Encode response: status_u16 LE | ct_len_u16 LE | content-type | body
     const ct_str = response.content_type.mime();

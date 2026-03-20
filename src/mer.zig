@@ -170,3 +170,7 @@ pub const dhi = @import("dhi.zig");
 // --- Telemetry (Sentry + Datadog) -------------------------------------------
 
 pub const telemetry = @import("telemetry.zig");
+
+// --- Dev tools (debug endpoint, error overlay, hot reload) ------------------
+
+pub const dev = @import("dev.zig");

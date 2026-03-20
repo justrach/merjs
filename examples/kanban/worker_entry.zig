@@ -4,6 +4,7 @@
 const std = @import("std");
 const mer = @import("mer");
 const Router = @import("router.zig").Router;
+const dispatch_mod = @import("dispatch.zig");
 const index_page = @import("examples/kanban/app/index");
 const layout_mod = @import("examples/kanban/app/layout");
 
@@ -44,7 +45,7 @@ export fn collect_fetch_urls(req_ptr: [*]const u8, req_len: u32) [*]const u8 {
     const r = router orelse return "".ptr;
     const req = mer.Request.init(allocator, method, path);
     mer.wasmBeginCollect();
-    _ = r.dispatchBuffered(req);
+    _ = dispatch_mod.dispatchBuffered(r, req);
     last_urls = mer.wasmEndCollect();
     return last_urls.ptr;
 }
@@ -69,7 +70,7 @@ export fn handle(req_ptr: [*]const u8, req_len: u32) ?[*]const u8 {
 
     const r = router orelse return null;
     const req = mer.Request.init(allocator, method, path);
-    const response = r.dispatchBuffered(req);
+    const response = dispatch_mod.dispatchBuffered(r, req);
 
     const ct_str = response.content_type.mime();
     const total = 4 + ct_str.len + response.body.len;
