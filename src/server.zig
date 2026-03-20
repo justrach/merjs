@@ -176,46 +176,73 @@ fn serveRequest(
         return;
     }
 
-    // Debug endpoint — shows registered routes, config, memory.
+    // Debug endpoint — shows registered routes, config, hints.
     if (dev and std.mem.eql(u8, path, "/_mer/debug")) {
+        const want_json = std.mem.indexOf(u8, query_string, "format=json") != null;
         var body: std.ArrayListUnmanaged(u8) = .{};
         const w = body.writer(alloc);
-        try w.writeAll("<html><head><title>merjs debug</title><style>");
-        try w.writeAll("body{font-family:monospace;max-width:720px;margin:2em auto;background:#1a1a2e;color:#e0e0e0}");
-        try w.writeAll("h1{color:#64ffda}h2{color:#82b1ff;margin-top:1.5em}table{border-collapse:collapse;width:100%}");
-        try w.writeAll("td,th{text-align:left;padding:4px 12px;border-bottom:1px solid #333}th{color:#aaa}");
-        try w.writeAll("</style></head><body>");
-        try w.writeAll("<h1>merjs debug</h1>");
 
-        // Routes
-        try w.writeAll("<h2>Routes</h2><table><tr><th>Path</th><th>Type</th></tr>");
-        for (router.routes) |route| {
-            const rtype: []const u8 = if (std.mem.startsWith(u8, route.path, "/api/")) "API" else "Page";
-            try w.print("<tr><td>{s}</td><td>{s}</td></tr>", .{ route.path, rtype });
+        if (want_json) {
+            // JSON mode — for agents and programmatic access.
+            try w.writeAll("{\"version\":\"");
+            try w.writeAll(mer.version);
+            try w.writeAll("\",\"zig\":\"");
+            try w.writeAll(@import("builtin").zig_version_string);
+            try w.print("\",\"routes_exact\":{d},\"routes_dynamic\":{d},\"routes\":[", .{ router.exact_map.count(), router.dynamic_routes.len });
+            for (router.routes, 0..) |route, i| {
+                if (i > 0) try w.writeAll(",");
+                const rtype: []const u8 = if (std.mem.startsWith(u8, route.path, "/api/")) "api" else "page";
+                try w.print("{{\"path\":\"{s}\",\"type\":\"{s}\"}}", .{ route.path, rtype });
+            }
+            try w.writeAll("],\"hints\":[");
+            try w.writeAll("\"Run with --verbose for per-request timing\",");
+            try w.writeAll("\"Visit /_mer/events for SSE hot reload stream\",");
+            try w.writeAll("\"Use std.log.scoped(.mypage) in page handlers\"");
+            try w.writeAll("]}");
+
+            try sendResponse(std_req, mer.Response{
+                .status = .ok,
+                .body = body.items,
+                .content_type = .json,
+            });
+        } else {
+            // HTML mode — for browsers.
+            try w.writeAll("<html><head><title>merjs debug</title><style>");
+            try w.writeAll("body{font-family:monospace;max-width:720px;margin:2em auto;background:#1a1a2e;color:#e0e0e0}");
+            try w.writeAll("h1{color:#64ffda}h2{color:#82b1ff;margin-top:1.5em}table{border-collapse:collapse;width:100%}");
+            try w.writeAll("td,th{text-align:left;padding:4px 12px;border-bottom:1px solid #333}th{color:#aaa}");
+            try w.writeAll("code{color:#64ffda;background:#222244;padding:2px 6px;border-radius:3px}");
+            try w.writeAll("</style></head><body>");
+            try w.writeAll("<h1>merjs debug</h1>");
+
+            try w.writeAll("<h2>Routes</h2><table><tr><th>Path</th><th>Type</th></tr>");
+            for (router.routes) |route| {
+                const rtype: []const u8 = if (std.mem.startsWith(u8, route.path, "/api/")) "API" else "Page";
+                try w.print("<tr><td>{s}</td><td>{s}</td></tr>", .{ route.path, rtype });
+            }
+            try w.writeAll("</table>");
+
+            try w.writeAll("<h2>Config</h2><table>");
+            try w.print("<tr><td>Version</td><td>{s}</td></tr>", .{mer.version});
+            try w.print("<tr><td>Zig</td><td>{s}</td></tr>", .{@import("builtin").zig_version_string});
+            try w.print("<tr><td>Routes</td><td>{d} exact + {d} dynamic</td></tr>", .{ router.exact_map.count(), router.dynamic_routes.len });
+            try w.writeAll("</table>");
+
+            try w.writeAll("<h2>Hints</h2><ul>");
+            try w.writeAll("<li>Run with <code>--verbose</code> to log per-request timing</li>");
+            try w.writeAll("<li>Use <code>std.log.scoped(.mypage)</code> in page handlers for route-level logs</li>");
+            try w.writeAll("<li><code>/_mer/events</code> — SSE hot reload stream</li>");
+            try w.writeAll("<li>Append <code>?format=json</code> to this URL for machine-readable output</li>");
+            try w.writeAll("</ul>");
+
+            try w.writeAll("</body></html>");
+
+            try sendResponse(std_req, mer.Response{
+                .status = .ok,
+                .body = body.items,
+                .content_type = .html,
+            });
         }
-        try w.writeAll("</table>");
-
-        // Config
-        try w.writeAll("<h2>Config</h2><table>");
-        try w.print("<tr><td>Version</td><td>{s}</td></tr>", .{mer.version});
-        try w.print("<tr><td>Zig</td><td>{s}</td></tr>", .{@import("builtin").zig_version_string});
-        try w.print("<tr><td>Routes</td><td>{d} exact + {d} dynamic</td></tr>", .{ router.exact_map.count(), router.dynamic_routes.len });
-        try w.writeAll("</table>");
-
-        // Memory (GPA stats not available here, but we can show arena-level info)
-        try w.writeAll("<h2>Hints</h2><ul>");
-        try w.writeAll("<li>Run with <code>--verbose</code> to log per-request timing</li>");
-        try w.writeAll("<li>Use <code>std.log.scoped(.mypage)</code> in page handlers for route-level logs</li>");
-        try w.writeAll("<li><code>/_mer/events</code> — SSE hot reload stream</li>");
-        try w.writeAll("</ul>");
-
-        try w.writeAll("</body></html>");
-
-        try sendResponse(std_req, mer.Response{
-            .status = .ok,
-            .body = body.items,
-            .content_type = .html,
-        });
         return;
     }
 
