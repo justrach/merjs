@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
+  ],
+  "buildCommand": "cd ../.. && zig build worker",
+  "outputDirectory": "."
+}
