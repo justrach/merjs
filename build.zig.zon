@@ -12,10 +12,10 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "build",
         "src",
-        "app",
-        "wasm",
-        "public",
         "tools",
+        "cli.zig",
+        "examples",
     },
 }

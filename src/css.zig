@@ -1,3 +1,4 @@
+const std = @import("std");
 // css.zig — comptime CSS helpers for inline styles and class names.
 //
 // Usage:
@@ -72,4 +73,24 @@ fn snakeToCssProperty(comptime name: []const u8) []const u8 {
         }
         return result;
     }
+}
+
+test "style: single property" {
+    comptime try std.testing.expectEqualStrings("color:red", style(.{ .color = "red" }));
+}
+
+test "style: multiple properties" {
+    comptime try std.testing.expectEqualStrings("display:flex;padding:1rem", style(.{ .display = "flex", .padding = "1rem" }));
+}
+
+test "style: snake_case to kebab-case" {
+    comptime try std.testing.expectEqualStrings("border-radius:8px;font-size:14px", style(.{ .border_radius = "8px", .font_size = "14px" }));
+}
+
+test "cx: basic concatenation" {
+    comptime try std.testing.expectEqualStrings("card active p-4", cx(.{ "card", "active", "p-4" }));
+}
+
+test "cx: with nulls" {
+    comptime try std.testing.expectEqualStrings("card p-4", cx(.{ "card", @as(?[]const u8, null), "p-4" }));
 }

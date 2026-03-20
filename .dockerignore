@@ -7,6 +7,5 @@ src/generated/
 node_modules/
 MerApp.app/
 socials/
-Dockerfile.test
 *.wasm
 *.o

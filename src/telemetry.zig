@@ -44,43 +44,53 @@ pub fn sentryCapture(
     const dsn_str = env("SENTRY_DSN") orelse return;
     const cfg = parseSentryDsn(dsn_str) orelse return;
 
-    // Build the event JSON.
-    var buf: [2048]u8 = undefined;
-    const event = std.fmt.bufPrint(&buf,
-        \\{{"level":"error","platform":"other","sdk":{{"name":"merjs","version":"{s}"}},"exception":{{"values":[{{"type":"{s}","value":"Route handler error on {s}"}}]}},"request":{{"url":"{s}"}},"tags":{{"framework":"merjs","zig":"{s}"}}}}
-    , .{ framework_version, error_name, path, path, @import("builtin").zig_version_string }) catch return;
-
-    // Build the envelope.
+    // Build the envelope on the stack.
     var envelope_buf: [4096]u8 = undefined;
     const envelope = std.fmt.bufPrint(&envelope_buf,
-        \\{{"dsn":"https://{s}@{s}/{s}"}}\n{{"type":"event"}}\n{s}
-    , .{ cfg.key, cfg.host, cfg.project_id, event }) catch return;
+        \\{{"dsn":"https://{s}@{s}/{s}"}}
+        \\{{"type":"event"}}
+        \\{{"level":"error","platform":"other","sdk":{{"name":"merjs","version":"{s}"}},"exception":{{"values":[{{"type":"{s}","value":"Route handler error on {s}"}}]}},"request":{{"url":"{s}"}},"tags":{{"framework":"merjs","zig":"{s}"}}}}
+    , .{ cfg.key, cfg.host, cfg.project_id, framework_version, error_name, path, path, @import("builtin").zig_version_string }) catch return;
 
-    // Fire-and-forget: spawn a thread to POST.
-    const T = struct {
-        fn send(url_buf: *[512]u8, key_copy: []const u8, payload: []const u8) void {
-            _ = key_copy;
-            _ = url_buf;
-            // Use std.http.Client for the POST.
-            var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-            defer _ = gpa.deinit();
-            const alloc = gpa.allocator();
+    // Build the POST URL.
+    var url_buf: [256]u8 = undefined;
+    const url = std.fmt.bufPrint(&url_buf,
+        "https://{s}/api/{s}/envelope/", .{ cfg.host, cfg.project_id },
+    ) catch return;
 
-            var client = std.http.Client{ .allocator = alloc };
-            defer client.deinit();
+    // Copy to heap for the thread.
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const alloc = gpa.allocator();
+    const url_copy = alloc.dupe(u8, url) catch return;
+    const payload_copy = alloc.dupe(u8, envelope) catch return;
 
-            _ = client.fetch(.{
-                .location = .{ .url = payload },
-                .method = .POST,
-            }) catch {};
-        }
+    const t = std.Thread.spawn(.{}, sentrySendThread, .{ &gpa, url_copy, payload_copy }) catch {
+        alloc.free(url_copy);
+        alloc.free(payload_copy);
+        return;
     };
-    // For now, just log that we would send to Sentry (actual HTTP POST
-    // requires careful lifetime management of the payload).
-    const log = std.log.scoped(.telemetry);
-    log.info("sentry: {s} on {s} → {s}/{s}", .{ error_name, path, cfg.host, cfg.project_id });
-    _ = T;
-    _ = envelope;
+    t.detach();
+}
+
+fn sentrySendThread(gpa: *std.heap.GeneralPurposeAllocator(.{}), url: []const u8, payload: []const u8) void {
+    defer {
+        const alloc = gpa.allocator();
+        alloc.free(url);
+        alloc.free(payload);
+        _ = gpa.deinit();
+    }
+    const alloc = gpa.allocator();
+    var client = std.http.Client{ .allocator = alloc };
+    defer client.deinit();
+
+    _ = client.fetch(.{
+        .location = .{ .url = url },
+        .method = .POST,
+        .payload = payload,
+        .extra_headers = &.{
+            .{ .name = "Content-Type", .value = "application/x-sentry-envelope" },
+        },
+    }) catch {};
 }
 
 // ── Datadog (DogStatsD) ─────────────────────────────────────────────────────
