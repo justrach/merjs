@@ -1,0 +1,12 @@
+.zig-cache/
+zig-out/
+src/generated/
+.git/
+.claude/
+.wrangler/
+node_modules/
+MerApp.app/
+socials/
+Dockerfile.test
+*.wasm
+*.o
