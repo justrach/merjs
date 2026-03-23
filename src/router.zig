@@ -90,3 +90,149 @@ pub fn matchRoute(route_path: []const u8, req_path: []const u8, out: []mer.Param
         }
     }
 }
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+fn dummyRender(_: mer.Request) mer.Response {
+    return mer.html("<p>ok</p>");
+}
+
+test "matchRoute: exact static path" {
+    var out: [8]mer.Param = undefined;
+    const n = matchRoute("/about", "/about", &out);
+    try std.testing.expectEqual(@as(?usize, 0), n);
+}
+
+test "matchRoute: root path" {
+    var out: [8]mer.Param = undefined;
+    const n = matchRoute("/", "/", &out);
+    try std.testing.expectEqual(@as(?usize, 0), n);
+}
+
+test "matchRoute: single dynamic segment" {
+    var out: [8]mer.Param = undefined;
+    const n = matchRoute("/users/:id", "/users/42", &out).?;
+    try std.testing.expectEqual(@as(usize, 1), n);
+    try std.testing.expectEqualStrings("id", out[0].key);
+    try std.testing.expectEqualStrings("42", out[0].value);
+}
+
+test "matchRoute: multiple dynamic segments" {
+    var out: [8]mer.Param = undefined;
+    const n = matchRoute("/org/:org/repo/:repo", "/org/acme/repo/widgets", &out).?;
+    try std.testing.expectEqual(@as(usize, 2), n);
+    try std.testing.expectEqualStrings("org", out[0].key);
+    try std.testing.expectEqualStrings("acme", out[0].value);
+    try std.testing.expectEqualStrings("repo", out[1].key);
+    try std.testing.expectEqualStrings("widgets", out[1].value);
+}
+
+test "matchRoute: mismatch returns null" {
+    var out: [8]mer.Param = undefined;
+    try std.testing.expect(matchRoute("/about", "/contact", &out) == null);
+}
+
+test "matchRoute: extra segments returns null" {
+    var out: [8]mer.Param = undefined;
+    try std.testing.expect(matchRoute("/about", "/about/more", &out) == null);
+}
+
+test "matchRoute: fewer segments returns null" {
+    var out: [8]mer.Param = undefined;
+    try std.testing.expect(matchRoute("/users/:id", "/users", &out) == null);
+}
+
+test "matchRoute: empty dynamic segment returns null" {
+    var out: [8]mer.Param = undefined;
+    // "/users/" splits into ["", "users", ""] — the last segment is empty
+    try std.testing.expect(matchRoute("/users/:id", "/users/", &out) == null);
+}
+
+test "Router.init: separates exact and dynamic routes" {
+    const routes = [_]Route{
+        .{ .path = "/", .render = dummyRender },
+        .{ .path = "/about", .render = dummyRender },
+        .{ .path = "/users/:id", .render = dummyRender },
+        .{ .path = "/org/:org/repo/:repo", .render = dummyRender },
+    };
+    var router = Router.init(std.testing.allocator, &routes);
+    defer router.deinit();
+
+    // 2 exact routes in the hash map, 2 dynamic routes
+    try std.testing.expectEqual(@as(u32, 2), router.exact_map.count());
+    try std.testing.expectEqual(@as(usize, 2), router.dynamic_routes.len);
+}
+
+test "Router.findRoute: exact match" {
+    const routes = [_]Route{
+        .{ .path = "/", .render = dummyRender },
+        .{ .path = "/about", .render = dummyRender, .meta = .{ .title = "About" } },
+    };
+    var router = Router.init(std.testing.allocator, &routes);
+    defer router.deinit();
+
+    const found = router.findRoute("/about").?;
+    try std.testing.expectEqualStrings("/about", found.path);
+    try std.testing.expectEqualStrings("About", found.meta.title);
+}
+
+test "Router.findRoute: dynamic match" {
+    const routes = [_]Route{
+        .{ .path = "/", .render = dummyRender },
+        .{ .path = "/users/:id", .render = dummyRender, .meta = .{ .title = "User" } },
+    };
+    var router = Router.init(std.testing.allocator, &routes);
+    defer router.deinit();
+
+    const found = router.findRoute("/users/99").?;
+    try std.testing.expectEqualStrings("/users/:id", found.path);
+    try std.testing.expectEqualStrings("User", found.meta.title);
+}
+
+test "Router.findRoute: trailing slash fallback" {
+    const routes = [_]Route{
+        .{ .path = "/about", .render = dummyRender },
+    };
+    var router = Router.init(std.testing.allocator, &routes);
+    defer router.deinit();
+
+    // "/about/" should fall back to "/about"
+    const found = router.findRoute("/about/").?;
+    try std.testing.expectEqualStrings("/about", found.path);
+}
+
+test "Router.findRoute: not found returns null" {
+    const routes = [_]Route{
+        .{ .path = "/", .render = dummyRender },
+    };
+    var router = Router.init(std.testing.allocator, &routes);
+    defer router.deinit();
+
+    try std.testing.expect(router.findRoute("/nope") == null);
+}
+
+test "Router.findRoute: consumer routes without framework example routes" {
+    // This is the core #62 test: a consumer project has its OWN routes,
+    // not the framework's api/hello, app/about etc. The router should
+    // only contain the consumer's routes and match them correctly.
+    const consumer_routes = [_]Route{
+        .{ .path = "/", .render = dummyRender, .meta = .{ .title = "My App" } },
+        .{ .path = "/dashboard", .render = dummyRender, .meta = .{ .title = "Dashboard" } },
+        .{ .path = "/settings", .render = dummyRender, .meta = .{ .title = "Settings" } },
+        .{ .path = "/projects/:id", .render = dummyRender },
+    };
+    var router = Router.init(std.testing.allocator, &consumer_routes);
+    defer router.deinit();
+
+    // Consumer routes work
+    try std.testing.expectEqualStrings("My App", router.findRoute("/").?.meta.title);
+    try std.testing.expectEqualStrings("Dashboard", router.findRoute("/dashboard").?.meta.title);
+    try std.testing.expectEqualStrings("Settings", router.findRoute("/settings").?.meta.title);
+    try std.testing.expect(router.findRoute("/projects/123") != null);
+
+    // Framework example routes do NOT exist
+    try std.testing.expect(router.findRoute("/about") == null);
+    try std.testing.expect(router.findRoute("/api/hello") == null);
+    try std.testing.expect(router.findRoute("/blog") == null);
+    try std.testing.expect(router.findRoute("/docs") == null);
+}

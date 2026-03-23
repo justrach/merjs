@@ -148,6 +148,56 @@ pub fn build(b: *std.Build) void {
         });
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = file_test_mod })).step);
     }
+    // Run router inline tests.
+    {
+        const router_test_mod = b.createModule(.{
+            .root_source_file = b.path("src/router.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        router_test_mod.addImport("mer", mer_mod);
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = router_test_mod })).step);
+    }
+
+    // ── Consumer integration test (issue #62) ──────────────────────────────
+    // Simulates a consumer project with its own routes — proves the named
+    // module override works and framework example routes don't leak in.
+    {
+        const consumer_test_mod = b.createModule(.{
+            .root_source_file = b.path("tests/consumer/src/test_consumer_routes.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        consumer_test_mod.addImport("mer", mer_mod);
+        // Give the test access to ssr.zig (framework internals).
+        consumer_test_mod.addImport("ssr.zig", b.createModule(.{
+            .root_source_file = b.path("src/ssr.zig"),
+        }));
+        // Wire ssr.zig's dependencies.
+        consumer_test_mod.import_table.get("ssr.zig").?.addImport("mer", mer_mod);
+        consumer_test_mod.import_table.get("ssr.zig").?.addImport("router.zig", b.createModule(.{
+            .root_source_file = b.path("src/router.zig"),
+        }));
+        consumer_test_mod.import_table.get("ssr.zig").?.import_table.get("router.zig").?.addImport("mer", mer_mod);
+        // The key: wire "routes" to the CONSUMER's routes, not the framework's.
+        const consumer_routes_mod = b.createModule(.{
+            .root_source_file = b.path("tests/consumer/src/routes.zig"),
+        });
+        consumer_routes_mod.addImport("mer", mer_mod);
+        // Add consumer page modules to both routes and test modules.
+        const consumer_pages = [_]struct { []const u8, []const u8 }{
+            .{ "app/index", "tests/consumer/app/index.zig" },
+            .{ "app/dashboard", "tests/consumer/app/dashboard.zig" },
+        };
+        for (consumer_pages) |page| {
+            const page_mod = b.createModule(.{ .root_source_file = b.path(page[1]) });
+            page_mod.addImport("mer", mer_mod);
+            consumer_routes_mod.addImport(page[0], page_mod);
+            consumer_test_mod.addImport(page[0], page_mod);
+        }
+        consumer_test_mod.import_table.get("ssr.zig").?.addImport("routes", consumer_routes_mod);
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = consumer_test_mod })).step);
+    }
 
     // ── Packages ────────────────────────────────────────────────────────────
     packages.addPackages(b, target, optimize, mer_mod);
