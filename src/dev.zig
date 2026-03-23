@@ -149,6 +149,7 @@ pub fn serveDebug(
         try w.writeAll("<li>Use <code>std.log.scoped(.mypage)</code> in page handlers for route-level logs</li>");
         try w.writeAll("<li><code>/_mer/events</code> — SSE hot reload stream</li>");
         try w.writeAll("<li>Append <code>?format=json</code> to this URL for machine-readable output</li>");
+        try w.writeAll("<li>Run with <code>--debug</code> to enable kuri browser automation at <code>/_mer/kuri/</code></li>");
         try w.writeAll("</ul>");
 
         try w.writeAll("</body></html>");

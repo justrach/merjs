@@ -13,6 +13,12 @@ pub fn build(b: *std.Build) void {
     const dhi_model_mod = dhi_dep.module("model");
     const dhi_validator_mod = dhi_dep.module("validator");
 
+    // ── kuri dependency (browser automation for debug mode) ─────────────────
+    const kuri_dep = b.dependency("kuri", .{
+        .target = target,
+        .optimize = if (optimize != .Debug) optimize else .ReleaseFast,
+    });
+
     // ── "mer" module (framework public API) ──────────────────────────────────
     const mer_mod = b.addModule("mer", .{
         .root_source_file = b.path("src/mer.zig"),
@@ -40,6 +46,10 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{ .name = "merjs", .root_module = main_mod });
     b.installArtifact(exe);
+
+    // Install kuri binary alongside merjs.
+    const install_kuri = b.addInstallArtifact(kuri_dep.artifact("kuri"), .{});
+    b.getInstallStep().dependOn(&install_kuri.step);
 
     // ── `zig build serve` ────────────────────────────────────────────────────
     const run_exe = b.addRunArtifact(exe);
