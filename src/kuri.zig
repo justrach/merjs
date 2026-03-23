@@ -2,7 +2,6 @@
 // Spawns Chrome + kuri and proxies /_mer/kuri/* requests to kuri's HTTP API.
 
 const std = @import("std");
-const c = @cImport(@cInclude("stdlib.h"));
 const log = std.log.scoped(.kuri);
 pub const default_port: u16 = 9222;
 
@@ -45,22 +44,20 @@ pub const Kuri = struct {
         var cdp_z: [64:0]u8 = .{0} ** 64;
         _ = std.fmt.bufPrint(&cdp_z, "ws://127.0.0.1:{d}", .{cdp_port}) catch return self;
 
-        _ = c.setenv("PORT", &port_z, 1);
-        _ = c.setenv("HOST", "127.0.0.1", 1);
-        _ = c.setenv("CDP_URL", &cdp_z, 1);
-        _ = c.setenv("HEADLESS", "true", 1);
-
         var child = std.process.Child.init(&.{kuri_bin}, allocator);
         child.stdout_behavior = .Pipe;
         child.stderr_behavior = .Pipe;
-
+        var env_map = std.process.EnvMap.init(allocator);
+        env_map.put("PORT", &port_z) catch {};
+        env_map.put("HOST", "127.0.0.1") catch {};
+        env_map.put("CDP_URL", &cdp_z) catch {};
+        env_map.put("HEADLESS", "true") catch {};
+        child.env_map = &env_map;
         child.spawn() catch |err| {
             log.warn("failed to spawn kuri: {} — debug browser automation disabled", .{err});
-            clearEnv();
             return self;
         };
 
-        clearEnv();
         self.child = child;
 
         log.info("kuri started on :{d} — browser automation active", .{kuri_port});
@@ -138,16 +135,6 @@ pub const Kuri = struct {
     }
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-fn setEnv(name: [*:0]const u8, value: [*:0]const u8) void {
-    _ = c.setenv(name, value, 1);
-}
-
-fn clearEnv() void {
-    _ = c.unsetenv("PORT");
-    _ = c.unsetenv("CDP_URL");
-}
 
 fn sendKuriError(std_req: *std.http.Server.Request, msg: []const u8) !void {
     var buf: [256]u8 = undefined;
