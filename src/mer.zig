@@ -174,3 +174,16 @@ pub const telemetry = @import("telemetry.zig");
 // --- Dev tools (debug endpoint, error overlay, hot reload) ------------------
 
 pub const dev = @import("dev.zig");
+
+// --- Route types (used by router.zig and generated routes.zig) ---------------
+
+pub const RenderFn = *const fn (req: Request) Response;
+pub const StreamRenderFn = *const fn (req: Request, stream: *StreamWriter) void;
+
+pub const Route = struct {
+    path: []const u8,
+    render: RenderFn,
+    render_stream: ?StreamRenderFn = null,
+    meta: Meta = .{},
+    prerender: bool = false,
+};

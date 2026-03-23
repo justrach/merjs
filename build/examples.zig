@@ -17,6 +17,7 @@ pub fn addExamples(
     sgdata_mod.addImport("mer", mer_mod);
     helpers.addDirModules(b, sgdata_mod, mer_mod, "examples/singapore-data-dashboard/app", "app", &.{});
     helpers.addDirModules(b, sgdata_mod, mer_mod, "examples/singapore-data-dashboard/api", "api", &.{});
+    helpers.addRoutesModule(b, sgdata_mod, mer_mod, "examples/singapore-data-dashboard/src/generated/routes.zig", "examples/singapore-data-dashboard/app", "examples/singapore-data-dashboard/api", &.{});
     const sgdata_wasm = b.addExecutable(.{
         .name = "merjs",
         .root_module = sgdata_mod,

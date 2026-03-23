@@ -1,7 +1,7 @@
 // GENERATED — do not edit by hand.
 // Re-run `zig build codegen` to regenerate.
 
-const Route = @import("../router.zig").Route;
+const Route = @import("mer").Route;
 
 const api_hello = @import("api/hello");
 const api_time = @import("api/time");

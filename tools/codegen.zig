@@ -38,7 +38,7 @@ pub fn main() !void {
         \\// GENERATED — do not edit by hand.
         \\// Re-run `zig build codegen` to regenerate.
         \\
-        \\const Route = @import("../router.zig").Route;
+        \\const Route = @import("mer").Route;
         \\
         \\
     );
