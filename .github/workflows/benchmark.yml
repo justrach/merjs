@@ -248,7 +248,7 @@ jobs:
           ram_m_f, ram_n_f = float(ram_m), float(ram_n)
           ram_m_w, ram_n_w = bar_w(ram_m_f, ram_n_f)
 
-          txt = open('app/index.zig').read()
+          txt = open('examples/site/app/index.zig').read()
 
           # Replace benchRow() calls by label name
           def update_row(txt, label, mw, mv, nw, nv):
@@ -262,7 +262,7 @@ jobs:
           txt = update_row(txt, "RAM Usage", ram_m_w, f"~{ram_m} MB", ram_n_w, f"~{ram_n} MB")
           txt = update_row(txt, "Build Time", build_m_w, f"~{build_m_s}", build_n_w, f"~{build_n_s}")
 
-          open('app/index.zig', 'w').write(txt)
+          open('examples/site/app/index.zig', 'w').write(txt)
           print(f"Updated index.zig: req/s={rps_m}/{rps_n}, lat={lat_m}/{lat_n}ms, ram={ram_m}/{ram_n}MB, build={build_m_s}/{build_n_s}")
           PYEOF
 
@@ -271,5 +271,5 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md app/index.zig benchmarks/latest.json 2>/dev/null
+          git add README.md examples/site/app/index.zig benchmarks/latest.json 2>/dev/null
           git diff --staged --quiet || (git commit -m "docs: update benchmark numbers [skip ci]" && git push)
