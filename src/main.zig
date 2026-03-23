@@ -42,6 +42,11 @@ pub fn main() !void {
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--no-dev")) {
             config.dev = false;
+        } else if (std.mem.eql(u8, args[i], "--debug")) {
+            config.debug = true;
+        } else if (std.mem.eql(u8, args[i], "--kuri-port") and i + 1 < args.len) {
+            config.kuri_port = try std.fmt.parseInt(u16, args[i + 1], 10);
+            i += 1;
         } else if (std.mem.eql(u8, args[i], "--verbose") or std.mem.eql(u8, args[i], "-v")) {
             config.verbose = true;
         } else if (std.mem.eql(u8, args[i], "--prerender")) {

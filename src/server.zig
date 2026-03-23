@@ -7,6 +7,7 @@ const Router = @import("router.zig").Router;
 const dispatch_mod = @import("dispatch.zig");
 const static = @import("static.zig");
 const watcher_mod = @import("watcher.zig");
+const kuri_mod = @import("kuri.zig");
 const telemetry = mer.telemetry;
 const dev_mod = mer.dev;
 
@@ -28,12 +29,15 @@ pub const Config = struct {
     port: u16 = 3000,
     dev: bool = false,
     verbose: bool = false,
+    debug: bool = false,
+    kuri_port: u16 = 9222,
 };
 
 pub const Server = struct {
     config: Config,
     router: *const Router,
     watcher: ?*watcher_mod.Watcher,
+    kuri: ?kuri_mod.Kuri,
     allocator: std.mem.Allocator,
     pool: std.Thread.Pool,
 
@@ -48,6 +52,7 @@ pub const Server = struct {
             .config = config,
             .router = router,
             .watcher = watcher,
+            .kuri = null,
             .pool = undefined,
         };
     }
@@ -61,6 +66,12 @@ pub const Server = struct {
 
         // Init static file cache.
         static.initCache(self.allocator);
+
+        // Spawn kuri sidecar in debug mode.
+        if (self.config.debug) {
+            self.kuri = kuri_mod.Kuri.spawn(self.allocator, self.config.port, self.config.kuri_port);
+        }
+        defer if (self.kuri) |*k| k.deinit();
 
         const addr = try std.net.Address.parseIp(self.config.host, self.config.port);
         var net_server = try addr.listen(.{ .reuse_address = true, .kernel_backlog = 512 });
@@ -81,6 +92,7 @@ pub const Server = struct {
                 .conn = conn,
                 .router = self.router,
                 .watcher = self.watcher,
+                .kuri = if (self.kuri) |*k| k else null,
                 .allocator = self.allocator,
                 .dev = self.config.dev,
                 .verbose = self.config.verbose,
@@ -97,6 +109,7 @@ const ConnCtx = struct {
     conn: std.net.Server.Connection,
     router: *const Router,
     watcher: ?*watcher_mod.Watcher,
+    kuri: ?*kuri_mod.Kuri,
     allocator: std.mem.Allocator,
     dev: bool,
     verbose: bool,
@@ -125,7 +138,7 @@ fn handleConn(ctx: *ConnCtx) void {
         };
 
         const start = std.time.nanoTimestamp();
-        serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.dev, ctx.verbose) catch |err| {
+        serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.kuri, ctx.dev, ctx.verbose) catch |err| {
             log.err("serveRequest: {}", .{err});
             if (ctx.dev) {
                 dev_mod.sendErrorOverlay(&std_req, std_req.head.target, err, mer.version) catch {};
@@ -161,6 +174,7 @@ fn serveRequest(
     std_req: *std.http.Server.Request,
     router: *const Router,
     watcher: ?*watcher_mod.Watcher,
+    kuri: ?*const kuri_mod.Kuri,
     dev: bool,
     verbose: bool,
 ) !void {
@@ -194,6 +208,16 @@ fn serveRequest(
         const response = try dev_mod.serveDebug(alloc, route_infos, router.exact_map.count(), router.dynamic_routes.len, query_string, mer.version);
         try sendResponse(std_req, response);
         return;
+    }
+
+    // Kuri browser automation proxy (debug mode).
+    if (dev and std.mem.startsWith(u8, path, "/_mer/kuri")) {
+        if (kuri) |k| {
+            k.proxyRequest(alloc, std_req, raw_target) catch |err| {
+                log.err("kuri proxy: {}", .{err});
+            };
+            return;
+        }
     }
 
     // Static files from public/.

@@ -8,6 +8,10 @@
             .url = "git+https://github.com/justrach/dhi.git#20bbf6a25e9f0d28bd915f6dc7e18a9766b1134a",
             .hash = "dhi-0.1.0-Fz3bn3g6AwCFCeeGWyrLnJo-V95C5VkFxdVaWMEqc7iy",
         },
+        .kuri = .{
+            .url = "git+https://github.com/justrach/kuri.git#81baa2ffb060f87d2e8f6de2aa69eb509c700b91",
+            .hash = "agentic_browdie-0.1.0-uVYLKYovCADlIJw6TDdL9NnVr-LAtCLt5Sz4o1e8l6Y2",
+        },
     },
     .paths = .{
         "build.zig",
