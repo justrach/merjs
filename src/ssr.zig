@@ -4,7 +4,7 @@
 const std = @import("std");
 const mer = @import("mer");
 const Router = @import("router.zig").Router;
-const generated = @import("generated/routes.zig");
+const generated = @import("routes");
 
 pub fn buildRouter(allocator: std.mem.Allocator) Router {
     var r = Router.init(allocator, generated.routes);

@@ -6,20 +6,14 @@
 const std = @import("std");
 const mer = @import("mer");
 
-pub const RenderFn = *const fn (req: mer.Request) mer.Response;
-pub const StreamRenderFn = *const fn (req: mer.Request, stream: *mer.StreamWriter) void;
+pub const RenderFn = mer.RenderFn;
+pub const StreamRenderFn = mer.StreamRenderFn;
 pub const LayoutFn = *const fn (std.mem.Allocator, []const u8, []const u8, mer.Meta) []const u8;
 
 pub const StreamParts = mer.StreamParts;
 pub const StreamLayoutFn = *const fn (std.mem.Allocator, []const u8, mer.Meta) StreamParts;
 
-pub const Route = struct {
-    path: []const u8,
-    render: RenderFn,
-    render_stream: ?StreamRenderFn = null,
-    meta: mer.Meta = .{},
-    prerender: bool = false,
-};
+pub const Route = mer.Route;
 
 pub const Router = struct {
     routes: []const Route,

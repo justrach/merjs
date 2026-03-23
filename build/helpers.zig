@@ -42,6 +42,31 @@ pub fn addDirModules(
     }
 }
 
+/// Create a "routes" named module and add it to `mod`.
+/// The routes module gets "mer" plus all app/ and api/ page imports
+/// so that consumer projects can override it in their own build.zig.
+/// `routes_source` is the path to the routes.zig file (e.g. "src/generated/routes.zig").
+pub fn addRoutesModule(
+    b: *std.Build,
+    mod: *std.Build.Module,
+    mer_mod: *std.Build.Module,
+    routes_source: []const u8,
+    app_dir: []const u8,
+    api_dir: []const u8,
+    extra_imports: []const struct { []const u8, *std.Build.Module },
+) void {
+    const routes_mod = b.createModule(.{
+        .root_source_file = b.path(routes_source),
+    });
+    routes_mod.addImport("mer", mer_mod);
+
+    // Give routes.zig access to app/* and api/* page modules + layout/404.
+    addDirModules(b, routes_mod, mer_mod, app_dir, "app", extra_imports);
+    addDirModules(b, routes_mod, mer_mod, api_dir, "api", &.{});
+
+    mod.addImport("routes", routes_mod);
+}
+
 /// Create a WASM executable target with standard settings.
 pub fn addWasmExe(b: *std.Build, name: []const u8, source: []const u8, wasm_target: std.Build.ResolvedTarget) *std.Build.Step.Compile {
     const exe = b.addExecutable(.{

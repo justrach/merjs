@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) void {
     main_mod.addImport("counter_config", counter_config_mod);
     helpers.addDirModules(b, main_mod, mer_mod, "examples/site/app", "app", site_extras);
     helpers.addDirModules(b, main_mod, mer_mod, "examples/site/api", "api", &.{});
+    helpers.addRoutesModule(b, main_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
 
     const exe = b.addExecutable(.{ .name = "merjs", .root_module = main_mod });
     b.installArtifact(exe);
@@ -100,6 +101,7 @@ pub fn build(b: *std.Build) void {
     worker_mod.addImport("counter_config", counter_config_mod);
     helpers.addDirModules(b, worker_mod, mer_mod, "examples/site/app", "app", site_extras);
     helpers.addDirModules(b, worker_mod, mer_mod, "examples/site/api", "api", &.{});
+    helpers.addRoutesModule(b, worker_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
     const worker_wasm = b.addExecutable(.{ .name = "merjs", .root_module = worker_mod });
     worker_wasm.rdynamic = true;
     worker_wasm.entry = .disabled;
@@ -133,6 +135,7 @@ pub fn build(b: *std.Build) void {
     test_mod.addImport("mer", mer_mod);
     helpers.addDirModules(b, test_mod, mer_mod, "examples/site/app", "app", site_extras);
     helpers.addDirModules(b, test_mod, mer_mod, "examples/site/api", "api", &.{});
+    helpers.addRoutesModule(b, test_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
     const run_tests = b.addRunArtifact(b.addTest(.{ .root_module = test_mod }));
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
