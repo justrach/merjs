@@ -26,11 +26,8 @@ jobs:
         with:
           version: 0.15.1
 
-      # ── Unit tests (kuri — no Chrome needed) ──────────────────────────
-      - name: kuri unit tests (no Chrome)
-        working-directory: kuri
-        run: zig test src/main.zig --log-level warn 2>&1 || echo "kuri tests: some errors were logged (non-fatal)"
-
+      # kuri unit tests are run in the kuri repo's own CI, not here.
+      # merjs CI only builds kuri and runs the E2E suite against merjs.
       # ── Build all binaries ────────────────────────────────────────────
       - name: Build merjs
         run: |
