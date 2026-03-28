@@ -4,6 +4,18 @@ All notable changes to merjs will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-03-28
+
+### Added
+- **turboapi-core dependency** — merjs now imports [turboapi-core](https://github.com/justrach/turboAPI/tree/main/turboapi-core), a shared Zig library providing a radix trie router, HTTP utilities (`percentDecode`, `queryStringGet`, `statusText`, `formatHttpDate`), and a bounded response cache. This is the first step toward sharing routing primitives between merjs and turboAPI. See [#66](https://github.com/justrach/merjs/issues/66) for the full integration roadmap.
+
+### Next (tracked in #66)
+- Method-based API routing via turboapi-core's radix trie (GET vs POST on same path)
+- Replace `queryParamFromStr` with turboapi-core's `queryStringGet`
+- Optional: radix trie for dynamic page routes (perf upgrade for large route counts)
+
+---
+
 ## [Unreleased]
 
 ### Added

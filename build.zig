@@ -26,6 +26,11 @@ pub fn build(b: *std.Build) void {
     mer_mod.addImport("dhi_model", dhi_model_mod);
     mer_mod.addImport("dhi_validator", dhi_validator_mod);
 
+    // ── turboapi-core (shared router + HTTP utilities) ──
+    const core_dep = b.dependency("turboapi_core", .{});
+    const core_mod = core_dep.module("turboapi-core");
+    mer_mod.addImport("turboapi-core", core_mod);
+
     // ── Demo site (examples/site) ───────────────────────────────────────────
     const counter_config_mod = b.addModule("counter_config", .{
         .root_source_file = b.path("examples/site/wasm/counter_config.zig"),
