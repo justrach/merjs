@@ -10,7 +10,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-pub const version = "0.2.0";
+pub const version = "0.2.1";
 
 const print = std.debug.print;
 
@@ -106,17 +106,18 @@ const build_zig_template =
     \\        .strip = if (optimize != .Debug) true else null,
     \\    });
     \\    main_mod.addImport("mer", mer_mod);
+    \\    // Wire framework internals as named module imports so main.zig can
+    \\    // `@import("server.zig")` etc. without reaching into merjs's src/.
+    \\    main_mod.addImport("server.zig", merjs_dep.module("server.zig"));
+    \\    main_mod.addImport("ssr.zig", merjs_dep.module("ssr.zig"));
+    \\    main_mod.addImport("watcher.zig", merjs_dep.module("watcher.zig"));
+    \\    main_mod.addImport("prerender.zig", merjs_dep.module("prerender.zig"));
     \\    addDirModules(b, main_mod, mer_mod, "app");
     \\    addDirModules(b, main_mod, mer_mod, "api");
+    \\    addRoutesModule(b, main_mod, mer_mod);
     \\
     \\    const exe = b.addExecutable(.{ .name = "app", .root_module = main_mod });
     \\    b.installArtifact(exe);
-    \\
-    \\    // zig build serve
-    \\    const run_exe = b.addRunArtifact(exe);
-    \\    run_exe.step.dependOn(b.getInstallStep());
-    \\    if (b.args) |args| run_exe.addArgs(args);
-    \\    b.step("serve", "Start the dev server").dependOn(&run_exe.step);
     \\
     \\    // zig build codegen
     \\    const codegen_exe = b.addExecutable(.{
@@ -130,6 +131,25 @@ const build_zig_template =
     \\    const run_codegen = b.addRunArtifact(codegen_exe);
     \\    run_codegen.setCwd(b.path("."));
     \\    b.step("codegen", "Regenerate src/generated/routes.zig").dependOn(&run_codegen.step);
+    \\
+    \\    // Auto-run codegen before compiling (fresh clones just work).
+    \\    exe.step.dependOn(&run_codegen.step);
+    \\
+    \\    // zig build serve
+    \\    const run_exe = b.addRunArtifact(exe);
+    \\    run_exe.step.dependOn(b.getInstallStep());
+    \\    if (b.args) |args| run_exe.addArgs(args);
+    \\    b.step("serve", "Start the dev server").dependOn(&run_exe.step);
+    \\}
+    \\
+    \\fn addRoutesModule(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Module) void {
+    \\    const routes_mod = b.createModule(.{
+    \\        .root_source_file = b.path("src/generated/routes.zig"),
+    \\    });
+    \\    routes_mod.addImport("mer", mer_mod);
+    \\    addDirModules(b, routes_mod, mer_mod, "app");
+    \\    addDirModules(b, routes_mod, mer_mod, "api");
+    \\    mod.addImport("routes", routes_mod);
     \\}
     \\
     \\fn addDirModules(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Module, dir: []const u8) void {
@@ -160,7 +180,88 @@ const build_zig_template =
     \\
 ;
 
-const main_zig_template = @embedFile("src/main.zig");
+const main_zig_template =
+    \\// main.zig — app entry point.
+    \\// Usage:
+    \\//   zig build serve               (dev server on :3000, hot reload)
+    \\//   zig build serve -- --port 8080
+    \\//   zig build serve -- --no-dev   (disable hot reload)
+    \\
+    \\const std = @import("std");
+    \\const Server = @import("server.zig").Server;
+    \\const Config = @import("server.zig").Config;
+    \\const ssr = @import("ssr.zig");
+    \\const watcher_mod = @import("watcher.zig");
+    \\const prerender = @import("prerender.zig");
+    \\
+    \\const log = std.log.scoped(.main);
+    \\
+    \\pub fn main() !void {
+    \\    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    \\    defer _ = gpa.deinit();
+    \\    const alloc = gpa.allocator();
+    \\
+    \\    const args = try std.process.argsAlloc(alloc);
+    \\    defer std.process.argsFree(alloc, args);
+    \\
+    \\    // Load .env before threads start.
+    \\    @import("mer").loadDotenv(alloc);
+    \\
+    \\    var config = Config{
+    \\        .host = "127.0.0.1",
+    \\        .port = 3000,
+    \\        .dev = true,
+    \\    };
+    \\
+    \\    var do_prerender = false;
+    \\
+    \\    var i: usize = 1;
+    \\    while (i < args.len) : (i += 1) {
+    \\        if (std.mem.eql(u8, args[i], "--port") and i + 1 < args.len) {
+    \\            config.port = try std.fmt.parseInt(u16, args[i + 1], 10);
+    \\            i += 1;
+    \\        } else if (std.mem.eql(u8, args[i], "--host") and i + 1 < args.len) {
+    \\            config.host = args[i + 1];
+    \\            i += 1;
+    \\        } else if (std.mem.eql(u8, args[i], "--no-dev")) {
+    \\            config.dev = false;
+    \\        } else if (std.mem.eql(u8, args[i], "--debug")) {
+    \\            config.debug = true;
+    \\        } else if (std.mem.eql(u8, args[i], "--kuri-port") and i + 1 < args.len) {
+    \\            config.kuri_port = try std.fmt.parseInt(u16, args[i + 1], 10);
+    \\            i += 1;
+    \\        } else if (std.mem.eql(u8, args[i], "--verbose") or std.mem.eql(u8, args[i], "-v")) {
+    \\            config.verbose = true;
+    \\        } else if (std.mem.eql(u8, args[i], "--prerender")) {
+    \\            do_prerender = true;
+    \\        }
+    \\    }
+    \\
+    \\    // Build router from generated routes.
+    \\    var router = ssr.buildRouter(alloc);
+    \\    defer router.deinit();
+    \\
+    \\    // SSG mode: pre-render pages to dist/ and exit.
+    \\    if (do_prerender) {
+    \\        try prerender.run(alloc, &router);
+    \\        return;
+    \\    }
+    \\
+    \\    // File watcher (dev mode only).
+    \\    var watcher = watcher_mod.Watcher.init(alloc, "app");
+    \\    defer watcher.deinit();
+    \\
+    \\    if (config.dev) {
+    \\        const wt = try std.Thread.spawn(.{}, watcher_mod.Watcher.run, .{&watcher});
+    \\        wt.detach();
+    \\        log.info("hot reload active — watching app/", .{});
+    \\    }
+    \\
+    \\    var server = Server.init(alloc, config, &router, if (config.dev) &watcher else null);
+    \\    try server.listen();
+    \\}
+    \\
+;
 
 fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     const use_cwd = std.mem.eql(u8, name, ".");
@@ -273,6 +374,69 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
             }
         }
     }
+
+    // Auto-fetch the merjs dependency so the project builds immediately (#61).
+    // Step 1: `zig fetch` (no --save) prints the package hash to stdout.
+    // Step 2: `zig fetch --save` pins the commit URL into build.zig.zon.
+    // Step 3: patch the .hash field in after the .url line.
+    {
+        const cwd_path = if (use_cwd) "." else name;
+        print("  fetching merjs dependency...\n", .{});
+
+        // Get the package hash (printed to stdout by zig fetch without --save).
+        const hash_result = try std.process.Child.run(.{
+            .allocator = alloc,
+            .argv = &.{ "zig", "fetch", "git+https://github.com/justrach/merjs.git" },
+            .cwd = cwd_path,
+        });
+        defer alloc.free(hash_result.stdout);
+        defer alloc.free(hash_result.stderr);
+
+        if (hash_result.term.Exited != 0) {
+            print("  warning: could not fetch merjs dependency (no network?)\n", .{});
+            print("  run manually: zig fetch --save=merjs git+https://github.com/justrach/merjs.git\n", .{});
+        } else {
+            const pkg_hash = std.mem.trimRight(u8, hash_result.stdout, "\n\r ");
+
+            // Pin the commit URL into build.zig.zon.
+            const save_result = try std.process.Child.run(.{
+                .allocator = alloc,
+                .argv = &.{ "zig", "fetch", "--save=merjs", "git+https://github.com/justrach/merjs.git" },
+                .cwd = cwd_path,
+            });
+            alloc.free(save_result.stdout);
+            alloc.free(save_result.stderr);
+
+            // Patch .hash into build.zig.zon after the .url line.
+            if (pkg_hash.len > 0) {
+                const zon_path_str = if (use_cwd) "build.zig.zon" else try std.fmt.allocPrint(alloc, "{s}/build.zig.zon", .{name});
+                defer if (!use_cwd) alloc.free(zon_path_str);
+                const zon_file = try std.fs.cwd().openFile(zon_path_str, .{ .mode = .read_only });
+                const zon_content = try zon_file.readToEndAlloc(alloc, 8192);
+                zon_file.close();
+                defer alloc.free(zon_content);
+                if (std.mem.indexOf(u8, zon_content, ".url = \"git+https://github.com/justrach/merjs.git")) |url_start| {
+                    if (std.mem.indexOfPos(u8, zon_content, url_start, "\n")) |eol| {
+                        const insert_pos = eol + 1;
+                        const hash_line = try std.fmt.allocPrint(alloc, "            .hash = \"{s}\",\n", .{pkg_hash});
+                        defer alloc.free(hash_line);
+                        const new_content = try std.mem.concat(alloc, u8, &.{
+                            zon_content[0..insert_pos],
+                            hash_line,
+                            zon_content[insert_pos..],
+                        });
+                        defer alloc.free(new_content);
+                        const out_file = try std.fs.cwd().createFile(zon_path_str, .{});
+                        defer out_file.close();
+                        try out_file.writeAll(new_content);
+                    }
+                }
+            }
+        }
+    }
+
+
+
     dir.makePath("src/generated") catch {};
     {
         const file = try dir.createFile("src/generated/.gitkeep", .{});
@@ -291,7 +455,8 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
         try file.writeAll(
             \\zig-out/
             \\.zig-cache/
-            \\src/generated/
+            \\src/generated/*
+            \\!src/generated/.gitkeep
             \\tools/
             \\dist/
             \\.env
@@ -307,7 +472,6 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     print("\n\n", .{});
     print("  next steps:\n\n", .{});
     if (!use_cwd) print("    cd {s}\n", .{name});
-    print("    zig build codegen     # generate routes\n", .{});
     print("    zig build serve       # start dev server on :3000\n", .{});
     print("\n  or just: mer dev\n", .{});
     print("\n  optional: mer add css | wasm | worker\n\n", .{});

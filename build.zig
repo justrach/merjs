@@ -31,6 +31,13 @@ pub fn build(b: *std.Build) void {
     const core_mod = core_dep.module("turboapi-core");
     mer_mod.addImport("turboapi-core", core_mod);
 
+    // ── Expose framework internals as named modules for consumer projects ────
+    // Consumers do: `merjs_dep.module("server.zig")` in their build.zig.
+    _ = b.addModule("server.zig", .{ .root_source_file = b.path("src/server.zig") });
+    _ = b.addModule("ssr.zig", .{ .root_source_file = b.path("src/ssr.zig") });
+    _ = b.addModule("watcher.zig", .{ .root_source_file = b.path("src/watcher.zig") });
+    _ = b.addModule("prerender.zig", .{ .root_source_file = b.path("src/prerender.zig") });
+
     // ── Demo site (examples/site) ───────────────────────────────────────────
     const counter_config_mod = b.addModule("counter_config", .{
         .root_source_file = b.path("examples/site/wasm/counter_config.zig"),
@@ -56,12 +63,6 @@ pub fn build(b: *std.Build) void {
     const install_kuri = b.addInstallArtifact(kuri_dep.artifact("kuri"), .{});
     b.getInstallStep().dependOn(&install_kuri.step);
 
-    // ── `zig build serve` ────────────────────────────────────────────────────
-    const run_exe = b.addRunArtifact(exe);
-    run_exe.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_exe.addArgs(args);
-    b.step("serve", "Start the merjs dev server").dependOn(&run_exe.step);
-
     // ── Codegen ──────────────────────────────────────────────────────────────
     const codegen_exe = b.addExecutable(.{
         .name = "codegen",
@@ -74,6 +75,15 @@ pub fn build(b: *std.Build) void {
     const run_codegen = b.addRunArtifact(codegen_exe);
     run_codegen.setCwd(b.path("."));
     b.step("codegen", "Regenerate src/generated/routes.zig").dependOn(&run_codegen.step);
+
+    // ── Auto-run codegen before compiling (fresh clones just work) ───────────
+    exe.step.dependOn(&run_codegen.step);
+
+    // ── `zig build serve` ────────────────────────────────────────────────────
+    const run_exe = b.addRunArtifact(exe);
+    run_exe.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_exe.addArgs(args);
+    b.step("serve", "Start the merjs dev server").dependOn(&run_exe.step);
 
     // ── Prerender (SSG) ─────────────────────────────────────────────────────
     const run_prerender = b.addRunArtifact(exe);
@@ -120,6 +130,8 @@ pub fn build(b: *std.Build) void {
     const worker_wasm = b.addExecutable(.{ .name = "merjs", .root_module = worker_mod });
     worker_wasm.rdynamic = true;
     worker_wasm.entry = .disabled;
+    // Auto-run codegen before worker compilation too.
+    worker_wasm.step.dependOn(&run_codegen.step);
     const install_worker = b.addInstallFile(worker_wasm.getEmittedBin(), "../examples/site/worker/merjs.wasm");
     const worker_step = b.step("worker", "Compile worker WASM for Cloudflare Workers");
     worker_step.dependOn(&install_worker.step);
@@ -152,6 +164,8 @@ pub fn build(b: *std.Build) void {
     helpers.addDirModules(b, test_mod, mer_mod, "examples/site/api", "api", &.{});
     helpers.addRoutesModule(b, test_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
     const run_tests = b.addRunArtifact(b.addTest(.{ .root_module = test_mod }));
+    // Auto-run codegen before tests too.
+    run_tests.step.dependOn(&run_codegen.step);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
     // Run inline tests in individual framework source files.
