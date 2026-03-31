@@ -130,11 +130,11 @@ pub fn main() !void {
         s.expectContains(text, "node_modules", "/ — mentions node_modules");
 
         const snap = try pageSnap(a, tab_id, "/");
+        s.expectContains(snap, "Blog", "/ — nav has Blog link");
         s.expectContains(snap, "Dashboard", "/ — nav has Dashboard link");
-        s.expectContains(snap, "Weather", "/ — nav has Weather link");
-        s.expectContains(snap, "Users", "/ — nav has Users link");
         s.expectContains(snap, "Counter", "/ — nav has Counter link");
         s.expectContains(snap, "About", "/ — nav has About link");
+        s.expectContains(snap, "Docs", "/ — nav has Docs link");
     }
 
     std.debug.print("\nGET /about\n", .{});
@@ -172,15 +172,6 @@ pub fn main() !void {
     {
         const snap = try pageSnap(a, tab_id, "/counter");
         s.expect(contains(snap, "button") or contains(snap, "Button"), "/counter — has button elements");
-    }
-
-    std.debug.print("\nGET /login\n", .{});
-    {
-        const snap = try pageSnap(a, tab_id, "/login");
-        s.expect(
-            contains(snap, "textbox") or contains(snap, "button") or contains(snap, "combobox"),
-            "/login — has form elements",
-        );
     }
 
     std.debug.print("\nGET /nonexistent → 404\n", .{});
