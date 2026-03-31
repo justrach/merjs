@@ -8,8 +8,6 @@ const std = @import("std");
 const mer = @import("mer");
 const merjs_internal = @import("merjs_internal");
 const server_mod = merjs_internal.server;
-const ssr = merjs_internal.ssr;
-
 // ObjC runtime — no @cImport needed (proven in spike #50)
 extern fn objc_getClass(name: [*:0]const u8) ?*anyopaque;
 extern fn sel_registerName(name: [*:0]const u8) ?*anyopaque;
@@ -87,7 +85,7 @@ const ServerCtx = struct {
 };
 
 fn runServer(ctx: *ServerCtx) void {
-    var router = ssr.buildRouter(ctx.allocator);
+    var router = mer.Router.fromGenerated(ctx.allocator, @import("routes"));
     defer router.deinit();
     var srv = server_mod.Server.init(ctx.allocator, .{
         .host = "127.0.0.1",

@@ -9,18 +9,16 @@
 
 const std = @import("std");
 const mer = @import("mer");
-const ssr = @import("ssr.zig");
-const Router = @import("router.zig").Router;
 const dispatch_mod = @import("dispatch.zig");
 
-var router: ?Router = null;
+var router: ?mer.Router = null;
 
 /// Allocator for WASM — backed by WebAssembly pages.
 const allocator = std.heap.wasm_allocator;
 
 /// Called once by the JS shim to initialize the router.
 export fn init() void {
-    router = ssr.buildRouter(allocator);
+    router = mer.Router.fromGenerated(allocator, @import("routes"));
 }
 
 /// Allocate `len` bytes in WASM memory. Returns pointer for JS to write into.

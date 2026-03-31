@@ -43,6 +43,16 @@ pub const Router = struct {
         return router;
     }
 
+    /// Build a Router from a codegen'd routes module (the `@import("routes")` namespace).
+    /// Reads `routes`, `layout`, `streamLayout`, `notFound` if declared.
+    pub fn fromGenerated(allocator: std.mem.Allocator, comptime generated: type) Router {
+        var r = Router.init(allocator, generated.routes);
+        if (@hasDecl(generated, "layout")) r.layout = generated.layout;
+        if (@hasDecl(generated, "streamLayout")) r.stream_layout = generated.streamLayout;
+        if (@hasDecl(generated, "notFound")) r.not_found = generated.notFound;
+        return r;
+    }
+
     pub fn deinit(self: *Router) void {
         self.exact_map.deinit(self.allocator);
         self.allocator.free(self.dynamic_routes);

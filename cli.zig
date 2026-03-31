@@ -106,12 +106,6 @@ const build_zig_template =
     \\        .strip = if (optimize != .Debug) true else null,
     \\    });
     \\    main_mod.addImport("mer", mer_mod);
-    \\    // Wire framework internals as named module imports so main.zig can
-    \\    // `@import("server.zig")` etc. without reaching into merjs's src/.
-    \\    main_mod.addImport("server.zig", merjs_dep.module("server.zig"));
-    \\    main_mod.addImport("ssr.zig", merjs_dep.module("ssr.zig"));
-    \\    main_mod.addImport("watcher.zig", merjs_dep.module("watcher.zig"));
-    \\    main_mod.addImport("prerender.zig", merjs_dep.module("prerender.zig"));
     \\    addDirModules(b, main_mod, mer_mod, "app");
     \\    addDirModules(b, main_mod, mer_mod, "api");
     \\    addRoutesModule(b, main_mod, mer_mod);
@@ -188,11 +182,7 @@ const main_zig_template =
     \\//   zig build serve -- --no-dev   (disable hot reload)
     \\
     \\const std = @import("std");
-    \\const Server = @import("server.zig").Server;
-    \\const Config = @import("server.zig").Config;
-    \\const ssr = @import("ssr.zig");
-    \\const watcher_mod = @import("watcher.zig");
-    \\const prerender = @import("prerender.zig");
+    \\const mer = @import("mer");
     \\
     \\const log = std.log.scoped(.main);
     \\
@@ -205,9 +195,9 @@ const main_zig_template =
     \\    defer std.process.argsFree(alloc, args);
     \\
     \\    // Load .env before threads start.
-    \\    @import("mer").loadDotenv(alloc);
+    \\    mer.loadDotenv(alloc);
     \\
-    \\    var config = Config{
+    \\    var config = mer.Config{
     \\        .host = "127.0.0.1",
     \\        .port = 3000,
     \\        .dev = true,
@@ -238,26 +228,26 @@ const main_zig_template =
     \\    }
     \\
     \\    // Build router from generated routes.
-    \\    var router = ssr.buildRouter(alloc);
+    \\    var router = mer.Router.fromGenerated(alloc, @import("routes"));
     \\    defer router.deinit();
     \\
     \\    // SSG mode: pre-render pages to dist/ and exit.
     \\    if (do_prerender) {
-    \\        try prerender.run(alloc, &router);
+    \\        try mer.runPrerender(alloc, &router);
     \\        return;
     \\    }
     \\
     \\    // File watcher (dev mode only).
-    \\    var watcher = watcher_mod.Watcher.init(alloc, "app");
+    \\    var watcher = mer.Watcher.init(alloc, "app");
     \\    defer watcher.deinit();
     \\
     \\    if (config.dev) {
-    \\        const wt = try std.Thread.spawn(.{}, watcher_mod.Watcher.run, .{&watcher});
+    \\        const wt = try std.Thread.spawn(.{}, mer.Watcher.run, .{&watcher});
     \\        wt.detach();
     \\        log.info("hot reload active — watching app/", .{});
     \\    }
     \\
-    \\    var server = Server.init(alloc, config, &router, if (config.dev) &watcher else null);
+    \\    var server = mer.Server.init(alloc, config, &router, if (config.dev) &watcher else null);
     \\    try server.listen();
     \\}
     \\

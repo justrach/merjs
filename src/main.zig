@@ -5,11 +5,7 @@
 //   zig build serve -- --no-dev   (disable hot reload)
 
 const std = @import("std");
-const Server = @import("server.zig").Server;
-const Config = @import("server.zig").Config;
-const ssr = @import("ssr.zig");
-const watcher_mod = @import("watcher.zig");
-const prerender = @import("prerender.zig");
+const mer = @import("mer");
 
 const log = std.log.scoped(.main);
 
@@ -22,9 +18,9 @@ pub fn main() !void {
     defer std.process.argsFree(alloc, args);
 
     // Load .env before threads start — safe to read without mutex after this.
-    @import("mer").loadDotenv(alloc);
+    mer.loadDotenv(alloc);
 
-    var config = Config{
+    var config = mer.Config{
         .host = "127.0.0.1",
         .port = 3000,
         .dev = true,
@@ -55,25 +51,25 @@ pub fn main() !void {
     }
 
     // Build router from generated routes.
-    var router = ssr.buildRouter(alloc);
+    var router = mer.Router.fromGenerated(alloc, @import("routes"));
     defer router.deinit();
 
     // SSG mode: pre-render pages to dist/ and exit.
     if (do_prerender) {
-        try prerender.run(alloc, &router);
+        try mer.runPrerender(alloc, &router);
         return;
     }
 
     // File watcher (dev mode only).
-    var watcher = watcher_mod.Watcher.init(alloc, "app");
+    var watcher = mer.Watcher.init(alloc, "app");
     defer watcher.deinit();
 
     if (config.dev) {
-        const wt = try std.Thread.spawn(.{}, watcher_mod.Watcher.run, .{&watcher});
+        const wt = try std.Thread.spawn(.{}, mer.Watcher.run, .{&watcher});
         wt.detach();
         log.info("hot reload active — watching app/", .{});
     }
 
-    var server = Server.init(alloc, config, &router, if (config.dev) &watcher else null);
+    var server = mer.Server.init(alloc, config, &router, if (config.dev) &watcher else null);
     try server.listen();
 }
