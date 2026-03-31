@@ -262,13 +262,6 @@ pub fn build(b: *std.Build) void {
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/app", "app", site_extras);
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/api", "api", &.{});
         helpers.addRoutesModule(b, desktop_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
-        const merjs_internal = b.createModule(.{
-            .root_source_file = b.path("src/desktop_shim.zig"),
-        });
-        merjs_internal.addImport("mer", mer_mod);
-        helpers.addDirModules(b, merjs_internal, mer_mod, "examples/site/app", "app", site_extras);
-        helpers.addDirModules(b, merjs_internal, mer_mod, "examples/site/api", "api", &.{});
-        desktop_mod.addImport("merjs_internal", merjs_internal);
         const desktop_exe = b.addExecutable(.{ .name = "merapp", .root_module = desktop_mod });
         desktop_exe.linkFramework("AppKit");
         desktop_exe.linkFramework("WebKit");

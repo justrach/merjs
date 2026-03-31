@@ -6,8 +6,6 @@
 ///   sync         →  std.Thread.ResetEvent (server signals ready → main loads URL)
 const std = @import("std");
 const mer = @import("mer");
-const merjs_internal = @import("merjs_internal");
-const server_mod = merjs_internal.server;
 // ObjC runtime — no @cImport needed (proven in spike #50)
 extern fn objc_getClass(name: [*:0]const u8) ?*anyopaque;
 extern fn sel_registerName(name: [*:0]const u8) ?*anyopaque;
@@ -80,14 +78,14 @@ fn sendWebViewInit(recv: Id, s: Sel, frame: CGRect, config: Id) Id {
 
 // Server thread context
 const ServerCtx = struct {
-    ready: server_mod.ServerReady = .{},
+    ready: mer.ServerReady = .{},
     allocator: std.mem.Allocator,
 };
 
 fn runServer(ctx: *ServerCtx) void {
     var router = mer.Router.fromGenerated(ctx.allocator, @import("routes"));
     defer router.deinit();
-    var srv = server_mod.Server.init(ctx.allocator, .{
+    var srv = mer.Server.init(ctx.allocator, .{
         .host = "127.0.0.1",
         .port = 0, // OS assigns a free port
         .dev = false,
