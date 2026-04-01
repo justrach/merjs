@@ -3,7 +3,8 @@
 zig-out/
 
 # Generated files (recreated by `zig build codegen`)
-src/generated/
+src/generated/*
+!src/generated/.gitkeep
 
 # Built assets (recreated by build steps)
 public/styles.css

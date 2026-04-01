@@ -31,6 +31,20 @@ pub fn build(b: *std.Build) void {
     const core_mod = core_dep.module("turboapi-core");
     mer_mod.addImport("turboapi-core", core_mod);
 
+    // Self-referential import: internal files (server.zig, router.zig, …)
+    // file-imported from mer.zig still resolve their `@import("mer")` calls.
+    mer_mod.addImport("mer", mer_mod);
+
+    // ── Expose framework internals as named modules for consumer projects ────
+    // Consumers do: `merjs_dep.module("server")` in their build.zig.
+    // Each module has "mer" wired so transitive file-imports just work.
+    const server_mod = b.addModule("server", .{ .root_source_file = b.path("src/server.zig") });
+    server_mod.addImport("mer", mer_mod);
+    const watcher_named = b.addModule("watcher", .{ .root_source_file = b.path("src/watcher.zig") });
+    _ = watcher_named;
+    const prerender_mod = b.addModule("prerender", .{ .root_source_file = b.path("src/prerender.zig") });
+    prerender_mod.addImport("mer", mer_mod);
+
     // ── Demo site (examples/site) ───────────────────────────────────────────
     const counter_config_mod = b.addModule("counter_config", .{
         .root_source_file = b.path("examples/site/wasm/counter_config.zig"),
@@ -56,12 +70,6 @@ pub fn build(b: *std.Build) void {
     const install_kuri = b.addInstallArtifact(kuri_dep.artifact("kuri"), .{});
     b.getInstallStep().dependOn(&install_kuri.step);
 
-    // ── `zig build serve` ────────────────────────────────────────────────────
-    const run_exe = b.addRunArtifact(exe);
-    run_exe.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_exe.addArgs(args);
-    b.step("serve", "Start the merjs dev server").dependOn(&run_exe.step);
-
     // ── Codegen ──────────────────────────────────────────────────────────────
     const codegen_exe = b.addExecutable(.{
         .name = "codegen",
@@ -74,6 +82,15 @@ pub fn build(b: *std.Build) void {
     const run_codegen = b.addRunArtifact(codegen_exe);
     run_codegen.setCwd(b.path("."));
     b.step("codegen", "Regenerate src/generated/routes.zig").dependOn(&run_codegen.step);
+
+    // ── Auto-run codegen before compiling (fresh clones just work) ───────────
+    exe.step.dependOn(&run_codegen.step);
+
+    // ── `zig build serve` ────────────────────────────────────────────────────
+    const run_exe = b.addRunArtifact(exe);
+    run_exe.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_exe.addArgs(args);
+    b.step("serve", "Start the merjs dev server").dependOn(&run_exe.step);
 
     // ── Prerender (SSG) ─────────────────────────────────────────────────────
     const run_prerender = b.addRunArtifact(exe);
@@ -120,6 +137,8 @@ pub fn build(b: *std.Build) void {
     const worker_wasm = b.addExecutable(.{ .name = "merjs", .root_module = worker_mod });
     worker_wasm.rdynamic = true;
     worker_wasm.entry = .disabled;
+    // Auto-run codegen before worker compilation too.
+    worker_wasm.step.dependOn(&run_codegen.step);
     const install_worker = b.addInstallFile(worker_wasm.getEmittedBin(), "../examples/site/worker/merjs.wasm");
     const worker_step = b.step("worker", "Compile worker WASM for Cloudflare Workers");
     worker_step.dependOn(&install_worker.step);
@@ -152,6 +171,8 @@ pub fn build(b: *std.Build) void {
     helpers.addDirModules(b, test_mod, mer_mod, "examples/site/api", "api", &.{});
     helpers.addRoutesModule(b, test_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
     const run_tests = b.addRunArtifact(b.addTest(.{ .root_module = test_mod }));
+    // Auto-run codegen before tests too.
+    run_tests.step.dependOn(&run_codegen.step);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
     // Run inline tests in individual framework source files.
@@ -163,20 +184,27 @@ pub fn build(b: *std.Build) void {
         });
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = file_test_mod })).step);
     }
-    // Run router inline tests.
+    // Run router + runtime inline tests (through mer.zig as root to avoid
+    // file-ownership conflict: mer.zig file-imports router.zig/server.zig/etc.,
+    // so those files belong to the mer module and can't also be test roots).
     {
-        const router_test_mod = b.createModule(.{
-            .root_source_file = b.path("src/router.zig"),
+        const mer_test_mod = b.createModule(.{
+            .root_source_file = b.path("src/mer.zig"),
             .target = target,
             .optimize = optimize,
         });
-        router_test_mod.addImport("mer", mer_mod);
-        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = router_test_mod })).step);
+        mer_test_mod.addImport("dhi_model", dhi_model_mod);
+        mer_test_mod.addImport("dhi_validator", dhi_validator_mod);
+        mer_test_mod.addImport("turboapi-core", core_mod);
+        mer_test_mod.addImport("mer", mer_test_mod);
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mer_test_mod })).step);
     }
 
-    // ── Consumer integration test (issue #62) ──────────────────────────────
-    // Simulates a consumer project with its own routes — proves the named
-    // module override works and framework example routes don't leak in.
+    // ── Consumer integration test (issue #62, #69) ────────────────────────
+    // Simulates a consumer project with its own routes — proves that
+    // `mer.Router.fromGenerated` works and framework example routes don't leak in.
+    // With the self-referential mer import, no manual wiring of ssr.zig/router.zig
+    // transitive deps is needed — consumers just use `@import("mer")`.
     {
         const consumer_test_mod = b.createModule(.{
             .root_source_file = b.path("tests/consumer/src/test_consumer_routes.zig"),
@@ -184,16 +212,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         consumer_test_mod.addImport("mer", mer_mod);
-        // Give the test access to ssr.zig (framework internals).
-        consumer_test_mod.addImport("ssr.zig", b.createModule(.{
-            .root_source_file = b.path("src/ssr.zig"),
-        }));
-        // Wire ssr.zig's dependencies.
-        consumer_test_mod.import_table.get("ssr.zig").?.addImport("mer", mer_mod);
-        consumer_test_mod.import_table.get("ssr.zig").?.addImport("router.zig", b.createModule(.{
-            .root_source_file = b.path("src/router.zig"),
-        }));
-        consumer_test_mod.import_table.get("ssr.zig").?.import_table.get("router.zig").?.addImport("mer", mer_mod);
         // The key: wire "routes" to the CONSUMER's routes, not the framework's.
         const consumer_routes_mod = b.createModule(.{
             .root_source_file = b.path("tests/consumer/src/routes.zig"),
@@ -210,7 +228,7 @@ pub fn build(b: *std.Build) void {
             consumer_routes_mod.addImport(page[0], page_mod);
             consumer_test_mod.addImport(page[0], page_mod);
         }
-        consumer_test_mod.import_table.get("ssr.zig").?.addImport("routes", consumer_routes_mod);
+        consumer_test_mod.addImport("routes", consumer_routes_mod);
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = consumer_test_mod })).step);
     }
 
@@ -241,15 +259,9 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         desktop_mod.addImport("mer", mer_mod);
-        const merjs_internal = b.createModule(.{
-            .root_source_file = b.path("src/desktop_shim.zig"),
-        });
-        merjs_internal.addImport("mer", mer_mod);
-        helpers.addDirModules(b, merjs_internal, mer_mod, "examples/site/app", "app", site_extras);
-        helpers.addDirModules(b, merjs_internal, mer_mod, "examples/site/api", "api", &.{});
-        desktop_mod.addImport("merjs_internal", merjs_internal);
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/app", "app", site_extras);
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/api", "api", &.{});
+        helpers.addRoutesModule(b, desktop_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
         const desktop_exe = b.addExecutable(.{ .name = "merapp", .root_module = desktop_mod });
         desktop_exe.linkFramework("AppKit");
         desktop_exe.linkFramework("WebKit");
@@ -268,7 +280,7 @@ pub fn build(b: *std.Build) void {
             \\  <key>CFBundleExecutable</key>    <string>merapp</string>
             \\  <key>CFBundleIdentifier</key>    <string>com.merjs.desktop</string>
             \\  <key>CFBundleName</key>          <string>MerApp</string>
-            \\  <key>CFBundleVersion</key>       <string>0.2.0</string>
+            \\  <key>CFBundleVersion</key>       <string>0.2.2</string>
             \\  <key>NSHighResolutionCapable</key><true/>
             \\  <key>NSPrincipalClass</key>      <string>NSApplication</string>
             \\</dict>

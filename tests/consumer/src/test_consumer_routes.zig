@@ -5,15 +5,16 @@
 // merjs's cached copy containing api/hello, app/about, etc. — causing build
 // failures for consumer projects with different pages.
 //
-// After the fix, ssr.zig does @import("routes") — a named module that the
-// consumer's build.zig wires to their own routes file.
+// After the fix, consumers use mer.Router.fromGenerated(@import("routes")) —
+// a named module that the consumer's build.zig wires to their own routes file.
+// No need to import ssr.zig or wire its transitive deps.
 
 const std = @import("std");
 const mer = @import("mer");
-const ssr = @import("ssr.zig");
+const routes = @import("routes");
 
 test "consumer: buildRouter uses consumer routes, not framework example routes" {
-    var router = ssr.buildRouter(std.testing.allocator);
+    var router = mer.Router.fromGenerated(std.testing.allocator, routes);
     defer router.deinit();
 
     // Consumer routes are present
@@ -28,7 +29,7 @@ test "consumer: buildRouter uses consumer routes, not framework example routes" 
 }
 
 test "consumer: framework example routes do NOT leak in" {
-    var router = ssr.buildRouter(std.testing.allocator);
+    var router = mer.Router.fromGenerated(std.testing.allocator, routes);
     defer router.deinit();
 
     // These are merjs example site routes — they must NOT exist in a consumer build.
@@ -41,7 +42,7 @@ test "consumer: framework example routes do NOT leak in" {
 }
 
 test "consumer: route render functions produce correct output" {
-    var router = ssr.buildRouter(std.testing.allocator);
+    var router = mer.Router.fromGenerated(std.testing.allocator, routes);
     defer router.deinit();
 
     const route = router.findRoute("/").?;

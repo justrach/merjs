@@ -9,7 +9,7 @@ const session_mod = @import("session.zig");
 const fetch_mod = @import("fetch.zig");
 
 /// Framework version — kept in sync with build.zig.zon.
-pub const version = "0.2.0";
+pub const version = "0.2.2";
 
 // --- Streaming SSR ----------------------------------------------------------
 
@@ -187,3 +187,17 @@ pub const Route = struct {
     meta: Meta = .{},
     prerender: bool = false,
 };
+
+// --- Runtime (server, router, watcher, prerender) ----------------------------
+// Re-exported so consumer projects only need `@import("mer")`.
+// Requires the self-referential `mer_mod.addImport("mer", mer_mod)` in build.zig
+// so that transitive file-imports (server.zig → router.zig → mer) resolve.
+
+pub const Router = @import("router.zig").Router;
+pub const LayoutFn = @import("router.zig").LayoutFn;
+pub const StreamLayoutFn = @import("router.zig").StreamLayoutFn;
+pub const Server = @import("server.zig").Server;
+pub const Config = @import("server.zig").Config;
+pub const ServerReady = @import("server.zig").ServerReady;
+pub const Watcher = @import("watcher.zig").Watcher;
+pub const runPrerender = @import("prerender.zig").run;

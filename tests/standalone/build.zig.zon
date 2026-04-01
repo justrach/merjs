@@ -1,0 +1,17 @@
+.{
+    .name = .standalone_consumer_test,
+    .fingerprint = 0xee72736014db868e,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{
+        .merjs = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "app",
+        "src",
+    },
+}
