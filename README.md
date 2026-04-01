@@ -80,34 +80,33 @@ Visit `http://localhost:3000`.
 
 **Local benchmarks** (Apple M-series, `wrk -t4 -c50 -d10s`, `-Doptimize=ReleaseSmall`):
 
-|                        | **merjs**                  | **Next.js**                    |
-| ---------------------- | -------------------------- | ------------------------------ |
-| Throughput             | **115,093 req/s**          | ~2,060 req/s                   |
-| Avg latency            | **0.39 ms**                | ~77 ms                         |
-| Cold start             | **< 5 ms**                 | ~1-3 s                         |
-| Binary size            | **260 KB**                 | N/A (interpreted)              |
-| `node_modules`         | **0 files**                | ~300 MB / ~85k files           |
-| Build time             | **~3.2 s**                 | ~38 s                          |
+|                | **merjs**         | **Next.js**          |
+| -------------- | ----------------- | -------------------- |
+| Throughput     | **115,093 req/s** | ~2,060 req/s         |
+| Avg latency    | **0.39 ms**       | ~77 ms               |
+| Cold start     | **< 5 ms**        | ~1-3 s               |
+| Binary size    | **260 KB**        | N/A (interpreted)    |
+| `node_modules` | **0 files**       | ~300 MB / ~85k files |
+| Build time     | **~3.2 s**        | ~38 s                |
 
 **CI benchmarks** (GitHub Actions, auto-updated on each push to `main`):
 
-|                        | **merjs**                  | **Next.js**                    |
-| ---------------------- | -------------------------- | ------------------------------ |
-<!-- BENCH:START -->
-| Requests/sec (wrk)    | **195.18 req/s**     | **2757.41 req/s**          |
-| Avg latency           | **40.85ms 2.31ms**           | **72.04ms 191.42ms**                |
-| RAM usage (under load) | **4.8 MB**        | **71.7 MB**             |
-| Build time             | **22461 ms**                | **30139 ms**                   |
-<!-- BENCH:END -->
+|                        | **merjs**          | **Next.js**       |
+| ---------------------- | ------------------ | ----------------- |
+| Requests/sec (wrk)     | 195.18 req/s       | **2757.41 req/s** |
+| Avg latency            | **40.85ms 2.31ms** | 72.04ms 191.42ms  |
+| RAM usage (under load) | **4.8 MB**         | 71.7 MB           |
+| Build time             | **22461 ms**       | 30139 ms          |
 
 > merjs is an early experiment — Next.js is mature and production-grade. Local and CI numbers differ due to hardware (Apple Silicon vs shared GitHub Actions VM).
+
 ---
 
 ## Features
 
 ### File-based routing — like Next.js
 
-```
+```txt
 app/index.zig       →  /
 app/dashboard.zig   →  /dashboard
 app/users/[id].zig  →  /users/:id
@@ -192,6 +191,7 @@ Or build from source:
 ```bash
 zig build cli -Doptimize=ReleaseSmall   # → zig-out/bin/mer
 ```
+
 ---
 
 ## Demo
