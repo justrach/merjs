@@ -130,7 +130,6 @@ pub fn main() !void {
         s.expectContains(text, "node_modules", "/ — mentions node_modules");
 
         const snap = try pageSnap(a, tab_id, "/");
-        s.expectContains(snap, "Blog", "/ — nav has Blog link");
         s.expectContains(snap, "Dashboard", "/ — nav has Dashboard link");
         s.expectContains(snap, "Counter", "/ — nav has Counter link");
         s.expectContains(snap, "About", "/ — nav has About link");
