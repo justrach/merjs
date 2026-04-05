@@ -44,6 +44,7 @@ fn page() h.Node {
             h.button(.{ .id = "btn-inc", .class = "btn btn-inc", .type = "button" }, "+"),
         }),
         h.span(.{ .class = "badge" }, "wasm32-freestanding"),
+        h.div(.{ .id = "runtime-status", .class = "runtime-status runtime-status--loading", .role = "status", .aria_live = "polite" }, "Checking WASM runtime..."),
         h.div(.{ .class = "config-note" }, .{
             h.raw("Bounds enforced at <strong>comptime</strong> via "),
             h.code(.{}, "counter_config.zig"),
@@ -61,12 +62,18 @@ fn comptimeIntStr(comptime val: i32) []const u8 {
 const counter_js =
     \\(async function(){
     \\  const display = document.getElementById('count-value');
+    \\  const status = document.getElementById('runtime-status');
 ++ std.fmt.comptimePrint(
     \\  const MIN={d}, MAX={d}, STEP={d}, INIT={d};
 , .{ cfg.min, cfg.max, cfg.step, cfg.initial }) ++
     \\  let count = INIT;
     \\  function clamp(v){ return Math.max(MIN, Math.min(MAX, v)); }
     \\  function sync(){ display.textContent = count; }
+    \\  function setStatus(kind, text, detail){
+    \\    status.className = 'runtime-status runtime-status--' + kind;
+    \\    status.textContent = text;
+    \\    if (detail) status.title = detail;
+    \\  }
     \\  try {
     \\    const {instance} = await WebAssembly.instantiateStreaming(fetch('/counter.wasm'),{});
     \\    const w = instance.exports;
@@ -74,10 +81,15 @@ const counter_js =
     \\    document.getElementById('btn-dec').onclick = ()=>{ w.decrement(); display.textContent = w.get_count(); };
     \\    document.getElementById('btn-reset').onclick = ()=>{ w.reset(); display.textContent = w.get_count(); };
     \\    display.textContent = w.get_count();
+    \\    setStatus('wasm', 'Running on Zig WASM', '');
     \\  } catch(e) {
     \\    document.getElementById('btn-inc').onclick = ()=>{ count = clamp(count + STEP); sync(); };
     \\    document.getElementById('btn-dec').onclick = ()=>{ count = clamp(count - STEP); sync(); };
     \\    document.getElementById('btn-reset').onclick = ()=>{ count = INIT; sync(); };
+    \\    sync();
+    \\    console.warn('counter.wasm failed, falling back to JS', e);
+    \\    const detail = e && e.message ? e.message : String(e);
+    \\    setStatus('fallback', 'JS fallback active: WASM failed to load', detail);
     \\  }
     \\})();
 ;
@@ -132,6 +144,18 @@ const page_css =
     \\  font-size:11px; color:var(--muted); background:var(--bg2);
     \\  border:1px solid var(--border); border-radius:100px;
     \\  padding:4px 12px; letter-spacing:0.04em;
+    \\}
+    \\.runtime-status {
+    \\  font-size:12px; border-radius:999px; padding:6px 12px;
+    \\  border:1px solid var(--border); background:var(--bg2);
+    \\  color:var(--muted);
+    \\}
+    \\.runtime-status--loading { color:var(--muted); }
+    \\.runtime-status--wasm {
+    \\  color:#0f766e; border-color:#99f6e4; background:#ecfdf5;
+    \\}
+    \\.runtime-status--fallback {
+    \\  color:#9a3412; border-color:#fdba74; background:#fff7ed;
     \\}
     \\.config-note {
     \\  font-size:12px; color:var(--muted); max-width:360px; line-height:1.6;
