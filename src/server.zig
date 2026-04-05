@@ -225,6 +225,12 @@ fn serveRequest(
         return;
     }
 
+    if (dev and std.mem.eql(u8, path, "/_mer/dev-error")) {
+        const response = try dev_mod.serveDevError(alloc);
+        try sendResponse(std_req, response);
+        return;
+    }
+
     // Kuri browser automation proxy (debug mode).
     if (dev and std.mem.startsWith(u8, path, "/_mer/kuri")) {
         if (kuri) |k| {

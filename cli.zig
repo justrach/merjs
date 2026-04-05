@@ -315,30 +315,66 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
 
 // ── dev ─────────────────────────────────────────────────────────────────────
 
-fn cmdDev(alloc: std.mem.Allocator, extra_args: []const []const u8) !void {
-    std.fs.cwd().access("build.zig", .{}) catch {
-        print("mer: no build.zig found — are you in a merjs project?\n", .{});
-        std.process.exit(1);
-    };
+const DEV_ERROR_PATH = ".mer/dev-error.txt";
 
-    print("mer: running codegen...\n", .{});
-    {
-        const result = try std.process.Child.run(.{
-            .allocator = alloc,
-            .argv = &.{ "zig", "build", "codegen" },
-        });
-        defer alloc.free(result.stdout);
-        defer alloc.free(result.stderr);
-        const exited = result.term == .Exited;
-        if (!exited or result.term.Exited != 0) {
-            print("mer: codegen failed:\n{s}", .{result.stderr});
-            std.process.exit(1);
+fn writeDevErrorState(msg: []const u8) !void {
+    std.fs.cwd().makePath(".mer") catch {};
+    const file = try std.fs.cwd().createFile(DEV_ERROR_PATH, .{});
+    defer file.close();
+    try file.writeAll(msg);
+}
+
+fn clearDevErrorState() void {
+    std.fs.cwd().deleteFile(DEV_ERROR_PATH) catch {};
+}
+
+fn runBuildCommand(alloc: std.mem.Allocator, argv: []const []const u8) !std.process.Child.RunResult {
+    return std.process.Child.run(.{
+        .allocator = alloc,
+        .argv = argv,
+    });
+}
+
+fn scanWatchDir(alloc: std.mem.Allocator, mtimes: *std.StringHashMap(i128), dir_name: []const u8) bool {
+    var changed = false;
+    var dir = std.fs.cwd().openDir(dir_name, .{ .iterate = true }) catch return false;
+    defer dir.close();
+
+    var walker = dir.walk(alloc) catch return false;
+    defer walker.deinit();
+
+    while (walker.next() catch null) |entry| {
+        if (entry.kind != .file) continue;
+        const stat = dir.statFile(entry.path) catch continue;
+        const full = std.fmt.allocPrint(alloc, "{s}/{s}", .{ dir_name, entry.path }) catch continue;
+        defer alloc.free(full);
+
+        if (mtimes.get(full)) |prev| {
+            if (prev != stat.mtime) {
+                const key = alloc.dupe(u8, full) catch continue;
+                _ = mtimes.remove(full);
+                mtimes.put(key, stat.mtime) catch {};
+                changed = true;
+            }
+        } else {
+            const key = alloc.dupe(u8, full) catch continue;
+            mtimes.put(key, stat.mtime) catch {};
         }
     }
+    return changed;
+}
 
-    print("mer: starting dev server...\n", .{});
+fn pollDevChanges(alloc: std.mem.Allocator, mtimes: *std.StringHashMap(i128)) bool {
+    var changed = false;
+    for ([_][]const u8{ "app", "api", "src" }) |dir_name| {
+        if (scanWatchDir(alloc, mtimes, dir_name)) changed = true;
+    }
+    return changed;
+}
+
+fn startDevServer(alloc: std.mem.Allocator, extra_args: []const []const u8) !std.process.Child {
     var argv: std.ArrayList([]const u8) = .{};
-    defer argv.deinit(alloc);
+    errdefer argv.deinit(alloc);
     try argv.appendSlice(alloc, &.{ "zig", "build", "serve" });
     if (extra_args.len > 0) {
         try argv.append(alloc, "--");
@@ -349,7 +385,75 @@ fn cmdDev(alloc: std.mem.Allocator, extra_args: []const []const u8) !void {
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
     try child.spawn();
-    _ = try child.wait();
+    return child;
+}
+
+fn cmdDev(alloc: std.mem.Allocator, extra_args: []const []const u8) !void {
+    std.fs.cwd().access("build.zig", .{}) catch {
+        print("mer: no build.zig found — are you in a merjs project?\n", .{});
+        std.process.exit(1);
+    };
+
+    clearDevErrorState();
+    print("mer: running codegen...\n", .{});
+    {
+        const result = try runBuildCommand(alloc, &.{ "zig", "build", "codegen" });
+        defer alloc.free(result.stdout);
+        defer alloc.free(result.stderr);
+        const exited = result.term == .Exited;
+        if (!exited or result.term.Exited != 0) {
+            print("mer: codegen failed:\n{s}", .{result.stderr});
+            std.process.exit(1);
+        }
+    }
+
+    print("mer: starting dev server...\n", .{});
+    var child = try startDevServer(alloc, extra_args);
+    defer {
+        _ = child.kill() catch {};
+    }
+
+    var mtimes = std.StringHashMap(i128).init(alloc);
+    defer {
+        var it = mtimes.iterator();
+        while (it.next()) |entry| alloc.free(entry.key_ptr.*);
+        mtimes.deinit();
+    }
+    _ = pollDevChanges(alloc, &mtimes);
+
+    while (true) {
+        std.Thread.sleep(300 * std.time.ns_per_ms);
+        if (!pollDevChanges(alloc, &mtimes)) continue;
+
+        print("mer: rebuilding...\n", .{});
+        {
+            const result = try runBuildCommand(alloc, &.{ "zig", "build", "codegen" });
+            defer alloc.free(result.stdout);
+            defer alloc.free(result.stderr);
+            const exited = result.term == .Exited;
+            if (!exited or result.term.Exited != 0) {
+                try writeDevErrorState(result.stderr);
+                print("mer: codegen failed:\n{s}", .{result.stderr});
+                continue;
+            }
+        }
+
+        {
+            const result = try runBuildCommand(alloc, &.{ "zig", "build" });
+            defer alloc.free(result.stdout);
+            defer alloc.free(result.stderr);
+            const exited = result.term == .Exited;
+            if (!exited or result.term.Exited != 0) {
+                try writeDevErrorState(result.stderr);
+                print("mer: build failed:\n{s}", .{result.stderr});
+                continue;
+            }
+        }
+
+        clearDevErrorState();
+        _ = child.kill() catch {};
+        child = try startDevServer(alloc, extra_args);
+    }
 }
 
 // ── build ───────────────────────────────────────────────────────────────────

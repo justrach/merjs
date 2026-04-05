@@ -13,8 +13,42 @@ pub const RouteDebugInfo = struct {
 pub const hot_reload_script =
     \\<script>
     \\(function(){
+    \\  const overlayId = '__mer-dev-overlay';
+    \\  function ensureOverlay(){
+    \\    let el = document.getElementById(overlayId);
+    \\    if (el) return el;
+    \\    el = document.createElement('div');
+    \\    el.id = overlayId;
+    \\    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(10,10,20,.94);color:#f5f7ff;padding:32px;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;overflow:auto;display:none';
+    \\    el.innerHTML = '<div style="max-width:960px;margin:0 auto"><div style="font-size:12px;letter-spacing:.08em;color:#ff8a8a;margin-bottom:12px">MERJS COMPILE ERROR</div><pre id="__mer-dev-overlay-pre" style="white-space:pre-wrap;word-break:break-word;background:#151827;border:1px solid #2f3448;border-radius:12px;padding:20px"></pre><div style="margin-top:12px;color:#9aa3b2">Fix the error and save to retry.</div></div>';
+    \\    document.body.appendChild(el);
+    \\    return el;
+    \\  }
+    \\  function hideOverlay(){
+    \\    const el = document.getElementById(overlayId);
+    \\    if (el) el.style.display = 'none';
+    \\  }
+    \\  function showOverlay(text){
+    \\    const el = ensureOverlay();
+    \\    const pre = document.getElementById('__mer-dev-overlay-pre');
+    \\    pre.textContent = text;
+    \\    el.style.display = 'block';
+    \\  }
     \\  const es = new EventSource('/_mer/events');
-    \\  es.onmessage = () => location.reload();
+    \\  es.onmessage = async () => {
+    \\    try {
+    \\      const res = await fetch('/_mer/dev-error?ts=' + Date.now(), { cache: 'no-store' });
+    \\      const text = await res.text();
+    \\      if (text && text.trim().length > 0) {
+    \\        showOverlay(text);
+    \\        return;
+    \\      }
+    \\      hideOverlay();
+    \\      location.reload();
+    \\    } catch (_) {
+    \\      location.reload();
+    \\    }
+    \\  };
     \\})();
     \\</script>
     \\</body>
@@ -86,6 +120,16 @@ pub fn sendErrorOverlay(std_req: *std.http.Server.Request, target: []const u8, e
         \\</div></body></html>
     );
     try bw.end();
+}
+
+pub fn serveDevError(alloc: std.mem.Allocator) !res_mod.Response {
+    const file = std.fs.cwd().openFile(".mer/dev-error.txt", .{ .mode = .read_only }) catch |err| switch (err) {
+        error.FileNotFound => return res_mod.Response.init(.ok, .text, ""),
+        else => return err,
+    };
+    defer file.close();
+    const body = try file.readToEndAlloc(alloc, 64 * 1024);
+    return res_mod.Response.init(.ok, .text, body);
 }
 
 /// Build a response for the /_mer/debug endpoint.
