@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+/**
+ * Wrapper script that invokes the downloaded mer binary
+ */
+
+const { spawn } = require('child_process');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+
+function getBinPath() {
+  const platform = os.platform() === 'win32' ? 'windows' : os.platform() === 'darwin' ? 'macos' : 'linux';
+  const binName = platform === 'windows' ? 'mer.exe' : 'mer';
+  const binPath = path.join(__dirname, '..', 'bin', binName);
+  
+  if (!fs.existsSync(binPath)) {
+    console.error('merjs: binary not found. Try running `npm install` again.');
+    process.exit(1);
+  }
+  
+  return binPath;
+}
+
+const binPath = getBinPath();
+const child = spawn(binPath, process.argv.slice(2), {
+  stdio: 'inherit',
+  env: process.env
+});
+
+child.on('exit', (code) => {
+  process.exit(code || 0);
+});

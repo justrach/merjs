@@ -1,0 +1,47 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 0.2.2)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/merjs
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install build dependencies
+        run: pip install build twine
+      
+      - name: Update version
+        if: github.event.inputs.version
+        working-directory: dist/pypi
+        run: |
+          sed -i 's/version = "[^"]*"/version = "${{ github.event.inputs.version }}"/' pyproject.toml
+          sed -i 's/__version__ = "[^"]*"/__version__ = "${{ github.event.inputs.version }}"/' src/merjs/__init__.py
+      
+      - name: Build package
+        working-directory: dist/pypi
+        run: python -m build
+      
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/pypi/dist/

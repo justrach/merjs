@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "merlionjs"
+version = "0.2.2"
+description = "Next.js-style web framework in Zig — zero Node.js required"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Rach Pradhan", email = "rach@pradhan.io"}
+]
+keywords = ["zig", "web-framework", "ssr", "full-stack", "edge", "cloudflare-workers", "wasm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Zig",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://merlionjs.com"
+Documentation = "https://merlionjs.com/docs"
+Repository = "https://github.com/justrach/merjs"
+Issues = "https://github.com/justrach/merjs/issues"
+
+[project.scripts]
+mer = "merjs.cli:main"
+merjs = "merjs.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+merjs = ["bin/*"]
