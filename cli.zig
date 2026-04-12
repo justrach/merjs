@@ -52,10 +52,10 @@ pub fn main() !void {
 
     if (std.mem.eql(u8, cmd, "add")) {
         if (args.len < 3) {
-            print("mer: missing feature name\n\n  usage: mer add <feature>\n  features: css, wasm, worker\n\n", .{});
+            print("mer: missing feature name\n\n  usage: mer add <feature>\n  features: css, wasm, worker, ui [component]\n\n", .{});
             std.process.exit(1);
         }
-        try cmdAdd(alloc, args[2]);
+        try cmdAdd(alloc, args[2], args);
         return;
     }
 
@@ -494,8 +494,6 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
         }
     }
 
-
-
     dir.makePath("src/generated") catch {};
     {
         const file = try dir.createFile("src/generated/.gitkeep", .{});
@@ -714,15 +712,21 @@ const tailwind_url = "https://github.com/tailwindlabs/tailwindcss/releases/lates
         else => "unsupported",
     });
 
-fn cmdAdd(alloc: std.mem.Allocator, feature: []const u8) !void {
+fn cmdAdd(alloc: std.mem.Allocator, feature: []const u8, args: []const []const u8) !void {
     if (std.mem.eql(u8, feature, "css")) {
         try cmdAddCss(alloc);
     } else if (std.mem.eql(u8, feature, "wasm")) {
         try cmdAddWasm();
     } else if (std.mem.eql(u8, feature, "worker")) {
         try cmdAddWorker();
+    } else if (std.mem.eql(u8, feature, "ui")) {
+        if (args.len >= 4) {
+            try cmdAddUiComponent(args[3]);
+        } else {
+            try cmdAddUiAll();
+        }
     } else {
-        print("mer: unknown feature '{s}'\n\n  available: css, wasm, worker\n\n", .{feature});
+        print("mer: unknown feature '{s}'\n\n  available: css, wasm, worker, ui\n\n", .{feature});
         std.process.exit(1);
     }
 }
@@ -830,6 +834,273 @@ fn cmdAddWorker() !void {
     print("\n  edit worker/wrangler.toml, then: zig build worker && cd worker && wrangler deploy\n\n", .{});
 }
 
+// ── add ui ─────────────────────────────────────────────────────────────────
+
+const ui_components = &[_][]const u8{
+    "button",
+    "card", 
+    "input",
+    "badge",
+    "alert",
+};
+
+const component_button =
+    \\//! Button component for merlion-ui
+    \\
+    \const std = @import("std");
+    \const mer = @import("mer");
+    \const h = mer.h;
+    \\
+    \pub const Variant = enum {
+    \    primary,
+    \    secondary,
+    \    destructive,
+    \    outline,
+    \    ghost,
+    \    link,
+    \};
+    \\
+    \pub const Size = enum {
+    \    sm,
+    \    md,
+    \    lg,
+    \    icon,
+    \};
+    \\
+    \pub const Props = struct {
+    \    label: []const u8,
+    \    variant: Variant = .primary,
+    \    size: Size = .md,
+    \    disabled: bool = false,
+    \    on_click: ?[]const u8 = null,
+    \    class: ?[]const u8 = null,
+    \    id: ?[]const u8 = null,
+    \    type: []const u8 = "button",
+    \};
+    \\
+    \fn variantClasses(variant: Variant) []const u8 {
+    \    return switch (variant) {
+    \        .primary => "bg-slate-900 text-white hover:bg-slate-800",
+    \        .secondary => "bg-slate-100 text-slate-900 hover:bg-slate-200",
+    \        .destructive => "bg-red-600 text-white hover:bg-red-700",
+    \        .outline => "border border-slate-300 bg-transparent hover:bg-slate-100",
+    \        .ghost => "hover:bg-slate-100",
+    \        .link => "text-slate-900 underline-offset-4 hover:underline",
+    \    };
+    \}
+    \\
+    \fn sizeClasses(size: Size) []const u8 {
+    \    return switch (size) {
+    \        .sm => "h-8 px-3 text-sm",
+    \        .md => "h-10 px-4 py-2",
+    \        .lg => "h-12 px-6 text-lg",
+    \        .icon => "h-10 w-10 p-2",
+    \    };
+    \}
+    \\
+    \pub fn render(props: Props) h.Node {
+    \    const base_classes = "inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:pointer-events-none disabled:opacity-50";
+    \    const variant_cls = variantClasses(props.variant);
+    \    const size_cls = sizeClasses(props.size);
+    \    var class_buf: [512]u8 = undefined;
+    \    const classes = std.fmt.bufPrint(&class_buf, "{s} {s} {s} {s}", .{
+    \        base_classes,
+    \        variant_cls,
+    \        size_cls,
+    \        props.class orelse "",
+    \    }) catch base_classes;
+    \    return h.button(
+    \        .{ .class = classes, .id = props.id, .type = props.type, .disabled = props.disabled, .onclick = props.on_click },
+    \        props.label,
+    \    );
+    \}
+    \\
+;
+
+const component_card =
+    \\//! Card component for merlion-ui
+    \\
+    \const std = @import("std");
+    \const mer = @import("mer");
+    \const h = mer.h;
+    \\
+    \pub const Props = struct {
+    \    title: ?[]const u8 = null,
+    \    description: ?[]const u8 = null,
+    \    children: []const h.Node = &.{},
+    \    footer: ?[]const h.Node = null,
+    \    class: ?[]const u8 = null,
+    \};
+    \\
+    \pub fn render(props: Props) h.Node {
+    \    const base_classes = "rounded-lg border border-slate-200 bg-white shadow-sm";
+    \    var class_buf: [256]u8 = undefined;
+    \    const classes = std.fmt.bufPrint(&class_buf, "{s} {s}", .{
+    \        base_classes,
+    \        props.class orelse "",
+    \    }) catch base_classes;
+    \    return h.div(.{ .class = classes }, props.children);
+    \}
+    \\
+;
+
+const component_input =
+    \\//! Input component for merlion-ui
+    \\
+    \const std = @import("std");
+    \const mer = @import("mer");
+    \const h = mer.h;
+    \\
+    \pub const Props = struct {
+    \    name: []const u8,
+    \    type: []const u8 = "text",
+    \    placeholder: ?[]const u8 = null,
+    \    value: ?[]const u8 = null,
+    \    label: ?[]const u8 = null,
+    \    class: ?[]const u8 = null,
+    \};
+    \\
+    \pub fn render(props: Props) h.Node {
+    \    const base_classes = "flex h-10 w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400";
+    \    var class_buf: [256]u8 = undefined;
+    \    const classes = std.fmt.bufPrint(&class_buf, "{s} {s}", .{
+    \        base_classes,
+    \        props.class orelse "",
+    \    }) catch base_classes;
+    \    return h.input(.{
+    \        .class = classes,
+    \        .name = props.name,
+    \        .type_attr = props.type,
+    \        .placeholder = props.placeholder,
+    \        .value = props.value,
+    \    });
+    \}
+    \\
+;
+
+const component_badge =
+    \\//! Badge component for merlion-ui
+    \\
+    \const std = @import("std");
+    \const mer = @import("mer");
+    \const h = mer.h;
+    \\
+    \pub const Variant = enum {
+    \    default,
+    \    secondary,
+    \    destructive,
+    \    outline,
+    \};
+    \\
+    \pub const Props = struct {
+    \    label: []const u8,
+    \    variant: Variant = .default,
+    \};
+    \\
+    \pub fn render(props: Props) h.Node {
+    \    const base_classes = "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold";
+    \    const variant_cls = switch (props.variant) {
+    \        .default => "border-transparent bg-slate-900 text-slate-50",
+    \        .secondary => "border-transparent bg-slate-100 text-slate-900",
+    \        .destructive => "border-transparent bg-red-500 text-slate-50",
+    \        .outline => "text-slate-950",
+    \    };
+    \    var class_buf: [256]u8 = undefined;
+    \    const classes = std.fmt.bufPrint(&class_buf, "{s} {s}", .{
+    \        base_classes,
+    \        variant_cls,
+    \    }) catch base_classes;
+    \    return h.div(.{ .class = classes }, props.label);
+    \}
+    \\
+;
+
+const component_alert =
+    \\//! Alert component for merlion-ui
+    \\
+    \const std = @import("std");
+    \const mer = @import("mer");
+    \const h = mer.h;
+    \\
+    \pub const Variant = enum {
+    \    default,
+    \    destructive,
+    \};
+    \\
+    \pub const Props = struct {
+    \    title: ?[]const u8 = null,
+    \    description: []const u8,
+    \    variant: Variant = .default,
+    \};
+    \\
+    \pub fn render(props: Props) h.Node {
+    \    const base_classes = "relative w-full rounded-lg border p-4";
+    \    const variant_cls = switch (props.variant) {
+    \        .default => "border-slate-200 bg-slate-50 text-slate-900",
+    \        .destructive => "border-red-200 bg-red-50 text-red-900",
+    \    };
+    \    var class_buf: [256]u8 = undefined;
+    \    const classes = std.fmt.bufPrint(&class_buf, "{s} {s}", .{
+    \        base_classes,
+    \        variant_cls,
+    \    }) catch base_classes;
+    \    return h.div(.{ .class = classes, .role = "alert" }, props.description);
+    \}
+    \\
+;
+
+fn cmdAddUiComponent(name: []const u8) !void {
+    std.fs.cwd().makePath("app/components") catch {};
+    
+    const content = if (std.mem.eql(u8, name, "button"))
+        component_button
+    else if (std.mem.eql(u8, name, "card"))
+        component_card
+    else if (std.mem.eql(u8, name, "input"))
+        component_input
+    else if (std.mem.eql(u8, name, "badge"))
+        component_badge
+    else if (std.mem.eql(u8, name, "alert"))
+        component_alert
+    else {
+        print("mer: unknown component '{s}'\n\n  available: ", .{name});
+        for (ui_components) |c| {
+            print("{s}, ", .{c});
+        }
+        print("\n\n", .{});
+        std.process.exit(1);
+    };
+    
+    var path_buf: [256]u8 = undefined;
+    const path = std.fmt.bufPrint(&path_buf, "app/components/{s}.zig", .{name}) catch {
+        print("mer: component name too long\n", .{});
+        return;
+    };
+    
+    const exists = if (std.fs.cwd().access(path, .{})) true else |_| false;
+    if (exists) {
+        print("  {s} already exists (use --force to overwrite)\n", .{path});
+        return;
+    }
+    
+    const file = try std.fs.cwd().createFile(path, .{});
+    defer file.close();
+    try file.writeAll(content);
+    
+    print("  created {s}\n", .{path});
+    print("\n  usage: const {s} = @import(\"components/{s}.zig\");\n\n", .{name, name});
+}
+
+fn cmdAddUiAll() !void {
+    print("  adding all merlion-ui components...\n\n", .{});
+    for (ui_components) |name| {
+        cmdAddUiComponent(name) catch |err| {
+            print("  warning: failed to add {s}: {s}\n", .{name, @errorName(err)});
+        };
+    }
+    print("\n  run `mer add css` to add Tailwind CSS styling\n\n", .{});
+}
+
 // ── help ────────────────────────────────────────────────────────────────────
 
 fn printUsage() void {
@@ -841,7 +1112,7 @@ fn printUsage() void {
         \\    mer init <name>      scaffold a new project
         \\    mer dev [--port N]   codegen + dev server with hot reload
         \\    mer build            production build (ReleaseSmall + prerender)
-        \\    mer add <feature>    add optional features (css, wasm, worker)
+        \\    mer add <feature>    add optional features (css, wasm, worker, ui [component])
         \\    mer update           update merjs to latest version
         \\    mer --version        print version
         \\
