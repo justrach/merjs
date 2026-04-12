@@ -1,13 +1,13 @@
-# merjs
+# merlionjs
 
 Next.js-style web framework in Zig — zero Node.js required.
 
 ## Installation
 
 ```bash
-npm install -g merjs
+npm install -g merlionjs
 # or
-npx merjs init my-app
+npx merlionjs init my-app
 ```
 
 ## Usage
