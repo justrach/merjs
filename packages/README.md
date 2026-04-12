@@ -1,15 +1,15 @@
-# merjs Distribution Packages
+# merlionjs Distribution Packages
 
-This directory contains the npm and PyPI package configurations for distributing merjs via popular package managers.
+This directory contains the npm and PyPI package configurations for distributing merlionjs via popular package managers.
 
 ## Overview
 
 | Package Manager | Package Name | Install Command | Status |
 |----------------|--------------|-----------------|--------|
-| npm | `merjs` | `npm install -g merjs` | Ready to publish |
-| PyPI | `merjs` | `pip install merjs` | Ready to publish |
-| Homebrew | `merjs` | `brew install merjs` | Future |
-| Cargo | `merjs` | `cargo install merjs` | Future |
+| npm | `merlionjs` | `npm install -g merlionjs` | Published |
+| PyPI | `merlionjs` | `pip install merlionjs` | Published |
+| Homebrew | `merlionjs` | `brew install merlionjs` | Future |
+| Cargo | `merlionjs` | `cargo install merlionjs` | Future |
 
 ## npm Package (`npm/`)
 
@@ -20,19 +20,20 @@ This directory contains the npm and PyPI package configurations for distributing
 - `bin/mer` - CLI wrapper script
 
 ### How it Works
-1. User runs `npm install -g merjs`
+1. User runs `npm install -g merlionjs`
 2. `postinstall` hook runs `install.js`
 3. Script detects platform (macOS/Linux/Windows) and arch (x64/arm64)
 4. Downloads appropriate binary from GitHub releases
 5. Verifies SHA256 checksum
 6. Places binary in `bin/` directory
 
-### Testing Locally
+### Install Commands
 ```bash
-cd dist/npm
-npm pack                    # Create tarball
-npm install -g ./merjs-*.tgz  # Test install
-mer init test-app           # Verify it works
+npm install -g merlionjs
+mer init my-app
+
+# Or use npx (no global install)
+npx merlionjs init my-app
 ```
 
 ## PyPI Package (`pypi/`)
@@ -46,17 +47,15 @@ mer init test-app           # Verify it works
   - `install.py` - Binary download logic
 
 ### How it Works
-1. User runs `pip install merjs`
+1. User runs `pip install merlionjs`
 2. `setup.py` custom install command triggers binary download
 3. Downloads and verifies binary from GitHub releases
 4. Registers `mer` and `merjs` CLI entry points
 
-### Testing Locally
+### Install Commands
 ```bash
-cd dist/pypi
-python -m build               # Create wheel and sdist
-pip install ./dist/merjs-*.whl  # Test install
-mer init test-app           # Verify it works
+pip install merlionjs
+mer init my-app
 ```
 
 ## Publishing
@@ -69,12 +68,12 @@ mer init test-app           # Verify it works
 
 ```bash
 # npm
-cd dist/npm
+cd packages/npm
 npm version 0.2.3
 npm publish --access public
 
 # PyPI
-cd dist/pypi
+cd packages/pypi
 # Update version in pyproject.toml and __init__.py
 python -m build
 twine upload dist/*
@@ -87,7 +86,7 @@ GitHub Actions workflows handle publishing on release:
 
 ## Version Synchronization
 
-Both packages should stay in sync with the main merjs version:
+Both packages should stay in sync with the main merlionjs version:
 
 | File | Version Location |
 |------|------------------|
@@ -118,7 +117,7 @@ Check Python version: `python --version` (needs 3.8+)
 
 ### Binary not found after install
 - Check internet connection (binary downloads from GitHub)
-- Try force reinstall: `npm install -g merjs --force` or `pip install --force-reinstall merjs`
+- Try force reinstall: `npm install -g merlionjs --force` or `pip install --force-reinstall merlionjs`
 - Check antivirus isn't blocking the binary (Windows)
 
 ## Security
@@ -129,4 +128,4 @@ Check Python version: `python --version` (needs 3.8+)
 
 ## License
 
-MIT - Same as merjs
+MIT - Same as merlionjs
