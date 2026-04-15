@@ -50,7 +50,13 @@ merjs is exploring whether you can get the full Next.js developer experience —
 
 ### Option A: `mer` CLI (recommended)
 
-Download the `mer` binary from [releases](https://github.com/justrach/merjs/releases/latest), then:
+Install the latest `mer` binary from [releases](https://github.com/justrach/merjs/releases/latest):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/justrach/merjs/main/scripts/install-mer.sh | sh
+```
+
+Or download a platform binary manually from the release page, then:
 
 ```bash
 mer init my-app
@@ -192,6 +198,23 @@ Or build from source:
 ```bash
 zig build cli -Doptimize=ReleaseSmall   # → zig-out/bin/mer
 ```
+
+Quick install from source checkout:
+
+```bash
+zig build cli -Doptimize=ReleaseSmall
+install -m 755 zig-out/bin/mer /usr/local/bin/mer
+```
+
+If you use merjs as a Zig dependency, prefer its exported API instead of reaching into package paths directly:
+
+```zig
+const merjs_dep = b.dependency("merjs", .{});
+const mer_mod = merjs_dep.module("mer");
+const server_mod = merjs_dep.module("server");
+```
+
+Fresh `mer init` apps also vendor their own `tools/codegen.zig`, so route generation no longer depends on internal merjs package paths.
 ---
 
 ## Demo

@@ -1,0 +1,7 @@
+zig-out/
+.zig-cache/
+src/generated/*
+!src/generated/.gitkeep
+tools/
+dist/
+.env

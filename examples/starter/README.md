@@ -1,6 +1,6 @@
 # merjs Starter Template
 
-This is the default template used by `create-mer-app`.
+This is the default template used by `mer init`.
 
 ## Structure
 
@@ -19,4 +19,5 @@ api/
 ```bash
 zig build codegen   # generate routes
 zig build serve     # start dev server on :3000
+zig build test      # compile the starter app
 ```

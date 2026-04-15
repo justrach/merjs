@@ -84,15 +84,15 @@ jobs:
           | macOS Apple Silicon | \`mer-macos-aarch64\` | $(du -h release/mer-macos-aarch64 | cut -f1) |
           | macOS Intel | \`mer-macos-x86_64\` | $(du -h release/mer-macos-x86_64 | cut -f1) |
           | Linux x86_64 | \`mer-linux-x86_64\` | $(du -h release/mer-linux-x86_64 | cut -f1) |
-          | Linux ARM64 | \`mer-linux-aarch64\` | $(du -h release/mer-linux-aarch64 | cut -f1) |
+           | Linux ARM64 | \`mer-linux-aarch64\` | $(du -h release/mer-linux-aarch64 | cut -f1) |
 
-          ### Install
-          \`\`\`bash
-          curl -L https://github.com/justrach/merjs/releases/download/${{ steps.version.outputs.tag }}/mer-linux-x86_64 -o mer
-          chmod +x mer && sudo mv mer /usr/local/bin/
-          \`\`\`
+           ### Install
+           \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/justrach/merjs/main/scripts/install-mer.sh | \
+            MER_INSTALL_VERSION=${{ steps.version.outputs.tag }} sh
+           \`\`\`
 
-          > ⚠️ This is a pre-release beta build. Use stable releases for production.
+           > ⚠️ This is a pre-release beta build. Use stable releases for production.
           EOF
           )"
         env:

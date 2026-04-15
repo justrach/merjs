@@ -52,10 +52,10 @@ pub fn main() !void {
 
     if (std.mem.eql(u8, cmd, "add")) {
         if (args.len < 3) {
-            print("mer: missing feature name\n\n  usage: mer add <feature>\n  features: css, wasm, worker\n\n", .{});
+            print("mer: missing feature name\n\n  usage: mer add <feature>\n  features: css, wasm, worker, ui [component]\n\n", .{});
             std.process.exit(1);
         }
-        try cmdAdd(alloc, args[2]);
+        try cmdAdd(alloc, args[2], args);
         return;
     }
 
@@ -87,6 +87,7 @@ const template_files = [_]TemplateFile{
     .{ .path = "app/404.zig", .content = @embedFile("examples/starter/app/404.zig") },
     .{ .path = "api/hello.zig", .content = @embedFile("examples/starter/api/hello.zig") },
     .{ .path = "public/.gitkeep", .content = "" },
+    .{ .path = "tools/codegen.zig", .content = @embedFile("tools/codegen.zig") },
 };
 
 const build_zig_template =
@@ -117,7 +118,7 @@ const build_zig_template =
     \\    const codegen_exe = b.addExecutable(.{
     \\        .name = "codegen",
     \\        .root_module = b.createModule(.{
-    \\            .root_source_file = merjs_dep.path("tools/codegen.zig"),
+    \\            .root_source_file = b.path("tools/codegen.zig"),
     \\            .target = b.graph.host,
     \\            .optimize = .Debug,
     \\        }),
@@ -134,6 +135,20 @@ const build_zig_template =
     \\    run_exe.step.dependOn(b.getInstallStep());
     \\    if (b.args) |args| run_exe.addArgs(args);
     \\    b.step("serve", "Start the dev server").dependOn(&run_exe.step);
+    \\
+    \\    // zig build test
+    \\    const test_mod = b.createModule(.{
+    \\        .root_source_file = b.path("src/main.zig"),
+    \\        .target = target,
+    \\        .optimize = optimize,
+    \\    });
+    \\    test_mod.addImport("mer", mer_mod);
+    \\    addDirModules(b, test_mod, mer_mod, "app");
+    \\    addDirModules(b, test_mod, mer_mod, "api");
+    \\    addRoutesModule(b, test_mod, mer_mod);
+    \\    const run_tests = b.addRunArtifact(b.addTest(.{ .root_module = test_mod }));
+    \\    run_tests.step.dependOn(&run_codegen.step);
+    \\    b.step("test", "Compile the starter app").dependOn(&run_tests.step);
     \\}
     \\
     \\fn addRoutesModule(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Module) void {
@@ -253,6 +268,98 @@ const main_zig_template =
     \\
 ;
 
+const generated_routes_placeholder =
+    \\// GENERATED — do not edit by hand.
+    \\// Re-run `zig build codegen` to regenerate.
+    \\
+    \\const Route = @import("mer").Route;
+    \\
+    \\pub const routes: []const Route = &.{};
+    \\pub const layout = null;
+    \\pub const streamLayout = null;
+    \\pub const notFound = null;
+    \\
+;
+
+fn writeScaffoldFile(dir: std.fs.Dir, path: []const u8, content: []const u8) !void {
+    if (std.fs.path.dirname(path)) |parent| {
+        dir.makePath(parent) catch {};
+    }
+    const file = try dir.createFile(path, .{});
+    defer file.close();
+    try file.writeAll(content);
+}
+
+fn writeTemplateFiles(dir: std.fs.Dir) !void {
+    for (template_files) |tf| {
+        try writeScaffoldFile(dir, tf.path, tf.content);
+    }
+}
+
+fn projectNameForZon(alloc: std.mem.Allocator, name: []const u8) ![]u8 {
+    const source = blk: {
+        if (std.mem.eql(u8, name, ".")) {
+            const cwd = try std.process.getCwdAlloc(alloc);
+            defer alloc.free(cwd);
+            break :blk try alloc.dupe(u8, std.fs.path.basename(cwd));
+        }
+        break :blk try alloc.dupe(u8, std.fs.path.basename(name));
+    };
+    defer alloc.free(source);
+
+    var out = std.ArrayList(u8){};
+    defer out.deinit(alloc);
+
+    for (source) |c| {
+        if (out.items.len == 32) break;
+        try out.append(alloc, if (std.ascii.isAlphanumeric(c) or c == '_') c else '_');
+    }
+
+    if (out.items.len == 0) {
+        try out.appendSlice(alloc, "app");
+    }
+
+    if (!std.ascii.isAlphabetic(out.items[0]) and out.items[0] != '_') {
+        if (out.items.len == 32) {
+            out.items[0] = '_';
+        } else {
+            try out.insert(alloc, 0, '_');
+        }
+    }
+
+    return out.toOwnedSlice(alloc);
+}
+
+fn writeBuildZigZon(dir: std.fs.Dir, alloc: std.mem.Allocator, name: []const u8) !void {
+    const zig_name = try projectNameForZon(alloc, name);
+    defer alloc.free(zig_name);
+
+    const file = try dir.createFile("build.zig.zon", .{});
+    defer file.close();
+    try file.writeAll(".{\n    .name = .");
+    try file.writeAll(zig_name);
+    try file.writeAll(
+        \\,
+        \\    .version = "0.1.0",
+        \\    .minimum_zig_version = "0.15.1",
+        \\    .dependencies = .{
+        \\        .merjs = .{
+        \\            .url = "git+https://github.com/justrach/merjs.git",
+        \\        },
+        \\    },
+        \\    .paths = .{
+        \\        "build.zig",
+        \\        "build.zig.zon",
+        \\        "src",
+        \\        "app",
+        \\        "api",
+        \\        "public",
+        \\    },
+        \\}
+        \\
+    );
+}
+
 fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     const use_cwd = std.mem.eql(u8, name, ".");
     if (!use_cwd) {
@@ -271,14 +378,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
         try std.fs.cwd().openDir(name, .{});
 
     // Write template files.
-    for (template_files) |tf| {
-        if (std.fs.path.dirname(tf.path)) |parent| {
-            dir.makePath(parent) catch {};
-        }
-        const file = try dir.createFile(tf.path, .{});
-        defer file.close();
-        try file.writeAll(tf.content);
-    }
+    try writeTemplateFiles(dir);
 
     // Write build.zig.
     {
@@ -288,38 +388,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     }
 
     // Write build.zig.zon.
-    // Sanitize project name to a valid Zig bare identifier (replace non-alnum with _).
-    const zig_name = try alloc.dupe(u8, name);
-    defer alloc.free(zig_name);
-    for (zig_name) |*c| {
-        if (!std.ascii.isAlphanumeric(c.*) and c.* != '_') c.* = '_';
-    }
-    {
-        const file = try dir.createFile("build.zig.zon", .{});
-        defer file.close();
-        try file.writeAll(".{\n    .name = .");
-        try file.writeAll(zig_name);
-        try file.writeAll(
-            \\,
-            \\    .version = "0.1.0",
-            \\    .minimum_zig_version = "0.15.1",
-            \\    .dependencies = .{
-            \\        .merjs = .{
-            \\            .url = "git+https://github.com/justrach/merjs.git",
-            \\        },
-            \\    },
-            \\    .paths = .{
-            \\        "build.zig",
-            \\        "build.zig.zon",
-            \\        "src",
-            \\        "app",
-            \\        "api",
-            \\        "public",
-            \\    },
-            \\}
-            \\
-        );
-    }
+    try writeBuildZigZon(dir, alloc, name);
 
     // Patch in the fingerprint: run zig build to get the suggested value.
     {
@@ -425,12 +494,15 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
         }
     }
 
-
-
     dir.makePath("src/generated") catch {};
     {
         const file = try dir.createFile("src/generated/.gitkeep", .{});
         file.close();
+    }
+    {
+        const file = try dir.createFile("src/generated/routes.zig", .{});
+        defer file.close();
+        try file.writeAll(generated_routes_placeholder);
     }
     {
         const file = try dir.createFile("src/main.zig", .{});
@@ -458,13 +530,83 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
 
     print("\n", .{});
     print("  mer project created", .{});
-    if (!use_cwd) print(" in ./{s}", .{name});
+    if (!use_cwd) {
+        if (std.fs.path.isAbsolute(name)) {
+            print(" in {s}", .{name});
+        } else {
+            print(" in ./{s}", .{name});
+        }
+    }
     print("\n\n", .{});
     print("  next steps:\n\n", .{});
     if (!use_cwd) print("    cd {s}\n", .{name});
     print("    zig build serve       # start dev server on :3000\n", .{});
     print("\n  or just: mer dev\n", .{});
     print("\n  optional: mer add css | wasm | worker\n\n", .{});
+}
+
+test "projectNameForZon uses basename for absolute paths" {
+    const alloc = std.testing.allocator;
+    const got = try projectNameForZon(alloc, "/tmp/nested/my-app");
+    defer alloc.free(got);
+    try std.testing.expectEqualStrings("my_app", got);
+}
+
+test "projectNameForZon prefixes numeric names" {
+    const alloc = std.testing.allocator;
+    const got = try projectNameForZon(alloc, "123site");
+    defer alloc.free(got);
+    try std.testing.expectEqualStrings("_123site", got);
+}
+
+test "projectNameForZon clamps long names to 32 chars" {
+    const alloc = std.testing.allocator;
+    const got = try projectNameForZon(alloc, "abcdefghijklmnopqrstuvwxyz0123456789");
+    defer alloc.free(got);
+    try std.testing.expectEqual(@as(usize, 32), got.len);
+    try std.testing.expectEqualStrings("abcdefghijklmnopqrstuvwxyz012345", got);
+}
+
+test "build_zig_template exposes a starter test step" {
+    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "b.step(\"test\", \"Compile the starter app\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "run_tests.step.dependOn(&run_codegen.step);") != null);
+}
+
+test "build_zig_template uses local codegen entrypoint" {
+    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "b.path(\"tools/codegen.zig\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "merjs_dep.path(\"tools/codegen.zig\")") == null);
+}
+
+test "writeBuildZigZon uses sanitized basename for absolute paths" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try writeBuildZigZon(tmp.dir, std.testing.allocator, "/tmp/nested/my-app");
+    const content = try tmp.dir.readFileAlloc(std.testing.allocator, "build.zig.zon", 4096);
+    defer std.testing.allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, ".name = .my_app") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "\"public\"") != null);
+}
+
+test "writeTemplateFiles emits starter scaffold files" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try writeTemplateFiles(tmp.dir);
+
+    try tmp.dir.access("app/index.zig", .{});
+    try tmp.dir.access("app/about.zig", .{});
+    try tmp.dir.access("app/layout.zig", .{});
+    try tmp.dir.access("app/404.zig", .{});
+    try tmp.dir.access("api/hello.zig", .{});
+    try tmp.dir.access("public/.gitkeep", .{});
+    try tmp.dir.access("tools/codegen.zig", .{});
+}
+
+test "generated routes placeholder is valid scaffold output" {
+    try std.testing.expect(std.mem.indexOf(u8, generated_routes_placeholder, "pub const routes: []const Route = &.{};") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated_routes_placeholder, "pub const notFound = null;") != null);
 }
 
 // ── dev ─────────────────────────────────────────────────────────────────────
@@ -570,15 +712,21 @@ const tailwind_url = "https://github.com/tailwindlabs/tailwindcss/releases/lates
         else => "unsupported",
     });
 
-fn cmdAdd(alloc: std.mem.Allocator, feature: []const u8) !void {
+fn cmdAdd(alloc: std.mem.Allocator, feature: []const u8, args: []const []const u8) !void {
     if (std.mem.eql(u8, feature, "css")) {
         try cmdAddCss(alloc);
     } else if (std.mem.eql(u8, feature, "wasm")) {
         try cmdAddWasm();
     } else if (std.mem.eql(u8, feature, "worker")) {
         try cmdAddWorker();
+    } else if (std.mem.eql(u8, feature, "ui")) {
+        if (args.len >= 4) {
+            try cmdAddUiComponent(args[3]);
+        } else {
+            try cmdAddUiAll();
+        }
     } else {
-        print("mer: unknown feature '{s}'\n\n  available: css, wasm, worker\n\n", .{feature});
+        print("mer: unknown feature '{s}'\n\n  available: css, wasm, worker, ui\n\n", .{feature});
         std.process.exit(1);
     }
 }
@@ -686,6 +834,74 @@ fn cmdAddWorker() !void {
     print("\n  edit worker/wrangler.toml, then: zig build worker && cd worker && wrangler deploy\n\n", .{});
 }
 
+// ── add ui ─────────────────────────────────────────────────────────────────
+
+const ui_components = &[_][]const u8{
+    "button",
+    "card", 
+    "input",
+    "badge",
+    "alert",
+};
+
+const component_button = @embedFile("packages/merlion-ui/templates/button.zig");
+const component_card = @embedFile("packages/merlion-ui/templates/card.zig");
+const component_input = @embedFile("packages/merlion-ui/templates/input.zig");
+const component_badge = @embedFile("packages/merlion-ui/templates/badge.zig");
+const component_alert = @embedFile("packages/merlion-ui/templates/alert.zig");
+
+fn cmdAddUiComponent(name: []const u8) !void {
+    std.fs.cwd().makePath("app/components") catch {};
+    
+    const content = if (std.mem.eql(u8, name, "button"))
+        component_button
+    else if (std.mem.eql(u8, name, "card"))
+        component_card
+    else if (std.mem.eql(u8, name, "input"))
+        component_input
+    else if (std.mem.eql(u8, name, "badge"))
+        component_badge
+    else if (std.mem.eql(u8, name, "alert"))
+        component_alert
+    else {
+        print("mer: unknown component '{s}'\n\n  available: ", .{name});
+        for (ui_components) |c| {
+            print("{s}, ", .{c});
+        }
+        print("\n\n", .{});
+        std.process.exit(1);
+    };
+    
+    var path_buf: [256]u8 = undefined;
+    const path = std.fmt.bufPrint(&path_buf, "app/components/{s}.zig", .{name}) catch {
+        print("mer: component name too long\n", .{});
+        return;
+    };
+    
+    const exists = if (std.fs.cwd().access(path, .{})) true else |_| false;
+    if (exists) {
+        print("  {s} already exists (use --force to overwrite)\n", .{path});
+        return;
+    }
+    
+    const file = try std.fs.cwd().createFile(path, .{});
+    defer file.close();
+    try file.writeAll(content);
+    
+    print("  created {s}\n", .{path});
+    print("\n  usage: const {s} = @import(\"components/{s}.zig\");\n\n", .{name, name});
+}
+
+fn cmdAddUiAll() !void {
+    print("  adding all merlion-ui components...\n\n", .{});
+    for (ui_components) |name| {
+        cmdAddUiComponent(name) catch |err| {
+            print("  warning: failed to add {s}: {s}\n", .{name, @errorName(err)});
+        };
+    }
+    print("\n  run `mer add css` to add Tailwind CSS styling\n\n", .{});
+}
+
 // ── help ────────────────────────────────────────────────────────────────────
 
 fn printUsage() void {
@@ -697,7 +913,7 @@ fn printUsage() void {
         \\    mer init <name>      scaffold a new project
         \\    mer dev [--port N]   codegen + dev server with hot reload
         \\    mer build            production build (ReleaseSmall + prerender)
-        \\    mer add <feature>    add optional features (css, wasm, worker)
+        \\    mer add <feature>    add optional features (css, wasm, worker, ui [component])
         \\    mer update           update merjs to latest version
         \\    mer --version        print version
         \\

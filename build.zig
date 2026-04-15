@@ -124,6 +124,12 @@ pub fn build(b: *std.Build) void {
     b.step("grep", "Compile grep WASM").dependOn(&install_grep.step);
 
     // ── Worker WASM ─────────────────────────────────────────────────────────
+    const worker_named = b.addModule("worker", .{
+        .root_source_file = b.path("src/worker.zig"),
+        .target = wasm_target,
+        .optimize = .ReleaseSmall,
+    });
+    worker_named.addImport("mer", mer_mod);
     const worker_mod = b.createModule(.{
         .root_source_file = b.path("src/worker.zig"),
         .target = wasm_target,
@@ -184,6 +190,14 @@ pub fn build(b: *std.Build) void {
         });
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = file_test_mod })).step);
     }
+    {
+        const cli_test_mod = b.createModule(.{
+            .root_source_file = b.path("cli.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = cli_test_mod })).step);
+    }
     // Run router + runtime inline tests (through mer.zig as root to avoid
     // file-ownership conflict: mer.zig file-imports router.zig/server.zig/etc.,
     // so those files belong to the mer module and can't also be test roots).
@@ -230,6 +244,52 @@ pub fn build(b: *std.Build) void {
         }
         consumer_test_mod.addImport("routes", consumer_routes_mod);
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = consumer_test_mod })).step);
+    }
+
+    // ── Starter scaffold smoke test ──────────────────────────────────────────
+    // Compiles the embedded starter templates that `mer init` writes so
+    // scaffold regressions fail in CI before they ship.
+    {
+        const starter_test_mod = b.createModule(.{
+            .root_source_file = b.path("tests/starter/src/test_starter_scaffold.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        starter_test_mod.addImport("mer", mer_mod);
+
+        const starter_layout_mod = b.createModule(.{
+            .root_source_file = b.path("examples/starter/app/layout.zig"),
+        });
+        starter_layout_mod.addImport("mer", mer_mod);
+
+        const starter_page_specs = [_]struct { []const u8, []const u8 }{
+            .{ "app/index", "examples/starter/app/index.zig" },
+            .{ "app/about", "examples/starter/app/about.zig" },
+            .{ "app/404", "examples/starter/app/404.zig" },
+        };
+        const starter_routes_mod = b.createModule(.{
+            .root_source_file = b.path("tests/starter/src/routes.zig"),
+        });
+        starter_routes_mod.addImport("mer", mer_mod);
+        starter_routes_mod.addImport("app/layout", starter_layout_mod);
+
+        for (starter_page_specs) |page| {
+            const page_mod = b.createModule(.{ .root_source_file = b.path(page[1]) });
+            page_mod.addImport("mer", mer_mod);
+            page_mod.addImport("app/layout", starter_layout_mod);
+            starter_routes_mod.addImport(page[0], page_mod);
+            starter_test_mod.addImport(page[0], page_mod);
+        }
+
+        const starter_api_mod = b.createModule(.{
+            .root_source_file = b.path("examples/starter/api/hello.zig"),
+        });
+        starter_api_mod.addImport("mer", mer_mod);
+        starter_routes_mod.addImport("api/hello", starter_api_mod);
+        starter_test_mod.addImport("api/hello", starter_api_mod);
+        starter_test_mod.addImport("app/layout", starter_layout_mod);
+        starter_test_mod.addImport("routes", starter_routes_mod);
+        test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = starter_test_mod })).step);
     }
 
     // ── Packages ────────────────────────────────────────────────────────────

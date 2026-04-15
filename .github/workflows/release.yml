@@ -44,6 +44,18 @@ jobs:
         working-directory: release
         run: sha256sum mer-* > checksums.txt
 
+      - name: Write release notes
+        run: |
+          cat > release/notes.md <<'EOF'
+          ## Install
+
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/justrach/merjs/main/scripts/install-mer.sh | sh
+          ```
+
+          Manual install: download the matching `mer-*` binary below, rename it to `mer`, then place it on your `PATH`.
+          EOF
+
       - name: Create release
         run: |
           gh release create "${{ github.ref_name }}" \
@@ -52,7 +64,8 @@ jobs:
             release/mer-linux-x86_64 \
             release/mer-linux-aarch64 \
             release/checksums.txt \
+            --notes-file release/notes.md \
             --title "${{ github.ref_name }}" \
-            --generate-notes
+            --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

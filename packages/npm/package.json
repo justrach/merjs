@@ -1,0 +1,51 @@
+{
+  "name": "merlionjs",
+  "version": "0.2.2",
+  "description": "Next.js-style web framework in Zig — zero Node.js required",
+  "keywords": [
+    "zig",
+    "web-framework",
+    "ssr",
+    "full-stack",
+    "edge",
+    "cloudflare-workers",
+    "wasm"
+  ],
+  "homepage": "https://merlionjs.com",
+  "bugs": {
+    "url": "https://github.com/justrach/merjs/issues"
+  },
+  "license": "MIT",
+  "author": "Rach Pradhan <rach@pradhan.io>",
+  "files": [
+    "index.js",
+    "install.js",
+    "bin/",
+    "README.md"
+  ],
+  "main": "index.js",
+  "bin": {
+    "mer": "./bin/mer",
+    "merjs": "./bin/mer"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "preuninstall": "node uninstall.js"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justrach/merjs.git"
+  }
+}
