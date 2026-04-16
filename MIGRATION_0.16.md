@@ -1,12 +1,13 @@
 # Zig 0.16 Migration Guide
 
-**From:** Zig 0.15.x
-**To:** Zig 0.16.0
-**Status:** In progress
+**From:** Zig 0.15.x  
+**To:** Zig 0.16.0  
+**Status:** ✅ Complete (merged in PR #89)
 
-This guide documents every breaking change encountered migrating merjs from 0.15.x to 0.16.0,
-with the verified fixes. Intended as a reference for future agents or developers working in this codebase.
+This guide documents the breaking changes when migrating merjs from 0.15.x to 0.16.0.
+Used as a reference for the migration completed in April 2026.
 
+---
 ---
 
 ## Summary of Breaking Changes

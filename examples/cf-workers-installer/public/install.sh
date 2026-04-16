@@ -1,6 +1,5 @@
 #!/bin/bash
-# install.sh — One-liner installer for merjs
-# Usage: curl -fsSL https://merjs.YOUR_DOMAIN/install.sh | bash
+# Usage: curl -fsSL https://merjs.trilok.ai/install.sh | bash
 
 set -e
 

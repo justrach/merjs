@@ -1,72 +1,43 @@
-# Cloudflare Workers — Add Install Route
+# Cloudflare Workers — merjs Installer
 
-If you already have wrangler set up, just add the install.sh route.
+Serve merjs install.sh from the edge at `merjs.trilok.ai`.
 
-## Option 1: Add Route to Existing Worker (JavaScript)
-
-Add to your existing `worker.js`:
-
-```javascript
-if (url.pathname === '/install.sh' || url.pathname === '/install') {
-  const installScript = await fetch('https://raw.githubusercontent.com/justrach/merjs/main/install.sh');
-  return new Response(installScript.body, {
-    headers: {
-      'Content-Type': 'text/x-shellscript; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
-    },
-  });
-}
-```
-
-## Option 2: Standalone Installer Worker
-
-Use the included `worker.js` as a minimal standalone:
+## Deploy
 
 ```bash
-# Copy files
-cp worker.js your-worker-directory/
-cp public/install.sh your-worker-directory/public/
+cd examples/cf-workers-installer
 
-# Deploy
-cd your-worker-directory
+# Deploy to Cloudflare
 wrangler deploy
+
+# Add custom domain in Cloudflare dashboard:
+# Workers & Pages → merjs-installer → Settings → Triggers → Custom Domains
+# Add: merjs.trilok.ai
 ```
 
-## Files Included
-
-- `worker.js` — Complete worker that serves install.sh
-- `public/install.sh` — The installer script (copy to your public/ folder)
-
-## Custom Domain
-
-Update your `wrangler.toml`:
+Or add to `wrangler.toml`:
 
 ```toml
-name = "merjs-installer"
-routes = [
-  { pattern = "install.yourdomain.com", custom_domain = true }
-]
+[[routes]]
+pattern = "merjs.trilok.ai"
+custom_domain = true
 ```
-
-Or add via Cloudflare dashboard:
-Workers & Pages → Your worker → Settings → Triggers → Custom Domains
 
 ## Usage
 
 ```bash
-# After deploy
-curl -fsSL https://install.yourdomain.com/install.sh | bash
+curl -fsSL https://merjs.trilok.ai/install.sh | bash
 ```
+
+## Files
+
+- `public/install.sh` — The installer script (served at `/install.sh`)
+- `public/index.html` — Landing page (served at `/`)
+- `wrangler.toml` — Cloudflare config
 
 ## How It Works
 
-1. Worker runs at Cloudflare's edge (300+ locations)
-2. Fetches install.sh from GitHub (cached for 1 hour)
-3. Returns with proper content-type for shell execution
-4. User's curl pipes it directly to bash
-
-**Benefits:**
-- 🌍 Edge-deployed (fast from anywhere)
-- 📦 No server to maintain
-- 🔒 HTTPS by default
-- 🆓 Free tier: 100k requests/day
+1. Static assets served from Cloudflare's edge (300+ locations)
+2. `install.sh` is cached globally
+3. HTTPS by default
+4. Free tier: 100k requests/day
