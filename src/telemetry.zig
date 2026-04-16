@@ -72,7 +72,7 @@ pub fn sentryCapture(
     t.detach();
 }
 
-fn sentrySendThread(gpa: *std.heap.GeneralPurposeAllocator(.{}), url: []const u8, payload: []const u8) void {
+fn sentrySendThread(gpa: *std.heap.DebugAllocator(.{}), url: []const u8, payload: []const u8) void {
     defer {
         const alloc = gpa.allocator();
         alloc.free(url);
@@ -80,7 +80,9 @@ fn sentrySendThread(gpa: *std.heap.GeneralPurposeAllocator(.{}), url: []const u8
         _ = gpa.deinit();
     }
     const alloc = gpa.allocator();
-    var client = std.http.Client{ .allocator = alloc };
+    var threaded_io: std.Io.Threaded = .init(alloc, .{});
+    defer threaded_io.deinit();
+    var client = std.http.Client{ .allocator = alloc, .io = threaded_io.io() };
     defer client.deinit();
 
     _ = client.fetch(.{
@@ -110,7 +112,7 @@ fn getStatsdSocket() ?*const std.Io.net.Socket {
     const port_str = env("DD_DOGSTATSD_PORT") orelse "8125";
     const port = std.fmt.parseInt(u16, port_str, 10) catch 8125;
     statsd_addr = std.Io.net.IpAddress.parse(host, port) catch return null;
-    const io = std.Io.Threaded.init(.{});
+    var threaded: std.Io.Threaded = .init(std.heap.c_allocator, .{}); const io = threaded.io();
     statsd_io = io;
     statsd_sock = std.Io.net.IpAddress.bind(&statsd_addr.?, io, .{ .mode = .dgram }) catch return null;
     return &statsd_sock.?;

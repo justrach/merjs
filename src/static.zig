@@ -83,6 +83,7 @@ pub fn tryServe(
     alloc: std.mem.Allocator,
     std_req: *std.http.Server.Request,
     url_path: []const u8,
+    io: std.Io,
 ) ?void {
     if (std.mem.indexOf(u8, url_path, "..") != null) return null;
 
@@ -97,11 +98,7 @@ pub fn tryServe(
     // Cache miss — read from disk.
     const fs_path = std.fmt.allocPrint(alloc, "public/{s}", .{rel}) catch return null;
     defer alloc.free(fs_path);
-
-    const file = std.Io.Dir.cwd().openFile(fs_path, .{}) catch return null;
-    defer file.close();
-
-    const body = file.readToEndAlloc(alloc, 10 * 1024 * 1024) catch |err| {
+    const body = std.Io.Dir.cwd().readFileAlloc(io, fs_path, alloc, .limited(10 * 1024 * 1024)) catch |err| {
         log.err("read {s}: {}", .{ fs_path, err });
         return null;
     };

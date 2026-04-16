@@ -61,6 +61,7 @@ pub const Server = struct {
     watcher: ?*watcher_mod.Watcher,
     kuri: ?kuri_mod.Kuri,
     allocator: std.mem.Allocator,
+    io: std.Io = undefined,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -88,7 +89,7 @@ pub const Server = struct {
         defer if (self.kuri) |*k| k.deinit();
 
         // 0.16: Use std.Io.net.IpAddress.parse() + IpAddress.listen(io).
-        var threaded: std.Io.Threaded = .init(self.allocator, .{}); const io = threaded.io();
+        var threaded: std.Io.Threaded = .init(self.allocator, .{}); const io = threaded.io(); self.io = io;
         const addr = try std.Io.net.IpAddress.parse(self.config.host, self.config.port);
         var net_server = try addr.listen(io, .{});
         defer net_server.deinit(io);
@@ -166,7 +167,7 @@ fn handleConn(ctx: *ConnCtx) void {
         };
 
         const start = nanoTimestamp();
-        serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.kuri, ctx.dev, ctx.verbose) catch |err| {
+        serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.kuri, ctx.dev, ctx.verbose, ctx.io) catch |err| {
             log.err("serveRequest: {}", .{err});
             if (ctx.dev) {
                 dev_mod.sendErrorOverlay(&std_req, std_req.head.target, err, mer.version) catch {};
@@ -212,6 +213,7 @@ fn serveRequest(
     kuri: ?*const kuri_mod.Kuri,
     dev: bool,
     verbose: bool,
+    io: std.Io,
 ) !void {
     _ = verbose;
     const raw_target = std_req.head.target;
@@ -256,11 +258,11 @@ fn serveRequest(
     }
 
     // Static files from public/.
-    if (static.tryServe(alloc, std_req, path)) |_| return;
+    if (static.tryServe(alloc, std_req, path, io)) |_| return;
 
     // Pre-rendered pages from dist/ (SSG).
     if (!dev) {
-        if (tryServePrerendered(alloc, std_req, path)) |_| return;
+        if (tryServePrerendered(alloc, std_req, path, io)) |_| return;
     }
 
     // ── Build Request ──────────────────────────────────────────────────────
@@ -450,6 +452,7 @@ fn tryServePrerendered(
     alloc: std.mem.Allocator,
     std_req: *std.http.Server.Request,
     url_path: []const u8,
+    io: std.Io,
 ) ?void {
     const fs_path = if (std.mem.eql(u8, url_path, "/"))
         std.fmt.allocPrint(alloc, "dist/index.html", .{}) catch return null
@@ -459,7 +462,7 @@ fn tryServePrerendered(
     };
     defer alloc.free(fs_path);
 
-    const file_content = std.Io.Dir.cwd().readFileAlloc(alloc, fs_path, 10 * 1024 * 1024) catch return null;
+    const file_content = std.Io.Dir.cwd().readFileAlloc(io, fs_path, alloc, .limited(10 * 1024 * 1024)) catch return null;
     const body = file_content;
 
     var header_buf: [512]u8 = undefined;

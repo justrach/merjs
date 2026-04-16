@@ -44,9 +44,9 @@ pub const Watcher = struct {
     watch_dir: []const u8,
     clients: std.ArrayList(*Client),
     mutex: PthreadMutex,
-    mtimes: std.StringHashMap(i128),
-    io: std.Io,
+    mtimes: std.StringHashMap(std.Io.Timestamp),
     threaded: std.Io.Threaded,
+    io: std.Io,
 
     pub fn init(allocator: std.mem.Allocator, watch_dir: []const u8) Watcher {
         var threaded: std.Io.Threaded = .init(allocator, .{});
@@ -55,7 +55,7 @@ pub const Watcher = struct {
             .watch_dir = watch_dir,
             .clients = .empty,
             .mutex = .{},
-            .mtimes = std.StringHashMap(i128).init(allocator),
+            .mtimes = std.StringHashMap(std.Io.Timestamp).init(allocator),
             .io = threaded.io(),
             .threaded = threaded,
         };
@@ -106,7 +106,7 @@ pub const Watcher = struct {
             const mtime = stat.mtime;
 
             if (self.mtimes.get(entry.path)) |prev| {
-                if (mtime != prev) {
+                if (!std.meta.eql(mtime, prev)) {
                     self.mtimes.put(entry.path, mtime) catch {};
                     changed = true;
                 }
