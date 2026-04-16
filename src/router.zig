@@ -30,7 +30,7 @@ pub const Router = struct {
         var router = Router{ .allocator = allocator, .routes = routes };
 
         // Build exact match hash map + dynamic route list.
-        var dynamic_list: std.ArrayListUnmanaged(Route) = .{};
+        var dynamic_list: std.ArrayListUnmanaged(Route) = .empty;
         for (routes, 0..) |route, i| {
             if (std.mem.indexOfScalar(u8, route.path, ':') != null) {
                 dynamic_list.append(allocator, route) catch {};

@@ -192,7 +192,7 @@ fn coerceChildren(children: anytype) []const Node {
     if (T == []const u8) {
         if (@inComptime()) return &.{Node{ .text = children }};
         var singleton: [1]Node = .{Node{ .text = children }};
-        if (_render_alloc) |alloc| return alloc.dupe(Node, &singleton) catch &singleton;
+        if (_render_alloc) |alloc| return alloc.dupe(Node, &singleton) catch &.{};
         const final: [1]Node = singleton;
         return &final;
     }
@@ -200,7 +200,7 @@ fn coerceChildren(children: anytype) []const Node {
         const slice: []const u8 = children;
         if (@inComptime()) return &.{Node{ .text = slice }};
         var singleton: [1]Node = .{Node{ .text = slice }};
-        if (_render_alloc) |alloc| return alloc.dupe(Node, &singleton) catch &singleton;
+        if (_render_alloc) |alloc| return alloc.dupe(Node, &singleton) catch &.{};
         const final: [1]Node = singleton;
         return &final;
     }
@@ -234,7 +234,7 @@ fn coerceChildren(children: anytype) []const Node {
         // slice survives after coerceChildren returns (avoids dangling-pointer
         // SIGBUS on nested h.* calls).
         if (_render_alloc) |alloc| {
-            return alloc.dupe(Node, &nodes) catch &nodes;
+            return alloc.dupe(Node, &nodes) catch &.{};
         }
         // No allocator set — fall back (safe only if there is no nesting).
         const final: [fields.len]Node = nodes;
@@ -579,12 +579,12 @@ pub fn documentLang(comptime lang_val: []const u8, head_children: anytype, body_
 // ── Render ──────────────────────────────────────────────────────────────────
 
 pub fn render(allocator: std.mem.Allocator, node: Node) ![]u8 {
-    var out: std.io.Writer.Allocating = .init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     try renderNode(&out, node);
     return out.written();
 }
 
-fn renderNode(out: *std.io.Writer.Allocating, node: Node) !void {
+fn renderNode(out: *std.Io.Writer.Allocating, node: Node) !void {
     switch (node) {
         .text => |txt| try escapeHtml(out, txt),
         .raw => |r| try out.writer.writeAll(r),
@@ -620,7 +620,7 @@ fn renderNode(out: *std.io.Writer.Allocating, node: Node) !void {
     }
 }
 
-fn escapeHtml(out: *std.io.Writer.Allocating, s: []const u8) !void {
+fn escapeHtml(out: *std.Io.Writer.Allocating, s: []const u8) !void {
     var start: usize = 0;
     for (s, 0..) |c, i| {
         const replacement: ?[]const u8 = switch (c) {
@@ -638,7 +638,7 @@ fn escapeHtml(out: *std.io.Writer.Allocating, s: []const u8) !void {
     if (start < s.len) try out.writer.writeAll(s[start..]);
 }
 
-fn escapeAttr(out: *std.io.Writer.Allocating, s: []const u8) !void {
+fn escapeAttr(out: *std.Io.Writer.Allocating, s: []const u8) !void {
     var start: usize = 0;
     for (s, 0..) |c, i| {
         const replacement: ?[]const u8 = switch (c) {

@@ -29,7 +29,7 @@ else
     @as(std.mem.Allocator, undefined);
 
 var wasm_collect_mode: bool = false;
-var wasm_collected_urls: std.ArrayListUnmanaged([]const u8) = .{};
+var wasm_collected_urls: std.ArrayListUnmanaged([]const u8) = .empty;
 var wasm_fetch_cache: std.StringHashMapUnmanaged([]const u8) = .{};
 var wasm_urls_buf: []const u8 = "";
 
@@ -43,7 +43,7 @@ pub fn wasmBeginCollect() void {
 pub fn wasmEndCollect() []const u8 {
     wasm_collect_mode = false;
     if (wasm_urls_buf.len > 0) wasm_alloc.free(wasm_urls_buf);
-    var buf: std.ArrayListUnmanaged(u8) = .{};
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
     for (wasm_collected_urls.items) |url| {
         buf.appendSlice(wasm_alloc, url) catch {};
         buf.append(wasm_alloc, '\n') catch {};
@@ -67,10 +67,12 @@ pub fn wasmClearCache() void {
 /// Make an HTTP request from a server-side page handler.
 pub fn fetch(allocator: std.mem.Allocator, opts: FetchRequest) !FetchResponse {
     if (comptime builtin.os.tag == .freestanding) return error.NotSupported;
-    var client = std.http.Client{ .allocator = allocator };
+    var threaded: std.Io.Threaded = .init(allocator, .{});
+    defer threaded.deinit();
+    var client = std.http.Client{ .allocator = allocator, .io = threaded.io() };
     defer client.deinit();
 
-    var collecting: std.io.Writer.Allocating = .init(allocator);
+    var collecting: std.Io.Writer.Allocating = .init(allocator);
     defer collecting.deinit();
 
     const result = try client.fetch(.{
@@ -126,7 +128,7 @@ pub fn fetchAll(allocator: std.mem.Allocator, requests: []const FetchRequest) []
     const threads = allocator.alloc(std.Thread, requests.len) catch return results;
     defer allocator.free(threads);
 
-    const gpas = allocator.alloc(std.heap.GeneralPurposeAllocator(.{}), requests.len) catch return results;
+    const gpas = allocator.alloc(std.heap.DebugAllocator(.{}), requests.len) catch return results;
     defer allocator.free(gpas);
     for (gpas) |*g| g.* = .init;
 

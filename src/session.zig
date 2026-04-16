@@ -6,6 +6,13 @@ const env = @import("env.zig").get;
 const SessionHmac = std.crypto.auth.hmac.sha2.HmacSha256;
 const SESSION_HMAC_HEX_LEN = SessionHmac.mac_length * 2;
 
+/// Get current Unix timestamp using clock_gettime (Zig 0.16 compatible).
+fn currentTimestamp() i64 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
+    return ts.sec;
+}
+
 /// Default session lifetime: 7 days.
 pub const SESSION_DEFAULT_TTL: u32 = 7 * 24 * 60 * 60;
 
@@ -24,7 +31,7 @@ pub fn signSession(
     ttl_secs: u32,
 ) ![]u8 {
     const secret = env("MULTICLAW_SESSION_SECRET") orelse return error.NoSessionSecret;
-    const expires_at = std.time.timestamp() + @as(i64, ttl_secs);
+    const expires_at = currentTimestamp() + @as(i64, ttl_secs);
     const msg = try std.fmt.allocPrint(allocator, "{s}.{d}", .{ user_id, expires_at });
     defer allocator.free(msg);
 
@@ -52,7 +59,7 @@ pub fn verifySession(token: []const u8) ?Session {
     const user_id = prefix[0..mid_dot];
 
     const expires_at = std.fmt.parseInt(i64, expires_str, 10) catch return null;
-    if (std.time.timestamp() > expires_at) return null;
+    if (currentTimestamp() > expires_at) return null;
 
     var mac: [SessionHmac.mac_length]u8 = undefined;
     SessionHmac.create(&mac, prefix, secret);

@@ -8,9 +8,8 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
     const title = if (meta.title.len > 0) meta.title else if (std.mem.eql(u8, path, "/")) "Home" else if (path.len > 1) path[1..] else "merjs";
     const desc = if (meta.description.len > 0) meta.description else "A Zig-native web framework. No Node. No npm. Just WASM.";
 
-    var buf: std.ArrayList(u8) = .{};
-    const w = buf.writer(allocator);
-
+    var buf: std.Io.Writer.Allocating = .init(allocator);
+    const w = &buf.writer;
     // Head open
     w.writeAll(
         \\<!DOCTYPE html>
@@ -120,14 +119,14 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
     w.writeAll(
         \\
         \\  <footer class="layout-footer">
-        \\    Built with <a href="https://github.com/justrach/merjs">merjs</a> &middot; Zig 0.15 &middot; zero node_modules
+        \\    Built with <a href="https://github.com/justrach/merjs">merjs</a> &middot; Zig 0.16 &middot; zero node_modules
         \\  </footer>
         \\</div>
         \\</body>
         \\</html>
     ) catch return body;
 
-    return buf.items;
+    return buf.written();
 }
 
 /// Streaming-friendly layout split. Returns the shell (head + header) and tail
@@ -137,9 +136,8 @@ pub fn streamWrap(allocator: std.mem.Allocator, path: []const u8, meta: mer.Meta
     const title = if (meta.title.len > 0) meta.title else if (std.mem.eql(u8, path, "/")) "Home" else if (path.len > 1) path[1..] else "merjs";
     const desc = if (meta.description.len > 0) meta.description else "A Zig-native web framework. No Node. No npm. Just WASM.";
 
-    var head_buf: std.ArrayList(u8) = .{};
-    const hw = head_buf.writer(allocator);
-
+    var head_buf: std.Io.Writer.Allocating = .init(allocator);
+    const hw = &head_buf.writer;
     hw.writeAll(
         \\<!DOCTYPE html>
         \\<html lang="en">
@@ -233,5 +231,5 @@ pub fn streamWrap(allocator: std.mem.Allocator, path: []const u8, meta: mer.Meta
         \\</html>
     ;
 
-    return .{ .head = head_buf.items, .tail = tail };
+    return .{ .head = head_buf.written(), .tail = tail };
 }

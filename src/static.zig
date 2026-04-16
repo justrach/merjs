@@ -1,10 +1,17 @@
-// static.zig — serve files from public/ with in-memory cache (Zig 0.15).
+// static.zig — serve files from public/ with in-memory cache (Zig 0.16).
 
 const std = @import("std");
 const mer = @import("mer");
 
 const server = @import("server.zig");
 const log = std.log.scoped(.static);
+
+// --- Zig 0.16 shim: Thread.Mutex was removed ---
+const PthreadMutex = struct {
+    inner: std.c.pthread_mutex_t = std.c.PTHREAD_MUTEX_INITIALIZER,
+    pub fn lock(m: *PthreadMutex) void { _ = std.c.pthread_mutex_lock(&m.inner); }
+    pub fn unlock(m: *PthreadMutex) void { _ = std.c.pthread_mutex_unlock(&m.inner); }
+};
 
 const mime_table = [_]struct { ext: []const u8, ct: mer.ContentType }{
     .{ .ext = ".html", .ct = .html },
@@ -40,7 +47,7 @@ const CacheEntry = struct {
 /// Safe for concurrent reads after initial population (no mutation after insert).
 var cache: std.StringHashMapUnmanaged(CacheEntry) = .{};
 var cache_alloc: std.mem.Allocator = undefined;
-var cache_mu: std.Thread.Mutex = .{};
+var cache_mu: PthreadMutex = .{};
 var cache_init_done: bool = false;
 
 pub fn initCache(alloc: std.mem.Allocator) void {
@@ -76,6 +83,7 @@ pub fn tryServe(
     alloc: std.mem.Allocator,
     std_req: *std.http.Server.Request,
     url_path: []const u8,
+    io: std.Io,
 ) ?void {
     if (std.mem.indexOf(u8, url_path, "..") != null) return null;
 
@@ -90,12 +98,8 @@ pub fn tryServe(
     // Cache miss — read from disk.
     const fs_path = std.fmt.allocPrint(alloc, "public/{s}", .{rel}) catch return null;
     defer alloc.free(fs_path);
-
-    const file = std.fs.cwd().openFile(fs_path, .{}) catch return null;
-    defer file.close();
-
-    const body = file.readToEndAlloc(alloc, 10 * 1024 * 1024) catch |err| {
-        log.err("read {s}: {}", .{ fs_path, err });
+    const body = std.Io.Dir.cwd().readFileAlloc(io, fs_path, alloc, .limited(10 * 1024 * 1024)) catch |err| {
+        if (err != error.FileNotFound) log.err("read {s}: {}", .{ fs_path, err });
         return null;
     };
     defer alloc.free(body);

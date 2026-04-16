@@ -93,7 +93,7 @@ pub fn encodeForRedirect(alloc: Allocator, xml: []const u8) ![]u8 {
 /// URL-encode a string (percent-encode all non-unreserved characters).
 /// RFC 3986 unreserved: ALPHA / DIGIT / "-" / "." / "_" / "~"
 fn urlEncode(alloc: Allocator, input: []const u8) ![]u8 {
-    var out: std.ArrayListUnmanaged(u8) = .{};
+    var out: std.ArrayListUnmanaged(u8) = .empty;
     defer out.deinit(alloc);
     for (input) |ch| {
         if (std.ascii.isAlphanumeric(ch) or ch == '-' or ch == '.' or ch == '_' or ch == '~') {

@@ -3,6 +3,21 @@
 
 const std = @import("std");
 
+// --- Zig 0.16 shims: Thread.sleep and Thread.Mutex were removed ---
+
+fn threadSleep(ns: u64) void {
+    const ts = std.c.timespec{
+        .sec = @intCast(ns / std.time.ns_per_s),
+        .nsec = @intCast(ns % std.time.ns_per_s),
+    };
+    _ = std.c.nanosleep(&ts, null);
+}
+
+const PthreadMutex = struct {
+    inner: std.c.pthread_mutex_t = std.c.PTHREAD_MUTEX_INITIALIZER,
+    pub fn lock(m: *PthreadMutex) void { _ = std.c.pthread_mutex_lock(&m.inner); }
+    pub fn unlock(m: *PthreadMutex) void { _ = std.c.pthread_mutex_unlock(&m.inner); }
+};
 const log = std.log.scoped(.watcher);
 
 pub const Client = struct {
@@ -19,7 +34,7 @@ pub const Client = struct {
     /// Spin-wait until notified (checks every 50ms).
     pub fn wait(self: *Client) void {
         while (!self.notified.load(.acquire)) {
-            std.Thread.sleep(50 * std.time.ns_per_ms);
+            threadSleep(50 * std.time.ns_per_ms);
         }
     }
 };
@@ -27,18 +42,22 @@ pub const Client = struct {
 pub const Watcher = struct {
     allocator: std.mem.Allocator,
     watch_dir: []const u8,
-    // std.ArrayList is unmanaged in 0.15 — pass allocator per call.
     clients: std.ArrayList(*Client),
-    mutex: std.Thread.Mutex,
-    mtimes: std.StringHashMap(i128),
+    mutex: PthreadMutex,
+    mtimes: std.StringHashMap(std.Io.Timestamp),
+    threaded: std.Io.Threaded,
+    io: std.Io,
 
     pub fn init(allocator: std.mem.Allocator, watch_dir: []const u8) Watcher {
+        var threaded: std.Io.Threaded = .init(allocator, .{});
         return .{
             .allocator = allocator,
             .watch_dir = watch_dir,
-            .clients = .{},
+            .clients = .empty,
             .mutex = .{},
-            .mtimes = std.StringHashMap(i128).init(allocator),
+            .mtimes = std.StringHashMap(std.Io.Timestamp).init(allocator),
+            .io = threaded.io(),
+            .threaded = threaded,
         };
     }
 
@@ -65,7 +84,7 @@ pub const Watcher = struct {
     /// Poll loop — run in a background thread.
     pub fn run(self: *Watcher) void {
         while (true) {
-            std.Thread.sleep(300 * std.time.ns_per_ms);
+            threadSleep(300 * std.time.ns_per_ms);
             if (self.pollOnce()) {
                 log.info("change detected — reloading", .{});
                 self.broadcast();
@@ -75,19 +94,19 @@ pub const Watcher = struct {
 
     fn pollOnce(self: *Watcher) bool {
         var changed = false;
-        var dir = std.fs.cwd().openDir(self.watch_dir, .{ .iterate = true }) catch return false;
-        defer dir.close();
+        var dir = std.Io.Dir.cwd().openDir(self.io, self.watch_dir, .{ .iterate = true }) catch return false;
+        defer dir.close(self.io);
 
         var walker = dir.walk(self.allocator) catch return false;
         defer walker.deinit();
 
-        while (walker.next() catch null) |entry| {
+        while (walker.next(self.io) catch null) |entry| {
             if (entry.kind != .file) continue;
-            const stat = dir.statFile(entry.path) catch continue;
+            const stat = dir.statFile(self.io, entry.path, .{}) catch continue;
             const mtime = stat.mtime;
 
             if (self.mtimes.get(entry.path)) |prev| {
-                if (mtime != prev) {
+                if (!std.meta.eql(mtime, prev)) {
                     self.mtimes.put(entry.path, mtime) catch {};
                     changed = true;
                 }
