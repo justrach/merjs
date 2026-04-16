@@ -119,7 +119,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
     w.writeAll(
         \\
         \\  <footer class="layout-footer">
-        \\    Built with <a href="https://github.com/justrach/merjs">merjs</a> &middot; Zig 0.15 &middot; zero node_modules
+        \\    Built with <a href="https://github.com/justrach/merjs">merjs</a> &middot; Zig 0.16 &middot; zero node_modules
         \\  </footer>
         \\</div>
         \\</body>

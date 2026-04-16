@@ -14,13 +14,14 @@ pub const version = "0.2.2";
 
 const print = std.debug.print;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+pub fn main(init: std.process.Init.Minimal) !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    const args = try std.process.argsAlloc(alloc);
-    defer std.process.argsFree(alloc, args);
+    var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+    defer arena_state.deinit();
+    const args = try init.args.toSlice(arena_state.allocator());
 
     if (args.len < 2) {
         printUsage();
@@ -201,13 +202,14 @@ const main_zig_template =
     \\
     \\const log = std.log.scoped(.main);
     \\
-    \\pub fn main() !void {
-    \\    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    \\pub fn main(init: std.process.Init.Minimal) !void {
+    \\    var gpa: std.heap.DebugAllocator(.{}) = .init;
     \\    defer _ = gpa.deinit();
     \\    const alloc = gpa.allocator();
     \\
-    \\    const args = try std.process.argsAlloc(alloc);
-    \\    defer std.process.argsFree(alloc, args);
+    \\    var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+    \\    defer arena_state.deinit();
+    \\    const args = try init.args.toSlice(arena_state.allocator());
     \\
     \\    // Load .env before threads start.
     \\    mer.loadDotenv(alloc);
@@ -341,7 +343,7 @@ fn writeBuildZigZon(dir: std.fs.Dir, alloc: std.mem.Allocator, name: []const u8)
     try file.writeAll(
         \\,
         \\    .version = "0.1.0",
-        \\    .minimum_zig_version = "0.15.1",
+        \\    .minimum_zig_version = "0.16.0",
         \\    .dependencies = .{
         \\        .merjs = .{
         \\            .url = "git+https://github.com/justrach/merjs.git",
