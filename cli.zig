@@ -202,7 +202,7 @@ const main_zig_template =
     \\
     \\const log = std.log.scoped(.main);
     \\
-    \\    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    \\pub fn main(init: std.process.Init.Minimal) !void {
     \\    var gpa: std.heap.DebugAllocator(.{}) = .init;
     \\    defer _ = gpa.deinit();
     \\    const alloc = gpa.allocator();
