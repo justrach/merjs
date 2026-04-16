@@ -13,6 +13,17 @@ const dev_mod = mer.dev;
 
 const log = std.log.scoped(.server);
 
+/// Thread-local TTFB tracking: set before serveRequest, read after first response write.
+threadlocal var _request_start_ns: i128 = 0;
+threadlocal var _ttfb_ns: i128 = 0;
+
+/// Called internally by sendResponse/streaming paths to mark first-byte time.
+pub fn markTtfb() void {
+    if (_ttfb_ns == 0 and _request_start_ns != 0) {
+        _ttfb_ns = nanoTimestamp() - _request_start_ns;
+    }
+}
+
 /// Security headers applied to every page/API response.
 pub const security_headers = [_]std.http.Header{
     .{ .name = "strict-transport-security", .value = "max-age=63072000; includeSubDomains; preload" },
@@ -166,13 +177,14 @@ fn handleConn(ctx: *ConnCtx) void {
             return;
         };
 
-        const start = nanoTimestamp();
+        _request_start_ns = nanoTimestamp();
+        _ttfb_ns = 0;
+        const start = _request_start_ns;
         serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.kuri, ctx.dev, ctx.verbose, ctx.io) catch |err| {
             log.err("serveRequest: {}", .{err});
             if (ctx.dev) {
                 dev_mod.sendErrorOverlay(&std_req, std_req.head.target, err, mer.version) catch {};
             }
-            // Telemetry: report error to Sentry + Datadog.
             telemetry.sentryCapture(@errorName(err), std_req.head.target, mer.version);
             telemetry.ddError(std_req.head.target, @tagName(std_req.head.method), @errorName(err));
             return;
@@ -180,16 +192,16 @@ fn handleConn(ctx: *ConnCtx) void {
 
         const elapsed_ns = nanoTimestamp() - start;
         const elapsed_us: u64 = @intCast(@divFloor(elapsed_ns, 1000));
+        const ttfb_us: u64 = if (_ttfb_ns > 0) @intCast(@divFloor(_ttfb_ns, 1000)) else elapsed_us;
 
-        // Telemetry: send request timing to Datadog.
         telemetry.ddTiming(std_req.head.target, @tagName(std_req.head.method), 200, elapsed_us);
 
         if (ctx.verbose) {
             const elapsed_f: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1000.0;
             if (elapsed_f < 1000.0) {
-                log.info("{s} {s} {d:.0}us", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f });
+                log.info("{s} {s} {d:.0}us (ttfb: {d}us)", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f, ttfb_us });
             } else {
-                log.info("{s} {s} {d:.1}ms", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f / 1000.0 });
+                log.info("{s} {s} {d:.1}ms (ttfb: {d}us)", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f / 1000.0, ttfb_us });
             }
         }
 
@@ -316,7 +328,9 @@ fn serveRequest(
                 });
 
                 // Flush layout head immediately — browser starts rendering shell.
+                // Flush layout head immediately — browser starts rendering shell.
                 try bw.writer.writeAll(parts.head);
+                markTtfb();
                 try bw.flush();
 
                 // Create StreamWriter backed by the HTTP body writer.
@@ -362,6 +376,7 @@ fn serveRequest(
             },
         });
         try bw.writer.writeAll(result.head);
+        markTtfb();
         try bw.flush();
         try bw.writer.writeAll(result.body);
         try bw.flush();
@@ -422,6 +437,7 @@ fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void
                 .extra_headers = extra[0 .. 1 + n_cookies],
             },
         });
+        markTtfb();
         try bw.end();
         return;
     }
@@ -443,6 +459,7 @@ fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void
             .extra_headers = extra[0 .. fixed.len + n_cookies],
         },
     });
+    markTtfb();
     try bw.writer.writeAll(response.body);
     try bw.end();
 }
