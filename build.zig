@@ -166,6 +166,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .strip = if (optimize != .Debug) true else null,
+        .link_libc = true,
     });
     const cli_exe = b.addExecutable(.{ .name = "mer", .root_module = cli_mod });
     b.step("cli", "Build the `mer` CLI binary").dependOn(&b.addInstallArtifact(cli_exe, .{}).step);
@@ -175,6 +176,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
     test_mod.addImport("mer", mer_mod);
     helpers.addDirModules(b, test_mod, mer_mod, "examples/site/app", "app", site_extras);
@@ -191,6 +193,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path(src_path),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         });
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = file_test_mod })).step);
     }
@@ -199,6 +202,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("cli.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         });
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = cli_test_mod })).step);
     }
@@ -210,6 +214,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/mer.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         });
         mer_test_mod.addImport("dhi_model", dhi_model_mod);
         mer_test_mod.addImport("dhi_validator", dhi_validator_mod);
@@ -228,6 +233,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/consumer/src/test_consumer_routes.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         });
         consumer_test_mod.addImport("mer", mer_mod);
         // The key: wire "routes" to the CONSUMER's routes, not the framework's.
@@ -258,8 +264,8 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/starter/src/test_starter_scaffold.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
         });
-        starter_test_mod.addImport("mer", mer_mod);
 
         const starter_layout_mod = b.createModule(.{
             .root_source_file = b.path("examples/starter/app/layout.zig"),

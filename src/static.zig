@@ -99,7 +99,7 @@ pub fn tryServe(
     const fs_path = std.fmt.allocPrint(alloc, "public/{s}", .{rel}) catch return null;
     defer alloc.free(fs_path);
     const body = std.Io.Dir.cwd().readFileAlloc(io, fs_path, alloc, .limited(10 * 1024 * 1024)) catch |err| {
-        log.err("read {s}: {}", .{ fs_path, err });
+        if (err != error.FileNotFound) log.err("read {s}: {}", .{ fs_path, err });
         return null;
     };
     defer alloc.free(body);
