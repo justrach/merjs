@@ -8,8 +8,8 @@ const SESSION_HMAC_HEX_LEN = SessionHmac.mac_length * 2;
 
 /// Get current Unix timestamp using clock_gettime (Zig 0.16 compatible).
 fn currentTimestamp() i64 {
-    var ts: std.c.time.timespec = undefined;
-    _ = std.c.clock_gettime(std.c.time.CLOCK.REALTIME, &ts);
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
     return ts.sec;
 }
 

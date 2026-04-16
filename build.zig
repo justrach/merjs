@@ -266,6 +266,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .link_libc = true,
         });
+        starter_test_mod.addImport("mer", mer_mod);
 
         const starter_layout_mod = b.createModule(.{
             .root_source_file = b.path("examples/starter/app/layout.zig"),
