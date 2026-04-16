@@ -23,6 +23,7 @@ pub fn build(b: *std.Build) void {
     // ── "mer" module (framework public API) ──────────────────────────────────
     const mer_mod = b.addModule("mer", .{
         .root_source_file = b.path("src/mer.zig"),
+        .link_libc = true,
     });
     mer_mod.addImport("dhi_model", dhi_model_mod);
     mer_mod.addImport("dhi_validator", dhi_validator_mod);
@@ -57,6 +58,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .strip = if (optimize != .Debug) true else null,
+        .link_libc = true, // 0.16: std.c.* (pthread, clock_gettime, etc.) needs explicit libc
     });
     main_mod.addImport("mer", mer_mod);
     main_mod.addImport("counter_config", counter_config_mod);
