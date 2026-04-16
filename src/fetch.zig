@@ -29,7 +29,7 @@ else
     @as(std.mem.Allocator, undefined);
 
 var wasm_collect_mode: bool = false;
-var wasm_collected_urls: std.ArrayListUnmanaged([]const u8) = .{};
+var wasm_collected_urls: std.ArrayListUnmanaged([]const u8) = .empty;
 var wasm_fetch_cache: std.StringHashMapUnmanaged([]const u8) = .{};
 var wasm_urls_buf: []const u8 = "";
 
@@ -43,7 +43,7 @@ pub fn wasmBeginCollect() void {
 pub fn wasmEndCollect() []const u8 {
     wasm_collect_mode = false;
     if (wasm_urls_buf.len > 0) wasm_alloc.free(wasm_urls_buf);
-    var buf: std.ArrayListUnmanaged(u8) = .{};
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
     for (wasm_collected_urls.items) |url| {
         buf.appendSlice(wasm_alloc, url) catch {};
         buf.append(wasm_alloc, '\n') catch {};

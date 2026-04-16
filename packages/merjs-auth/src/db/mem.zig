@@ -7,6 +7,13 @@
 const std = @import("std");
 const db = @import("root.zig");
 
+/// Get current Unix timestamp in seconds (Zig 0.16 compatible).
+fn currentUnixSeconds() i64 {
+    var ts: std.c.time.timespec = undefined;
+    _ = std.c.clock_gettime(std.c.time.CLOCK.REALTIME, &ts);
+    return ts.sec;
+}
+
 // ── Internal typed row types ───────────────────────────────────────────────
 
 const UserRow = struct {
@@ -574,7 +581,7 @@ pub const MemAdapter = struct {
             // ── UPDATE mauth_tokens SET used_at=NOW() WHERE id=$1 ────────────
             .tokens_mark_used => {
                 const token_id = paramText(params, 0);
-                const now_unix = @divTrunc(std.time.milliTimestamp(), 1000);
+                const now_unix = currentUnixSeconds();
                 for (self.tokens.items) |*t| {
                     if (std.mem.eql(u8, t.id, token_id)) {
                         t.used_at = now_unix;

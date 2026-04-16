@@ -16,6 +16,38 @@ const print = std.debug.print;
 
 var g_io: std.Io = undefined;
 
+/// Resolve an executable name to full path using PATH environment variable.
+/// Caller owns the returned memory.
+fn resolveInPath(alloc: std.mem.Allocator, name: []const u8) ![]const u8 {
+    if (std.fs.path.isAbsolute(name)) return alloc.dupe(u8, name);
+
+    // Get PATH from environment using POSIX API
+    const path_ptr = std.c.getenv("PATH") orelse return alloc.dupe(u8, name);
+    const path_env = std.mem.sliceTo(path_ptr, 0);
+    if (path_env.len == 0) return alloc.dupe(u8, name);
+
+    var it = std.mem.splitScalar(u8, path_env, std.fs.path.delimiter);
+    while (it.next()) |dir| {
+        if (dir.len == 0) continue;
+        const full_path = try std.fs.path.join(alloc, &.{ dir, name });
+
+        // Check if file exists using Io.Dir
+        std.Io.Dir.cwd().access(g_io, full_path, .{}) catch {
+            alloc.free(full_path);
+            continue;
+        };
+        return full_path;
+    }
+    return alloc.dupe(u8, name);
+}
+
+/// Get current Unix timestamp in milliseconds (vanity metric helper).
+fn currentMs() i64 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
+    return @as(i64, ts.sec) * 1000 + @divTrunc(ts.nsec, 1_000_000);
+}
+
 pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
@@ -304,7 +336,7 @@ fn writeTemplateFiles(dir: std.Io.Dir) !void {
     }
 }
 
-fn projectNameForZon(alloc: std.mem.Allocator, name: []const u8) ![]u8 {
+fn projectNameForZon(alloc: std.mem.Allocator, name: []const u8) ![]const u8 {
     const source = blk: {
         if (std.mem.eql(u8, name, ".")) {
             var cwd_buf: [4096]u8 = undefined;
@@ -347,34 +379,36 @@ fn writeBuildZigZon(dir: std.Io.Dir, alloc: std.mem.Allocator, name: []const u8)
     defer file.close(g_io);
     try file.writeStreamingAll(g_io, ".{\n    .name = .");
     try file.writeStreamingAll(g_io, zig_name);
-    try file.writeStreamingAll(g_io,
-        \\,
-        \\    .version = "0.1.0",
-        \\    .minimum_zig_version = "0.16.0",
-        \\    .dependencies = .{
-        \\        .merjs = .{
-        \\            .url = "git+https://github.com/justrach/merjs.git",
-        \\        },
-        \\    },
-        \\    .paths = .{
-        \\        "build.zig",
-        \\        "build.zig.zon",
-        \\        "src",
-        \\        "app",
-        \\        "api",
-        \\        "public",
-        \\    },
-        \\}
-        \\
-    );
+    try file.writeStreamingAll(g_io, ",\n    .version = \"0.1.0\",\n");
+    try file.writeStreamingAll(g_io, "    .minimum_zig_version = \"0.16.0\",\n");
+    try file.writeStreamingAll(g_io, "    .dependencies = .{\n");
+    try file.writeStreamingAll(g_io, "        .merjs = .{\n");
+    try file.writeStreamingAll(g_io, "            .url = \"git+https://github.com/justrach/merjs.git\",\n");
+    try file.writeStreamingAll(g_io, "        },\n");
+    try file.writeStreamingAll(g_io, "    },\n");
+    try file.writeStreamingAll(g_io, "    .paths = .{\n");
+    try file.writeStreamingAll(g_io, "        \"build.zig\",\n");
+    try file.writeStreamingAll(g_io, "        \"build.zig.zon\",\n");
+    try file.writeStreamingAll(g_io, "        \"src\",\n");
+    try file.writeStreamingAll(g_io, "        \"app\",\n");
+    try file.writeStreamingAll(g_io, "        \"api\",\n");
+    try file.writeStreamingAll(g_io, "        \"public\",\n");
+    try file.writeStreamingAll(g_io, "    },\n");
+    try file.writeStreamingAll(g_io, "}\n");
 }
 
 fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
+    // Start timing for vanity metrics
+    const start_ms = currentMs();
+    var file_count: usize = 0;
+
+    print("\n🚀 mer init — scaffolding new project\n\n", .{});
+
     const use_cwd = std.mem.eql(u8, name, ".");
     if (!use_cwd) {
         std.Io.Dir.cwd().createDir(g_io, name, .default_dir) catch |err| {
             if (err == error.PathAlreadyExists) {
-                print("mer: directory '{s}' already exists\n", .{name});
+                print("❌ Directory '{s}' already exists\n", .{name});
                 std.process.exit(1);
             }
             return err;
@@ -386,24 +420,33 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     else
         try std.Io.Dir.cwd().openDir(g_io, name, .{});
 
+    print("📁 Creating project structure...\n", .{});
+
     // Write template files.
     try writeTemplateFiles(dir);
+    file_count += 7; // 7 template files
 
     // Write build.zig.
     {
         const file = try dir.createFile(g_io, "build.zig", .{});
         defer file.close(g_io);
         try file.writeStreamingAll(g_io, build_zig_template);
+        file_count += 1;
     }
 
     // Write build.zig.zon.
     try writeBuildZigZon(dir, alloc, name);
+    file_count += 1;
 
     // Patch in the fingerprint: run zig build to get the suggested value.
+    print("🔨 Running initial build for fingerprint...\n", .{});
+    const build_start_ms = currentMs();
     {
         const cwd_path = if (use_cwd) "." else name;
+        const zig_exe = try resolveInPath(alloc, "zig");
+        defer alloc.free(zig_exe);
         const result = try std.process.run(alloc, g_io, .{
-            .argv = &.{ "zig", "build" },
+            .argv = &.{ zig_exe, "build" },
             .cwd = .{ .path = cwd_path },
         });
         defer alloc.free(result.stdout);
@@ -435,30 +478,30 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     }
 
     // Auto-fetch the merjs dependency so the project builds immediately (#61).
-    // Step 1: `zig fetch` (no --save) prints the package hash to stdout.
-    // Step 2: `zig fetch --save` pins the commit URL into build.zig.zon.
-    // Step 3: patch the .hash field in after the .url line.
+    print("📦 Fetching merjs dependency...\n", .{});
+    const fetch_start_ms = currentMs();
     {
         const cwd_path = if (use_cwd) "." else name;
-        print("  fetching merjs dependency...\n", .{});
+        const zig_exe = try resolveInPath(alloc, "zig");
+        defer alloc.free(zig_exe);
 
         // Get the package hash (printed to stdout by zig fetch without --save).
         const hash_result = try std.process.run(alloc, g_io, .{
-            .argv = &.{ "zig", "fetch", "git+https://github.com/justrach/merjs.git" },
+            .argv = &.{ zig_exe, "fetch", "git+https://github.com/justrach/merjs.git" },
             .cwd = .{ .path = cwd_path },
         });
         defer alloc.free(hash_result.stdout);
         defer alloc.free(hash_result.stderr);
 
         if (hash_result.term.exited != 0) {
-            print("  warning: could not fetch merjs dependency (no network?)\n", .{});
-            print("  run manually: zig fetch --save=merjs git+https://github.com/justrach/merjs.git\n", .{});
+            print("   ⚠️  Could not fetch merjs dependency (no network?)\n", .{});
+            print("      Run manually: zig fetch --save=merjs git+https://github.com/justrach/merjs.git\n", .{});
         } else {
             const pkg_hash = std.mem.trimEnd(u8, hash_result.stdout, "\n\r ");
 
             // Pin the commit URL into build.zig.zon.
             const save_result = try std.process.run(alloc, g_io, .{
-                .argv = &.{ "zig", "fetch", "--save=merjs", "git+https://github.com/justrach/merjs.git" },
+                .argv = &.{ zig_exe, "fetch", "--save=merjs", "git+https://github.com/justrach/merjs.git" },
                 .cwd = .{ .path = cwd_path },
             });
             alloc.free(save_result.stderr);
@@ -523,21 +566,36 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
 
     if (!use_cwd) dir.close(g_io);
 
+    // Calculate vanity metrics
+    const total_ms = currentMs() - start_ms;
+    const build_ms = currentMs() - build_start_ms;
+    const fetch_ms = currentMs() - fetch_start_ms;
+    file_count += 5; // src/generated/*, .gitignore, src/main.zig
+
+    // Print vanity summary
     print("\n", .{});
-    print("  mer project created", .{});
+    print("✨ Success! Created {s}", .{name});
     if (!use_cwd) {
         if (std.fs.path.isAbsolute(name)) {
-            print(" in {s}", .{name});
+            print(" at {s}\n", .{name});
         } else {
-            print(" in ./{s}", .{name});
+            print(" at ./{s}\n", .{name});
         }
+    } else {
+        print("\n", .{});
     }
-    print("\n\n", .{});
-    print("  next steps:\n\n", .{});
-    if (!use_cwd) print("    cd {s}\n", .{name});
-    print("    zig build serve       # start dev server on :3000\n", .{});
-    print("\n  or just: mer dev\n", .{});
-    print("\n  optional: mer add css | wasm | worker\n\n", .{});
+    print("   {d} files in {d}ms\n", .{ file_count, total_ms });
+    print("   🔨 Build: {d}ms | 📦 Fetch: {d}ms\n\n", .{ build_ms, fetch_ms });
+
+    print("Next steps:\n\n", .{});
+    if (!use_cwd) print("  cd {s}\n", .{name});
+    print("  mer dev               # start dev server with hot reload\n", .{});
+    print("  # or:\n", .{});
+    print("  zig build serve       # start dev server on :3000\n", .{});
+    print("\nOptional:\n", .{});
+    print("  mer add css           # add Tailwind CSS support\n", .{});
+    print("  mer add wasm          # add WebAssembly module\n", .{});
+    print("  mer add worker        # add Cloudflare Worker output\n\n", .{});
 }
 
 test "projectNameForZon uses basename for absolute paths" {
@@ -826,7 +884,7 @@ fn cmdAddWorker() !void {
 
 const ui_components = &[_][]const u8{
     "button",
-    "card", 
+    "card",
     "input",
     "badge",
     "alert",
@@ -840,7 +898,7 @@ const component_alert = @embedFile("packages/merlion-ui/templates/alert.zig");
 
 fn cmdAddUiComponent(name: []const u8) !void {
     _ = std.Io.Dir.cwd().createDirPathOpen(g_io, "app/components", .{}) catch {};
-    
+
     const content = if (std.mem.eql(u8, name, "button"))
         component_button
     else if (std.mem.eql(u8, name, "card"))
@@ -859,32 +917,32 @@ fn cmdAddUiComponent(name: []const u8) !void {
         print("\n\n", .{});
         std.process.exit(1);
     };
-    
+
     var path_buf: [256]u8 = undefined;
     const path = std.fmt.bufPrint(&path_buf, "app/components/{s}.zig", .{name}) catch {
         print("mer: component name too long\n", .{});
         return;
     };
-    
+
     const exists = if (std.Io.Dir.cwd().access(g_io, path, .{})) true else |_| false;
     if (exists) {
         print("  {s} already exists (use --force to overwrite)\n", .{path});
         return;
     }
-    
+
     const file = try std.Io.Dir.cwd().createFile(g_io, path, .{});
     defer file.close(g_io);
     try file.writeStreamingAll(g_io, content);
-    
+
     print("  created {s}\n", .{path});
-    print("\n  usage: const {s} = @import(\"components/{s}.zig\");\n\n", .{name, name});
+    print("\n  usage: const {s} = @import(\"components/{s}.zig\");\n\n", .{ name, name });
 }
 
 fn cmdAddUiAll() !void {
     print("  adding all merlion-ui components...\n\n", .{});
     for (ui_components) |name| {
         cmdAddUiComponent(name) catch |err| {
-            print("  warning: failed to add {s}: {s}\n", .{name, @errorName(err)});
+            print("  warning: failed to add {s}: {s}\n", .{ name, @errorName(err) });
         };
     }
     print("\n  run `mer add css` to add Tailwind CSS styling\n\n", .{});
@@ -893,20 +951,13 @@ fn cmdAddUiAll() !void {
 // ── help ────────────────────────────────────────────────────────────────────
 
 fn printUsage() void {
-    print(
-        \\
-        \\  mer -- the merjs CLI (v{s})
-        \\
-        \\  usage:
-        \\    mer init <name>      scaffold a new project
-        \\    mer dev [--port N]   codegen + dev server with hot reload
-        \\    mer build            production build (ReleaseSmall + prerender)
-        \\    mer add <feature>    add optional features (css, wasm, worker, ui [component])
-        \\    mer update           update merjs to latest version
-        \\    mer --version        print version
-        \\
-        \\  https://github.com/justrach/merjs
-        \\
-        \\
-    , .{version});
+    print("\n  mer -- the merjs CLI (v{s})\n", .{version});
+    print("\n  usage:\n", .{});
+    print("    mer init <name>      scaffold a new project\n", .{});
+    print("    mer dev [--port N]   codegen + dev server with hot reload\n", .{});
+    print("    mer build            production build (ReleaseSmall + prerender)\n", .{});
+    print("    mer add <feature>    add optional features (css, wasm, worker, ui [component])\n", .{});
+    print("    mer update           update merjs to latest version\n", .{});
+    print("    mer --version        print version\n", .{});
+    print("\n  https://github.com/justrach/merjs\n\n", .{});
 }

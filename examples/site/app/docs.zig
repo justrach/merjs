@@ -204,13 +204,13 @@ pub fn renderStream(req: mer.Request, stream: *mer.StreamWriter) void {
         \\pub fn wrap(alloc: std.mem.Allocator, path: []const u8,
         \\            body: []const u8, meta: mer.Meta) []const u8 {
         \\    _ = path;
-        \\    var buf: std.ArrayList(u8) = .{};
-        \\    const w = buf.writer(alloc);
+        \\    var buf: std.Io.Writer.Allocating = .init(alloc);
+        \\    const w = &buf.writer;
         \\    w.print("&lt;!DOCTYPE html&gt;&lt;html&gt;&lt;head&gt;&lt;title&gt;{s}&lt;/title&gt;&lt;/head&gt;", .{meta.title}) catch {};
         \\    w.writeAll("&lt;body&gt;") catch {};
         \\    w.writeAll(body) catch {};
         \\    w.writeAll("&lt;/body&gt;&lt;/html&gt;") catch {};
-        \\    return buf.items;
+        \\    return buf.written();
         \\}
         \\
         \\/// Streaming layout: returns head + tail separately.
@@ -218,10 +218,10 @@ pub fn renderStream(req: mer.Request, stream: *mer.StreamWriter) void {
         \\pub fn streamWrap(alloc: std.mem.Allocator, path: []const u8,
         \\                  meta: mer.Meta) mer.StreamParts {
         \\    _ = path;
-        \\    var head_buf: std.ArrayList(u8) = .{};
-        \\    const hw = head_buf.writer(alloc);
+        \\    var head_buf: std.Io.Writer.Allocating = .init(alloc);
+        \\    const hw = &head_buf.writer;
         \\    hw.print("&lt;!DOCTYPE html&gt;&lt;html&gt;&lt;head&gt;&lt;title&gt;{s}&lt;/title&gt;&lt;/head&gt;&lt;body&gt;", .{meta.title}) catch {};
-        \\    return .{ .head = head_buf.items, .tail = "&lt;/body&gt;&lt;/html&gt;" };
+        \\    return .{ .head = head_buf.written(), .tail = "&lt;/body&gt;&lt;/html&gt;" };
         \\}</code></pre></div>
         \\  </section>
     );
