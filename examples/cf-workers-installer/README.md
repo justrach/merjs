@@ -1,54 +1,72 @@
-# Cloudflare Workers Installer Example
+# Cloudflare Workers — Add Install Route
 
-Serve merjs install.sh and landing page via Cloudflare Workers at the edge.
+If you already have wrangler set up, just add the install.sh route.
 
-## Quick Start
+## Option 1: Add Route to Existing Worker (JavaScript)
+
+Add to your existing `worker.js`:
+
+```javascript
+if (url.pathname === '/install.sh' || url.pathname === '/install') {
+  const installScript = await fetch('https://raw.githubusercontent.com/justrach/merjs/main/install.sh');
+  return new Response(installScript.body, {
+    headers: {
+      'Content-Type': 'text/x-shellscript; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+    },
+  });
+}
+```
+
+## Option 2: Standalone Installer Worker
+
+Use the included `worker.js` as a minimal standalone:
 
 ```bash
-# Install Wrangler CLI
-npm install -g wrangler
-
-# Login to Cloudflare
-wrangler login
-
-# Build the worker
-zig build worker
+# Copy files
+cp worker.js your-worker-directory/
+cp public/install.sh your-worker-directory/public/
 
 # Deploy
+cd your-worker-directory
 wrangler deploy
 ```
 
-## Files
+## Files Included
 
-- `src/worker.zig` — Worker that serves install.sh and index.html
-- `public/install.sh` — The installer script
-- `public/index.html` — Landing page
-- `wrangler.toml` — Cloudflare config
-
-## Routes
-
-- `/` or `/index.html` → Landing page
-- `/install.sh` → Installer script
+- `worker.js` — Complete worker that serves install.sh
+- `public/install.sh` — The installer script (copy to your public/ folder)
 
 ## Custom Domain
 
+Update your `wrangler.toml`:
+
+```toml
+name = "merjs-installer"
+routes = [
+  { pattern = "install.yourdomain.com", custom_domain = true }
+]
+```
+
+Or add via Cloudflare dashboard:
+Workers & Pages → Your worker → Settings → Triggers → Custom Domains
+
+## Usage
+
 ```bash
-wrangler deploy --name merjs-installer
-# Then add custom domain in Cloudflare dashboard
+# After deploy
+curl -fsSL https://install.yourdomain.com/install.sh | bash
 ```
 
-## Architecture
+## How It Works
 
-```
-User → Cloudflare Edge → Worker (WASM) → Static Content
-         ↓                    ↓
-    Global CDN          Compiled Zig
-```
+1. Worker runs at Cloudflare's edge (300+ locations)
+2. Fetches install.sh from GitHub (cached for 1 hour)
+3. Returns with proper content-type for shell execution
+4. User's curl pipes it directly to bash
 
-## Benefits
-
-- 🌍 **Edge Deployed** — Runs at 300+ locations worldwide
-- ⚡ **Sub-50ms Response** — From anywhere
-- 📦 **No Server** — Zero maintenance
-- 🔒 **Automatic HTTPS** — Free SSL
-- 🎉 **Free Tier** — 100k requests/day
+**Benefits:**
+- 🌍 Edge-deployed (fast from anywhere)
+- 📦 No server to maintain
+- 🔒 HTTPS by default
+- 🆓 Free tier: 100k requests/day
