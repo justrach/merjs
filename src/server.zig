@@ -1,5 +1,5 @@
-// server.zig — HTTP server backbone (Zig 0.15).
-// std.http.Server now takes *Io.Reader + *Io.Writer from a net.Stream.
+// server.zig — HTTP server backbone (Zig 0.16).
+// std.http.Server now takes *Io.Reader + *Io.Writer from a net.Stream (with Io param).
 
 const std = @import("std");
 const mer = @import("mer");
@@ -26,9 +26,22 @@ pub const security_headers = [_]std.http.Header{
 
 /// Passed (optional) to Server.listen() so callers can wait for the server
 /// to be ready and read back the actual bound port (useful when port=0).
+/// Uses std.atomic.Value(bool) since std.Thread.ResetEvent was removed in 0.16.
 pub const ServerReady = struct {
-    event: std.Thread.ResetEvent = .{},
+    event: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     port: u16 = 0,
+
+    /// Block until the server signals readiness.
+    pub fn wait(self: *ServerReady) void {
+        while (!self.event.load(.acquire)) {
+            std.atomic.spinLoopHint();
+        }
+    }
+
+    /// Signal that the server is ready.
+    pub fn set(self: *ServerReady) void {
+        self.event.store(true, .release);
+    }
 };
 
 pub const Config = struct {
@@ -48,7 +61,6 @@ pub const Server = struct {
     watcher: ?*watcher_mod.Watcher,
     kuri: ?kuri_mod.Kuri,
     allocator: std.mem.Allocator,
-    pool: std.Thread.Pool,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -62,17 +74,10 @@ pub const Server = struct {
             .router = router,
             .watcher = watcher,
             .kuri = null,
-            .pool = undefined,
         };
     }
 
     pub fn listen(self: *Server) !void {
-        // Use CPU count * 2 for I/O-bound workloads (capped at reasonable max).
-        const cpu_count = std.Thread.getCpuCount() catch 4;
-        const n_threads = @min(cpu_count * 2, 64);
-        try self.pool.init(.{ .allocator = self.allocator, .n_jobs = @intCast(n_threads) });
-        defer self.pool.deinit();
-
         // Init static file cache.
         static.initCache(self.allocator);
 
@@ -82,29 +87,32 @@ pub const Server = struct {
         }
         defer if (self.kuri) |*k| k.deinit();
 
-        const addr = try std.net.Address.parseIp(self.config.host, self.config.port);
-        var net_server = try addr.listen(.{ .reuse_address = true, .kernel_backlog = 512 });
-        defer net_server.deinit();
+        // 0.16: Use std.Io.net.IpAddress.parse() + IpAddress.listen(io).
+        var threaded: std.Io.Threaded = .init(self.allocator, .{}); const io = threaded.io();
+        const addr = try std.Io.net.IpAddress.parse(self.config.host, self.config.port);
+        var net_server = try addr.listen(io, .{});
+        defer net_server.deinit(io);
 
         // Signal readiness with actual bound port (supports port=0 for desktop/testing).
         if (self.config.ready) |r| {
-            r.port = net_server.listen_address.getPort();
-            r.event.set();
+            r.port = net_server.socket.address.getPort();
+            r.set();
         }
 
-        log.info("merjs dev server -> http://{s}:{d} ({d} threads)", .{ self.config.host, net_server.listen_address.getPort(), n_threads });
+        log.info("merjs dev server -> http://{s}:{d}", .{ self.config.host, net_server.socket.address.getPort() });
 
         while (true) {
-            const conn = net_server.accept() catch |err| {
+            const stream = net_server.accept(io) catch |err| {
                 log.debug("accept: {}", .{err});
                 continue;
             };
             const ctx = self.allocator.create(ConnCtx) catch {
-                conn.stream.close();
+                stream.close(io);
                 continue;
             };
             ctx.* = .{
-                .conn = conn,
+                .stream = stream,
+                .io = io,
                 .router = self.router,
                 .watcher = self.watcher,
                 .kuri = if (self.kuri) |*k| k else null,
@@ -112,16 +120,20 @@ pub const Server = struct {
                 .dev = self.config.dev,
                 .verbose = self.config.verbose,
             };
-            self.pool.spawn(handleConn, .{ctx}) catch {
+            // 0.16: Thread.Pool removed; spawn a detached thread per connection.
+            const t = std.Thread.spawn(.{}, handleConn, .{ctx}) catch {
                 ctx.allocator.destroy(ctx);
-                conn.stream.close();
+                stream.close(io);
+                continue;
             };
+            t.detach();
         }
     }
 };
 
 const ConnCtx = struct {
-    conn: std.net.Server.Connection,
+    stream: std.Io.net.Stream,
+    io: std.Io,
     router: *const Router,
     watcher: ?*watcher_mod.Watcher,
     kuri: ?*kuri_mod.Kuri,
@@ -132,7 +144,7 @@ const ConnCtx = struct {
 
 fn handleConn(ctx: *ConnCtx) void {
     defer ctx.allocator.destroy(ctx);
-    defer ctx.conn.stream.close();
+    defer ctx.stream.close(ctx.io);
 
     var arena = std.heap.ArenaAllocator.init(ctx.allocator);
     defer arena.deinit();
@@ -140,9 +152,10 @@ fn handleConn(ctx: *ConnCtx) void {
 
     var read_buf: [16384]u8 = undefined;
     var write_buf: [65536]u8 = undefined;
-    var in = ctx.conn.stream.reader(&read_buf);
-    var out = ctx.conn.stream.writer(&write_buf);
-    var http_server = std.http.Server.init(in.interface(), &out.interface);
+    // 0.16: Stream.reader/writer now take (stream, io, buffer).
+    var in = ctx.stream.reader(ctx.io, &read_buf);
+    var out = ctx.stream.writer(ctx.io, &write_buf);
+    var http_server = std.http.Server.init(&in.interface, &out.interface);
 
     while (true) {
         var std_req = http_server.receiveHead() catch |err| {
@@ -152,7 +165,7 @@ fn handleConn(ctx: *ConnCtx) void {
             return;
         };
 
-        const start = std.time.nanoTimestamp();
+        const start = nanoTimestamp();
         serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.kuri, ctx.dev, ctx.verbose) catch |err| {
             log.err("serveRequest: {}", .{err});
             if (ctx.dev) {
@@ -164,7 +177,7 @@ fn handleConn(ctx: *ConnCtx) void {
             return;
         };
 
-        const elapsed_ns = std.time.nanoTimestamp() - start;
+        const elapsed_ns = nanoTimestamp() - start;
         const elapsed_us: u64 = @intCast(@divFloor(elapsed_ns, 1000));
 
         // Telemetry: send request timing to Datadog.
@@ -173,7 +186,7 @@ fn handleConn(ctx: *ConnCtx) void {
         if (ctx.verbose) {
             const elapsed_f: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1000.0;
             if (elapsed_f < 1000.0) {
-                log.info("{s} {s} {d:.0}µs", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f });
+                log.info("{s} {s} {d:.0}us", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f });
             } else {
                 log.info("{s} {s} {d:.1}ms", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f / 1000.0 });
             }
@@ -182,6 +195,13 @@ fn handleConn(ctx: *ConnCtx) void {
         // Reset arena between requests on the same connection (keep-alive).
         _ = arena.reset(.retain_capacity);
     }
+}
+
+/// Replacement for std.time.nanoTimestamp() which was removed in Zig 0.16.
+fn nanoTimestamp() i128 {
+    var ts: std.c.timespec = undefined;
+    _ = std.c.clock_gettime(.REALTIME, &ts);
+    return @as(i128, ts.sec) * 1_000_000_000 + @as(i128, ts.nsec);
 }
 
 fn serveRequest(
@@ -439,11 +459,8 @@ fn tryServePrerendered(
     };
     defer alloc.free(fs_path);
 
-    const file = std.fs.cwd().openFile(fs_path, .{}) catch return null;
-    defer file.close();
-
-    const body = file.readToEndAlloc(alloc, 10 * 1024 * 1024) catch return null;
-    defer alloc.free(body);
+    const file_content = std.Io.Dir.cwd().readFileAlloc(alloc, fs_path, 10 * 1024 * 1024) catch return null;
+    const body = file_content;
 
     var header_buf: [512]u8 = undefined;
     var bw = std_req.respondStreaming(&header_buf, .{

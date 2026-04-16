@@ -44,7 +44,7 @@ fn tableSet(key: []const u8, val: []const u8) void {
 pub fn get(name: []const u8) ?[]const u8 {
     if (tableGet(name)) |v| return v;
     if (builtin.target.cpu.arch != .wasm32) {
-        return std.posix.getenv(name);
+        const ptr = std.c.getenv(@ptrCast(name.ptr)) orelse return null; return std.mem.sliceTo(ptr, 0);
     }
     return null;
 }
@@ -63,11 +63,19 @@ pub fn get(name: []const u8) ?[]const u8 {
 pub fn loadDotenv(allocator: std.mem.Allocator) void {
     if (builtin.target.cpu.arch == .wasm32) return;
 
-    const file = std.fs.cwd().openFile(".env", .{}) catch return;
-    defer file.close();
-
-    // Intentionally leaked — table holds slices into this buffer for process lifetime.
-    const content = file.readToEndAlloc(allocator, 64 * 1024) catch return;
+    // 0.16: use raw C I/O since Dir methods need Io
+    const fd = std.c.open(".env", .{ .ACCMODE = .RDONLY }, @as(std.c.mode_t, 0));
+    if (fd < 0) return;
+    defer _ = std.c.close(fd);
+    // Read up to 64KB
+    const buf = allocator.alloc(u8, 64 * 1024) catch return;
+    var total: usize = 0;
+    while (total < buf.len) {
+        const n = std.posix.read(fd, buf[total..]) catch break;
+        if (n == 0) break;
+        total += n;
+    }
+    const content = buf[0..total];
 
     var lines = std.mem.splitScalar(u8, content, '\n');
     while (lines.next()) |raw| {

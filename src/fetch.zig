@@ -67,10 +67,12 @@ pub fn wasmClearCache() void {
 /// Make an HTTP request from a server-side page handler.
 pub fn fetch(allocator: std.mem.Allocator, opts: FetchRequest) !FetchResponse {
     if (comptime builtin.os.tag == .freestanding) return error.NotSupported;
-    var client = std.http.Client{ .allocator = allocator };
+    var threaded: std.Io.Threaded = .init(allocator, .{});
+    defer threaded.deinit();
+    var client = std.http.Client{ .allocator = allocator, .io = threaded.io() };
     defer client.deinit();
 
-    var collecting: std.io.Writer.Allocating = .init(allocator);
+    var collecting: std.Io.Writer.Allocating = .init(allocator);
     defer collecting.deinit();
 
     const result = try client.fetch(.{
@@ -126,7 +128,7 @@ pub fn fetchAll(allocator: std.mem.Allocator, requests: []const FetchRequest) []
     const threads = allocator.alloc(std.Thread, requests.len) catch return results;
     defer allocator.free(threads);
 
-    const gpas = allocator.alloc(std.heap.GeneralPurposeAllocator(.{}), requests.len) catch return results;
+    const gpas = allocator.alloc(std.heap.DebugAllocator(.{}), requests.len) catch return results;
     defer allocator.free(gpas);
     for (gpas) |*g| g.* = .init;
 

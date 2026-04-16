@@ -10,10 +10,11 @@ const TimeResponse = struct {
 
 pub fn render(req: mer.Request) mer.Response {
     const builtin = @import("builtin");
-    const ts: i64 = if (builtin.target.cpu.arch != .wasm32)
-        std.time.timestamp()
-    else
-        0; // WASM targets have no clock; return 0 as a placeholder.
+    const ts: i64 = if (builtin.target.cpu.arch != .wasm32) blk: {
+        var timespec: std.c.timespec = undefined;
+        _ = std.c.clock_gettime(.REALTIME, &timespec);
+        break :blk timespec.sec;
+    } else 0; // WASM targets have no clock
     const iso = std.fmt.allocPrint(req.allocator, "unix+{d}s", .{ts}) catch "unknown";
     return mer.typedJson(req.allocator, TimeResponse{
         .timestamp = ts,

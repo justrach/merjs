@@ -164,13 +164,13 @@ const build_zig_template =
     \\fn addDirModules(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Module, dir: []const u8) void {
     \\    const layout_path = b.fmt("{s}/layout.zig", .{dir});
     \\    const layout_mod: ?*std.Build.Module = blk: {
-    \\        std.fs.cwd().access(layout_path, .{}) catch break :blk null;
+    \\        std.Io.Dir.cwd().access(layout_path, .{}) catch break :blk null;
     \\        const m = b.createModule(.{ .root_source_file = b.path(layout_path) });
     \\        m.addImport("mer", mer_mod);
     \\        mod.addImport(b.fmt("{s}/layout", .{dir}), m);
     \\        break :blk m;
     \\    };
-    \\    var d = std.fs.cwd().openDir(dir, .{ .iterate = true }) catch return;
+    \\    var d = std.Io.Dir.cwd().openDir(dir, .{ .iterate = true }) catch return;
     \\    defer d.close();
     \\    var walker = d.walk(b.allocator) catch return;
     \\    defer walker.deinit();
@@ -363,7 +363,7 @@ fn writeBuildZigZon(dir: std.fs.Dir, alloc: std.mem.Allocator, name: []const u8)
 fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     const use_cwd = std.mem.eql(u8, name, ".");
     if (!use_cwd) {
-        std.fs.cwd().makeDir(name) catch |err| {
+        std.Io.Dir.cwd().makeDir(name) catch |err| {
             if (err == error.PathAlreadyExists) {
                 print("mer: directory '{s}' already exists\n", .{name});
                 std.process.exit(1);
@@ -373,9 +373,9 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     }
 
     var dir = if (use_cwd)
-        std.fs.cwd()
+        std.Io.Dir.cwd()
     else
-        try std.fs.cwd().openDir(name, .{});
+        try std.Io.Dir.cwd().openDir(name, .{});
 
     // Write template files.
     try writeTemplateFiles(dir);
@@ -407,9 +407,9 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
             const fp_value = result.stderr[start..end];
             // Read the zon, insert fingerprint after the name line.
             const zon_file = if (use_cwd)
-                try std.fs.cwd().openFile("build.zig.zon", .{ .mode = .read_only })
+                try std.Io.Dir.cwd().openFile("build.zig.zon", .{ .mode = .read_only })
             else
-                try (try std.fs.cwd().openDir(name, .{})).openFile("build.zig.zon", .{ .mode = .read_only });
+                try (try std.Io.Dir.cwd().openDir(name, .{})).openFile("build.zig.zon", .{ .mode = .read_only });
             const zon_content = try zon_file.readToEndAlloc(alloc, 4096);
             zon_file.close();
             defer alloc.free(zon_content);
@@ -425,9 +425,9 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
                 });
                 defer alloc.free(new_content);
                 const out_file = if (use_cwd)
-                    try std.fs.cwd().createFile("build.zig.zon", .{})
+                    try std.Io.Dir.cwd().createFile("build.zig.zon", .{})
                 else
-                    try (try std.fs.cwd().openDir(name, .{})).createFile("build.zig.zon", .{});
+                    try (try std.Io.Dir.cwd().openDir(name, .{})).createFile("build.zig.zon", .{});
                 defer out_file.close();
                 try out_file.writeAll(new_content);
             }
@@ -470,7 +470,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
             if (pkg_hash.len > 0) {
                 const zon_path_str = if (use_cwd) "build.zig.zon" else try std.fmt.allocPrint(alloc, "{s}/build.zig.zon", .{name});
                 defer if (!use_cwd) alloc.free(zon_path_str);
-                const zon_file = try std.fs.cwd().openFile(zon_path_str, .{ .mode = .read_only });
+                const zon_file = try std.Io.Dir.cwd().openFile(zon_path_str, .{ .mode = .read_only });
                 const zon_content = try zon_file.readToEndAlloc(alloc, 8192);
                 zon_file.close();
                 defer alloc.free(zon_content);
@@ -485,7 +485,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
                             zon_content[insert_pos..],
                         });
                         defer alloc.free(new_content);
-                        const out_file = try std.fs.cwd().createFile(zon_path_str, .{});
+                        const out_file = try std.Io.Dir.cwd().createFile(zon_path_str, .{});
                         defer out_file.close();
                         try out_file.writeAll(new_content);
                     }
@@ -612,7 +612,7 @@ test "generated routes placeholder is valid scaffold output" {
 // ── dev ─────────────────────────────────────────────────────────────────────
 
 fn cmdDev(alloc: std.mem.Allocator, extra_args: []const []const u8) !void {
-    std.fs.cwd().access("build.zig", .{}) catch {
+    std.Io.Dir.cwd().access("build.zig", .{}) catch {
         print("mer: no build.zig found — are you in a merjs project?\n", .{});
         std.process.exit(1);
     };
@@ -651,7 +651,7 @@ fn cmdDev(alloc: std.mem.Allocator, extra_args: []const []const u8) !void {
 // ── build ───────────────────────────────────────────────────────────────────
 
 fn cmdBuild(alloc: std.mem.Allocator) !void {
-    std.fs.cwd().access("build.zig", .{}) catch {
+    std.Io.Dir.cwd().access("build.zig", .{}) catch {
         print("mer: no build.zig found — are you in a merjs project?\n", .{});
         std.process.exit(1);
     };
@@ -676,7 +676,7 @@ fn cmdBuild(alloc: std.mem.Allocator) !void {
 // ── update ──────────────────────────────────────────────────────────────────
 
 fn cmdUpdate(alloc: std.mem.Allocator) !void {
-    std.fs.cwd().access("build.zig.zon", .{}) catch {
+    std.Io.Dir.cwd().access("build.zig.zon", .{}) catch {
         print("mer: no build.zig.zon found — are you in a merjs project?\n", .{});
         std.process.exit(1);
     };
@@ -732,12 +732,12 @@ fn cmdAdd(alloc: std.mem.Allocator, feature: []const u8, args: []const []const u
 }
 
 fn cmdAddCss(alloc: std.mem.Allocator) !void {
-    const exists = if (std.fs.cwd().access("tools/tailwindcss", .{})) true else |_| false;
+    const exists = if (std.Io.Dir.cwd().access("tools/tailwindcss", .{})) true else |_| false;
     if (exists) {
         print("  tools/tailwindcss already exists\n", .{});
     } else {
         print("  downloading Tailwind CSS standalone CLI...\n", .{});
-        std.fs.cwd().makePath("tools") catch {};
+        std.Io.Dir.cwd().makePath("tools") catch {};
         var child = std.process.Child.init(
             &.{ "sh", "-c", "curl -sLo tools/tailwindcss " ++ tailwind_url ++ " && chmod +x tools/tailwindcss" },
             alloc,
@@ -754,10 +754,10 @@ fn cmdAddCss(alloc: std.mem.Allocator) !void {
         print("  saved to tools/tailwindcss\n", .{});
     }
 
-    const input_exists = if (std.fs.cwd().access("public/input.css", .{})) true else |_| false;
+    const input_exists = if (std.Io.Dir.cwd().access("public/input.css", .{})) true else |_| false;
     if (!input_exists) {
-        std.fs.cwd().makePath("public") catch {};
-        const file = try std.fs.cwd().createFile("public/input.css", .{});
+        std.Io.Dir.cwd().makePath("public") catch {};
+        const file = try std.Io.Dir.cwd().createFile("public/input.css", .{});
         defer file.close();
         try file.writeAll("@import \"tailwindcss\";\n");
         print("  created public/input.css\n", .{});
@@ -767,12 +767,12 @@ fn cmdAddCss(alloc: std.mem.Allocator) !void {
 }
 
 fn cmdAddWasm() !void {
-    std.fs.cwd().makePath("wasm") catch {};
-    const exists = if (std.fs.cwd().access("wasm/counter.zig", .{})) true else |_| false;
+    std.Io.Dir.cwd().makePath("wasm") catch {};
+    const exists = if (std.Io.Dir.cwd().access("wasm/counter.zig", .{})) true else |_| false;
     if (exists) {
         print("  wasm/counter.zig already exists\n", .{});
     } else {
-        const file = try std.fs.cwd().createFile("wasm/counter.zig", .{});
+        const file = try std.Io.Dir.cwd().createFile("wasm/counter.zig", .{});
         defer file.close();
         try file.writeAll(
             \\export fn increment(n: i32) i32 {
@@ -786,13 +786,13 @@ fn cmdAddWasm() !void {
 }
 
 fn cmdAddWorker() !void {
-    std.fs.cwd().makePath("worker") catch {};
-    const exists = if (std.fs.cwd().access("worker/wrangler.toml", .{})) true else |_| false;
+    std.Io.Dir.cwd().makePath("worker") catch {};
+    const exists = if (std.Io.Dir.cwd().access("worker/wrangler.toml", .{})) true else |_| false;
     if (exists) {
         print("  worker/wrangler.toml already exists\n", .{});
     } else {
         {
-            const file = try std.fs.cwd().createFile("worker/wrangler.toml", .{});
+            const file = try std.Io.Dir.cwd().createFile("worker/wrangler.toml", .{});
             defer file.close();
             try file.writeAll(
                 \\name = "my-app"
@@ -813,7 +813,7 @@ fn cmdAddWorker() !void {
             print("  created worker/wrangler.toml\n", .{});
         }
         {
-            const file = try std.fs.cwd().createFile("worker/worker.js", .{});
+            const file = try std.Io.Dir.cwd().createFile("worker/worker.js", .{});
             defer file.close();
             try file.writeAll(
                 \\import wasm from "./merjs.wasm";
@@ -851,7 +851,7 @@ const component_badge = @embedFile("packages/merlion-ui/templates/badge.zig");
 const component_alert = @embedFile("packages/merlion-ui/templates/alert.zig");
 
 fn cmdAddUiComponent(name: []const u8) !void {
-    std.fs.cwd().makePath("app/components") catch {};
+    std.Io.Dir.cwd().makePath("app/components") catch {};
     
     const content = if (std.mem.eql(u8, name, "button"))
         component_button
@@ -878,13 +878,13 @@ fn cmdAddUiComponent(name: []const u8) !void {
         return;
     };
     
-    const exists = if (std.fs.cwd().access(path, .{})) true else |_| false;
+    const exists = if (std.Io.Dir.cwd().access(path, .{})) true else |_| false;
     if (exists) {
         print("  {s} already exists (use --force to overwrite)\n", .{path});
         return;
     }
     
-    const file = try std.fs.cwd().createFile(path, .{});
+    const file = try std.Io.Dir.cwd().createFile(path, .{});
     defer file.close();
     try file.writeAll(content);
     

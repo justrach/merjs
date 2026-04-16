@@ -74,7 +74,7 @@ pub const redirect = res_mod.redirect;
 pub const withCookies = res_mod.withCookies;
 
 pub fn typedJson(allocator: std.mem.Allocator, value: anytype) Response {
-    var out: std.io.Writer.Allocating = .init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
     jw.write(value) catch return internalError("json write failed");
     return res_mod.Response.init(.ok, .json, out.written());

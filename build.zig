@@ -14,10 +14,11 @@ pub fn build(b: *std.Build) void {
     const dhi_validator_mod = dhi_dep.module("validator");
 
     // ── kuri dependency (browser automation for debug mode) ─────────────────
-    const kuri_dep = b.dependency("kuri", .{
-        .target = target,
-        .optimize = if (optimize != .Debug) optimize else .ReleaseFast,
-    });
+    // TODO: re-enable once kuri is updated for Zig 0.16
+    // const kuri_dep = b.dependency("kuri", .{
+    //     .target = target,
+    //     .optimize = if (optimize != .Debug) optimize else .ReleaseFast,
+    // });
 
     // ── "mer" module (framework public API) ──────────────────────────────────
     const mer_mod = b.addModule("mer", .{
@@ -67,8 +68,9 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     // Install kuri binary alongside merjs.
-    const install_kuri = b.addInstallArtifact(kuri_dep.artifact("kuri"), .{});
-    b.getInstallStep().dependOn(&install_kuri.step);
+    // TODO: re-enable once kuri is updated for Zig 0.16
+    // const install_kuri = b.addInstallArtifact(kuri_dep.artifact("kuri"), .{});
+    // b.getInstallStep().dependOn(&install_kuri.step);
 
     // ── Codegen ──────────────────────────────────────────────────────────────
     const codegen_exe = b.addExecutable(.{
@@ -303,10 +305,10 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         const spike_exe = b.addExecutable(.{ .name = "desktop-spike", .root_module = spike_mod });
-        spike_exe.linkFramework("AppKit");
-        spike_exe.linkFramework("WebKit");
-        spike_exe.linkFramework("Foundation");
-        spike_exe.linkLibC();
+        spike_mod.linkFramework("AppKit", .{});
+        spike_mod.linkFramework("WebKit", .{});
+        spike_mod.linkFramework("Foundation", .{});
+        spike_mod.link_libc = true;
         const spike_step = b.step("desktop-spike", "Research spike: Zig ObjC bridge for AppKit/WebKit (#50)");
         spike_step.dependOn(&b.addInstallArtifact(spike_exe, .{}).step);
     }
@@ -323,10 +325,10 @@ pub fn build(b: *std.Build) void {
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/api", "api", &.{});
         helpers.addRoutesModule(b, desktop_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
         const desktop_exe = b.addExecutable(.{ .name = "merapp", .root_module = desktop_mod });
-        desktop_exe.linkFramework("AppKit");
-        desktop_exe.linkFramework("WebKit");
-        desktop_exe.linkFramework("Foundation");
-        desktop_exe.linkLibC();
+        desktop_mod.linkFramework("AppKit", .{});
+        desktop_mod.linkFramework("WebKit", .{});
+        desktop_mod.linkFramework("Foundation", .{});
+        desktop_mod.link_libc = true;
         const desktop_install = b.addInstallArtifact(desktop_exe, .{});
         const desktop_step = b.step("desktop", "Build native macOS desktop app (also produces MerApp.app bundle)");
         desktop_step.dependOn(&desktop_install.step);

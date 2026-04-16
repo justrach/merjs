@@ -9,13 +9,15 @@ const mer = @import("mer");
 
 const log = std.log.scoped(.main);
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+pub fn main(init: std.process.Init.Minimal) !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    const args = try std.process.argsAlloc(alloc);
-    defer std.process.argsFree(alloc, args);
+    // 0.16: args come through init parameter.
+    var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+    defer arena_state.deinit();
+    const args = try init.args.toSlice(arena_state.allocator());
 
     // Load .env before threads start — safe to read without mutex after this.
     mer.loadDotenv(alloc);
