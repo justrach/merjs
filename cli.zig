@@ -10,7 +10,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-pub const version = "0.2.2";
+pub const version = "0.2.5";
 
 const print = std.debug.print;
 

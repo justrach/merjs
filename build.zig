@@ -351,7 +351,7 @@ pub fn build(b: *std.Build) void {
             \\  <key>CFBundleExecutable</key>    <string>merapp</string>
             \\  <key>CFBundleIdentifier</key>    <string>com.merjs.desktop</string>
             \\  <key>CFBundleName</key>          <string>MerApp</string>
-            \\  <key>CFBundleVersion</key>       <string>0.2.2</string>
+            \\  <key>CFBundleVersion</key>       <string>0.2.5</string>
             \\  <key>NSHighResolutionCapable</key><true/>
             \\  <key>NSPrincipalClass</key>      <string>NSApplication</string>
             \\</dict>

@@ -1,7 +1,7 @@
 .{
     .name = .merjs,
     .fingerprint = 0xaa135c45924bbfa8,
-    .version = "0.2.2",
+    .version = "0.2.5",
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .dhi = .{

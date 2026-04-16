@@ -9,7 +9,7 @@ const session_mod = @import("session.zig");
 const fetch_mod = @import("fetch.zig");
 
 /// Framework version — kept in sync with build.zig.zon.
-pub const version = "0.2.2";
+pub const version = "0.2.5";
 
 // --- Streaming SSR ----------------------------------------------------------
 
