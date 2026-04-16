@@ -99,8 +99,8 @@ pub fn serveDebug(
     version: []const u8,
 ) !res_mod.Response {
     const want_json = std.mem.indexOf(u8, query_string, "format=json") != null;
-    var body: std.Io.Writer.Allocating = .init(alloc);
-    const w = &body.writer;
+    var body: std.ArrayListUnmanaged(u8) = .{};
+    const w = body.writer(alloc);
 
     if (want_json) {
         // JSON mode — for agents and programmatic access.
@@ -120,7 +120,7 @@ pub fn serveDebug(
         try w.writeAll("\"Use std.log.scoped(.mypage) in page handlers\"");
         try w.writeAll("]}");
 
-        return res_mod.Response.init(.ok, .json, body.written());
+        return res_mod.Response.init(.ok, .json, body.items);
     } else {
         // HTML mode — for browsers.
         try w.writeAll("<html><head><title>merjs debug</title><style>");
@@ -154,6 +154,6 @@ pub fn serveDebug(
 
         try w.writeAll("</body></html>");
 
-        return res_mod.Response.init(.ok, .html, body.written());
+        return res_mod.Response.init(.ok, .html, body.items);
     }
 }

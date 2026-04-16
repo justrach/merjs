@@ -59,7 +59,7 @@ pub fn sentryCapture(
     ) catch return;
 
     // Copy to heap for the thread.
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
     const url_copy = alloc.dupe(u8, url) catch return;
     const payload_copy = alloc.dupe(u8, envelope) catch return;
@@ -72,7 +72,7 @@ pub fn sentryCapture(
     t.detach();
 }
 
-fn sentrySendThread(gpa: *std.heap.DebugAllocator(.{}), url: []const u8, payload: []const u8) void {
+fn sentrySendThread(gpa: *std.heap.GeneralPurposeAllocator(.{}), url: []const u8, payload: []const u8) void {
     defer {
         const alloc = gpa.allocator();
         alloc.free(url);
@@ -80,9 +80,7 @@ fn sentrySendThread(gpa: *std.heap.DebugAllocator(.{}), url: []const u8, payload
         _ = gpa.deinit();
     }
     const alloc = gpa.allocator();
-    var threaded_io: std.Io.Threaded = .init(alloc, .{});
-    defer threaded_io.deinit();
-    var client = std.http.Client{ .allocator = alloc, .io = threaded_io.io() };
+    var client = std.http.Client{ .allocator = alloc };
     defer client.deinit();
 
     _ = client.fetch(.{
@@ -98,24 +96,24 @@ fn sentrySendThread(gpa: *std.heap.DebugAllocator(.{}), url: []const u8, payload
 // ── Datadog (DogStatsD) ─────────────────────────────────────────────────────
 // Sends metrics via UDP to the local Datadog agent.
 // Set DD_AGENT_HOST (default: 127.0.0.1) and DD_DOGSTATSD_PORT (default: 8125).
-// 0.16: std.net.Address → std.Io.net.IpAddress; std.posix.socket/sendto → std.Io.net.Socket.
 
-var statsd_addr: ?std.Io.net.IpAddress = null;
-var statsd_sock: ?std.Io.net.Socket = null;
-var statsd_io: ?std.Io = null;
+var statsd_addr: ?std.net.Address = null;
+var statsd_sock: ?std.posix.socket_t = null;
 
-fn getStatsdSocket() ?*const std.Io.net.Socket {
+fn getStatsdSocket() ?std.posix.socket_t {
     if (comptime builtin.os.tag == .freestanding) return null;
-    if (statsd_sock != null) return &statsd_sock.?;
+    if (statsd_sock) |s| return s;
 
     const host = env("DD_AGENT_HOST") orelse return null;
     const port_str = env("DD_DOGSTATSD_PORT") orelse "8125";
     const port = std.fmt.parseInt(u16, port_str, 10) catch 8125;
-    statsd_addr = std.Io.net.IpAddress.parse(host, port) catch return null;
-    var threaded: std.Io.Threaded = .init(std.heap.c_allocator, .{}); const io = threaded.io();
-    statsd_io = io;
-    statsd_sock = std.Io.net.IpAddress.bind(&statsd_addr.?, io, .{ .mode = .dgram }) catch return null;
-    return &statsd_sock.?;
+    statsd_addr = std.net.Address.parseIp(host, port) catch return null;
+    statsd_sock = std.posix.socket(
+        std.posix.AF.INET,
+        std.posix.SOCK.DGRAM,
+        0,
+    ) catch return null;
+    return statsd_sock;
 }
 
 /// Send a timing metric to Datadog.
@@ -123,7 +121,6 @@ fn getStatsdSocket() ?*const std.Io.net.Socket {
 pub fn ddTiming(path: []const u8, method: []const u8, status: u16, duration_us: u64) void {
     const sock = getStatsdSocket() orelse return;
     const addr = statsd_addr orelse return;
-    const io = statsd_io orelse return;
 
     var buf: [512]u8 = undefined;
     const msg = std.fmt.bufPrint(&buf,
@@ -132,14 +129,13 @@ pub fn ddTiming(path: []const u8, method: []const u8, status: u16, duration_us: 
         .{ duration_us / 1000, path, method, status, path, method, status },
     ) catch return;
 
-    sock.send(io, &addr, msg) catch {};
+    _ = std.posix.sendto(sock, msg, 0, &addr.any, addr.getOsSockLen()) catch {};
 }
 
 /// Send an error event to Datadog.
 pub fn ddError(path: []const u8, method: []const u8, error_name: []const u8) void {
     const sock = getStatsdSocket() orelse return;
     const addr = statsd_addr orelse return;
-    const io = statsd_io orelse return;
 
     var buf: [512]u8 = undefined;
     const msg = std.fmt.bufPrint(&buf,
@@ -147,7 +143,7 @@ pub fn ddError(path: []const u8, method: []const u8, error_name: []const u8) voi
         .{ path, method, error_name },
     ) catch return;
 
-    sock.send(io, &addr, msg) catch {};
+    _ = std.posix.sendto(sock, msg, 0, &addr.any, addr.getOsSockLen()) catch {};
 }
 
 test "parseSentryDsn: valid DSN" {

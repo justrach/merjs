@@ -54,21 +54,19 @@ pub const SetCookie = struct {
     /// Format the Set-Cookie header value into `buf`. Returns the written slice.
     /// Silently truncates if `buf` is too small (512 bytes is always enough).
     pub fn headerValue(self: SetCookie, buf: []u8) []const u8 {
-        // 0.16: fixedBufferStream removed. Manual offset tracking.
-        var pos: usize = 0;
-        const base = std.fmt.bufPrint(buf, "{s}={s}; Path={s}", .{ self.name, self.value, self.path }) catch return buf[0..0];
-        pos = base.len;
-        if (self.max_age) |age| { const s = std.fmt.bufPrint(buf[pos..], "; Max-Age={d}", .{age}) catch ""; pos += s.len; }
-        if (self.http_only) { const s = std.fmt.bufPrint(buf[pos..], "; HttpOnly", .{}) catch ""; pos += s.len; }
-        if (self.secure) { const s = std.fmt.bufPrint(buf[pos..], "; Secure", .{}) catch ""; pos += s.len; }
+        var fbs = std.io.fixedBufferStream(buf);
+        const w = fbs.writer();
+        w.print("{s}={s}; Path={s}", .{ self.name, self.value, self.path }) catch {};
+        if (self.max_age) |age| w.print("; Max-Age={d}", .{age}) catch {};
+        if (self.http_only) w.writeAll("; HttpOnly") catch {};
+        if (self.secure) w.writeAll("; Secure") catch {};
         const ss: []const u8 = switch (self.same_site) {
             .strict => "Strict",
             .lax => "Lax",
             .none => "None",
         };
-        const s2 = std.fmt.bufPrint(buf[pos..], "; SameSite={s}", .{ss}) catch "";
-        pos += s2.len;
-        return buf[0..pos];
+        w.print("; SameSite={s}", .{ss}) catch {};
+        return fbs.getWritten();
     }
 };
 

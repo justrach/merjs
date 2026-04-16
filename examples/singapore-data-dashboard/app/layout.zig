@@ -5,8 +5,8 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
     const title = if (meta.title.len > 0) meta.title else if (std.mem.eql(u8, path, "/")) "Singapore Live Data" else if (path.len > 1) path[1..] else "sgdata";
     const desc = if (meta.description.len > 0) meta.description else "Real-time Singapore government data — rendered by Zig, zero Node.js.";
 
-    var buf: std.Io.Writer.Allocating = .init(allocator);
-    const w = &buf.writer;
+    var buf: std.ArrayList(u8) = .{};
+    const w = buf.writer(allocator);
 
     w.writeAll(
         \\<!DOCTYPE html>
@@ -82,5 +82,5 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\</html>
     ) catch return body;
 
-    return buf.written();
+    return buf.items;
 }

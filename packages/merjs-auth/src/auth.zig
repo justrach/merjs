@@ -15,13 +15,6 @@ const handlers = @import("handlers/dispatch.zig");
 
 const argon2 = std.crypto.pwhash.argon2;
 
-/// Get current Unix timestamp in seconds (Zig 0.16 compatible).
-fn currentUnixSeconds() i64 {
-    var ts: std.c.time.timespec = undefined;
-    _ = std.c.clock_gettime(std.c.time.CLOCK.REALTIME, &ts);
-    return ts.sec;
-}
-
 // ── Config ─────────────────────────────────────────────────────────────────
 
 /// Auth library configuration. Create once at startup, pass to handle().
@@ -86,7 +79,7 @@ pub fn handle(config: *const Config, req: mer.Request) anyerror!mer.Response {
         .req = req,
         .config = config,
         .db = config.db,
-        .now_unix = currentUnixSeconds(),
+        .now_unix = @divTrunc(std.time.milliTimestamp(), 1000),
     };
 
     return handlers.dispatch(&ctx, subpath);
@@ -121,7 +114,7 @@ pub fn getSession(config: *const Config, req: mer.Request) !?session.SessionWith
         \\WHERE s.id = $1
         \\  AND s.expires_at > to_timestamp($2)
     ;
-    const now_str = try std.fmt.allocPrint(alloc, "{d}", .{currentUnixSeconds()});
+    const now_str = try std.fmt.allocPrint(alloc, "{d}", .{@divTrunc(std.time.milliTimestamp(), 1000)});
     defer alloc.free(now_str);
 
     var result = try config.db.query(alloc, sql, &.{

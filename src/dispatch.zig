@@ -200,7 +200,7 @@ pub fn dispatchBuffered(router: Router, req: mer.Request) mer.Response {
 }
 
 const BufCtx = struct {
-    list: std.ArrayListUnmanaged(u8) = .empty,
+    list: std.ArrayListUnmanaged(u8) = .{},
     alloc: std.mem.Allocator,
 };
 

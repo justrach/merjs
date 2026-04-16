@@ -14,16 +14,14 @@ pub fn build(b: *std.Build) void {
     const dhi_validator_mod = dhi_dep.module("validator");
 
     // ── kuri dependency (browser automation for debug mode) ─────────────────
-    // TODO: re-enable once kuri is updated for Zig 0.16
-    // const kuri_dep = b.dependency("kuri", .{
-    //     .target = target,
-    //     .optimize = if (optimize != .Debug) optimize else .ReleaseFast,
-    // });
+    const kuri_dep = b.dependency("kuri", .{
+        .target = target,
+        .optimize = if (optimize != .Debug) optimize else .ReleaseFast,
+    });
 
     // ── "mer" module (framework public API) ──────────────────────────────────
     const mer_mod = b.addModule("mer", .{
         .root_source_file = b.path("src/mer.zig"),
-        .link_libc = true,
     });
     mer_mod.addImport("dhi_model", dhi_model_mod);
     mer_mod.addImport("dhi_validator", dhi_validator_mod);
@@ -58,7 +56,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .strip = if (optimize != .Debug) true else null,
-        .link_libc = true, // 0.16: std.c.* (pthread, clock_gettime, etc.) needs explicit libc
     });
     main_mod.addImport("mer", mer_mod);
     main_mod.addImport("counter_config", counter_config_mod);
@@ -70,9 +67,8 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     // Install kuri binary alongside merjs.
-    // TODO: re-enable once kuri is updated for Zig 0.16
-    // const install_kuri = b.addInstallArtifact(kuri_dep.artifact("kuri"), .{});
-    // b.getInstallStep().dependOn(&install_kuri.step);
+    const install_kuri = b.addInstallArtifact(kuri_dep.artifact("kuri"), .{});
+    b.getInstallStep().dependOn(&install_kuri.step);
 
     // ── Codegen ──────────────────────────────────────────────────────────────
     const codegen_exe = b.addExecutable(.{
@@ -166,7 +162,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .strip = if (optimize != .Debug) true else null,
-        .link_libc = true,
     });
     const cli_exe = b.addExecutable(.{ .name = "mer", .root_module = cli_mod });
     b.step("cli", "Build the `mer` CLI binary").dependOn(&b.addInstallArtifact(cli_exe, .{}).step);
@@ -176,7 +171,6 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .link_libc = true,
     });
     test_mod.addImport("mer", mer_mod);
     helpers.addDirModules(b, test_mod, mer_mod, "examples/site/app", "app", site_extras);
@@ -193,7 +187,6 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path(src_path),
             .target = target,
             .optimize = optimize,
-            .link_libc = true,
         });
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = file_test_mod })).step);
     }
@@ -202,7 +195,6 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("cli.zig"),
             .target = target,
             .optimize = optimize,
-            .link_libc = true,
         });
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = cli_test_mod })).step);
     }
@@ -214,7 +206,6 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/mer.zig"),
             .target = target,
             .optimize = optimize,
-            .link_libc = true,
         });
         mer_test_mod.addImport("dhi_model", dhi_model_mod);
         mer_test_mod.addImport("dhi_validator", dhi_validator_mod);
@@ -233,7 +224,6 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/consumer/src/test_consumer_routes.zig"),
             .target = target,
             .optimize = optimize,
-            .link_libc = true,
         });
         consumer_test_mod.addImport("mer", mer_mod);
         // The key: wire "routes" to the CONSUMER's routes, not the framework's.
@@ -264,7 +254,6 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/starter/src/test_starter_scaffold.zig"),
             .target = target,
             .optimize = optimize,
-            .link_libc = true,
         });
         starter_test_mod.addImport("mer", mer_mod);
 
@@ -314,10 +303,10 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         const spike_exe = b.addExecutable(.{ .name = "desktop-spike", .root_module = spike_mod });
-        spike_mod.linkFramework("AppKit", .{});
-        spike_mod.linkFramework("WebKit", .{});
-        spike_mod.linkFramework("Foundation", .{});
-        spike_mod.link_libc = true;
+        spike_exe.linkFramework("AppKit");
+        spike_exe.linkFramework("WebKit");
+        spike_exe.linkFramework("Foundation");
+        spike_exe.linkLibC();
         const spike_step = b.step("desktop-spike", "Research spike: Zig ObjC bridge for AppKit/WebKit (#50)");
         spike_step.dependOn(&b.addInstallArtifact(spike_exe, .{}).step);
     }
@@ -334,10 +323,10 @@ pub fn build(b: *std.Build) void {
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/api", "api", &.{});
         helpers.addRoutesModule(b, desktop_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
         const desktop_exe = b.addExecutable(.{ .name = "merapp", .root_module = desktop_mod });
-        desktop_mod.linkFramework("AppKit", .{});
-        desktop_mod.linkFramework("WebKit", .{});
-        desktop_mod.linkFramework("Foundation", .{});
-        desktop_mod.link_libc = true;
+        desktop_exe.linkFramework("AppKit");
+        desktop_exe.linkFramework("WebKit");
+        desktop_exe.linkFramework("Foundation");
+        desktop_exe.linkLibC();
         const desktop_install = b.addInstallArtifact(desktop_exe, .{});
         const desktop_step = b.step("desktop", "Build native macOS desktop app (also produces MerApp.app bundle)");
         desktop_step.dependOn(&desktop_install.step);

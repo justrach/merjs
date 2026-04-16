@@ -55,18 +55,12 @@ pub fn hashToHex(hash_bytes: [32]u8) [64]u8 {
     return std.fmt.bytesToHex(hash_bytes, .lower);
 }
 
-/// Get current Unix timestamp in seconds (Zig 0.16 compatible).
-fn currentUnixSeconds() i64 {
-    var ts: std.c.time.timespec = undefined;
-    _ = std.c.clock_gettime(std.c.time.CLOCK.REALTIME, &ts);
-    return ts.sec;
-}
-
 // ── Expiry helper ──────────────────────────────────────────────────────────
 
 /// Returns true if the given Unix-seconds timestamp is in the past.
+/// Uses `@divTrunc(milliTimestamp, 1000)` which is the Zig 0.15 idiom.
 pub fn isExpired(expires_at_unix: i64) bool {
-    const now = currentUnixSeconds();
+    const now = @divTrunc(std.time.milliTimestamp(), 1000);
     return expires_at_unix < now;
 }
 

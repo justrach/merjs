@@ -98,7 +98,7 @@ fn runServer(ctx: *ServerCtx) void {
 }
 
 pub fn main() !void {
-    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

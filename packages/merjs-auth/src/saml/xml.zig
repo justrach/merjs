@@ -426,8 +426,8 @@ const ExtractState = struct {
     session_not_on_or_after: ?i64 = null,
 
     cur_attr_name: ?[]const u8 = null,
-    attrs: std.ArrayListUnmanaged(saml_schema.Attribute) = .empty,
-    cur_vals: std.ArrayListUnmanaged([]const u8) = .empty,
+    attrs: std.ArrayListUnmanaged(saml_schema.Attribute) = .{},
+    cur_vals: std.ArrayListUnmanaged([]const u8) = .{},
 };
 
 fn flushAttr(ctx: *ExtractState) ParseError!void {
@@ -624,7 +624,7 @@ pub fn parseSamlResponse(
     var given_name: ?[]const u8 = null;
     var family_name: ?[]const u8 = null;
 
-    var final_attrs: std.ArrayListUnmanaged(saml_schema.Attribute) = .empty;
+    var final_attrs: std.ArrayListUnmanaged(saml_schema.Attribute) = .{};
     errdefer {
         for (final_attrs.items) |a| {
             for (a.values) |v| alloc.free(v);

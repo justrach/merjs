@@ -6,8 +6,8 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
     const title = if (meta.title.len > 0) meta.title else "Kanban — merjs";
     const desc = if (meta.description.len > 0) meta.description else "Kanban board built with merjs.";
 
-    var buf: std.Io.Writer.Allocating = .init(allocator);
-    const w = &buf.writer;
+    var buf: std.ArrayList(u8) = .{};
+    const w = buf.writer(allocator);
 
     w.writeAll("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n") catch return body;
     w.print("  <title>{s}</title>\n  <meta name=\"description\" content=\"{s}\">\n", .{ title, desc }) catch return body;
@@ -33,5 +33,5 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
     w.writeAll(body) catch return body;
     w.writeAll("\n</body>\n</html>\n") catch return body;
 
-    return buf.written();
+    return buf.items;
 }

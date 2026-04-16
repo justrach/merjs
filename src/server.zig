@@ -1,5 +1,5 @@
-// server.zig — HTTP server backbone (Zig 0.16).
-// std.http.Server now takes *Io.Reader + *Io.Writer from a net.Stream (with Io param).
+// server.zig — HTTP server backbone (Zig 0.15).
+// std.http.Server now takes *Io.Reader + *Io.Writer from a net.Stream.
 
 const std = @import("std");
 const mer = @import("mer");
@@ -12,17 +12,6 @@ const telemetry = mer.telemetry;
 const dev_mod = mer.dev;
 
 const log = std.log.scoped(.server);
-
-/// Thread-local TTFB tracking: set before serveRequest, read after first response write.
-threadlocal var _request_start_ns: i128 = 0;
-threadlocal var _ttfb_ns: i128 = 0;
-
-/// Called internally by sendResponse/streaming paths to mark first-byte time.
-pub fn markTtfb() void {
-    if (_ttfb_ns == 0 and _request_start_ns != 0) {
-        _ttfb_ns = nanoTimestamp() - _request_start_ns;
-    }
-}
 
 /// Security headers applied to every page/API response.
 pub const security_headers = [_]std.http.Header{
@@ -37,22 +26,9 @@ pub const security_headers = [_]std.http.Header{
 
 /// Passed (optional) to Server.listen() so callers can wait for the server
 /// to be ready and read back the actual bound port (useful when port=0).
-/// Uses std.atomic.Value(bool) since std.Thread.ResetEvent was removed in 0.16.
 pub const ServerReady = struct {
-    event: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    event: std.Thread.ResetEvent = .{},
     port: u16 = 0,
-
-    /// Block until the server signals readiness.
-    pub fn wait(self: *ServerReady) void {
-        while (!self.event.load(.acquire)) {
-            std.atomic.spinLoopHint();
-        }
-    }
-
-    /// Signal that the server is ready.
-    pub fn set(self: *ServerReady) void {
-        self.event.store(true, .release);
-    }
 };
 
 pub const Config = struct {
@@ -72,7 +48,7 @@ pub const Server = struct {
     watcher: ?*watcher_mod.Watcher,
     kuri: ?kuri_mod.Kuri,
     allocator: std.mem.Allocator,
-    io: std.Io = undefined,
+    pool: std.Thread.Pool,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -86,10 +62,17 @@ pub const Server = struct {
             .router = router,
             .watcher = watcher,
             .kuri = null,
+            .pool = undefined,
         };
     }
 
     pub fn listen(self: *Server) !void {
+        // Use CPU count * 2 for I/O-bound workloads (capped at reasonable max).
+        const cpu_count = std.Thread.getCpuCount() catch 4;
+        const n_threads = @min(cpu_count * 2, 64);
+        try self.pool.init(.{ .allocator = self.allocator, .n_jobs = @intCast(n_threads) });
+        defer self.pool.deinit();
+
         // Init static file cache.
         static.initCache(self.allocator);
 
@@ -99,32 +82,29 @@ pub const Server = struct {
         }
         defer if (self.kuri) |*k| k.deinit();
 
-        // 0.16: Use std.Io.net.IpAddress.parse() + IpAddress.listen(io).
-        var threaded: std.Io.Threaded = .init(self.allocator, .{}); const io = threaded.io(); self.io = io;
-        const addr = try std.Io.net.IpAddress.parse(self.config.host, self.config.port);
-        var net_server = try addr.listen(io, .{});
-        defer net_server.deinit(io);
+        const addr = try std.net.Address.parseIp(self.config.host, self.config.port);
+        var net_server = try addr.listen(.{ .reuse_address = true, .kernel_backlog = 512 });
+        defer net_server.deinit();
 
         // Signal readiness with actual bound port (supports port=0 for desktop/testing).
         if (self.config.ready) |r| {
-            r.port = net_server.socket.address.getPort();
-            r.set();
+            r.port = net_server.listen_address.getPort();
+            r.event.set();
         }
 
-        log.info("merjs dev server -> http://{s}:{d}", .{ self.config.host, net_server.socket.address.getPort() });
+        log.info("merjs dev server -> http://{s}:{d} ({d} threads)", .{ self.config.host, net_server.listen_address.getPort(), n_threads });
 
         while (true) {
-            const stream = net_server.accept(io) catch |err| {
+            const conn = net_server.accept() catch |err| {
                 log.debug("accept: {}", .{err});
                 continue;
             };
             const ctx = self.allocator.create(ConnCtx) catch {
-                stream.close(io);
+                conn.stream.close();
                 continue;
             };
             ctx.* = .{
-                .stream = stream,
-                .io = io,
+                .conn = conn,
                 .router = self.router,
                 .watcher = self.watcher,
                 .kuri = if (self.kuri) |*k| k else null,
@@ -132,20 +112,16 @@ pub const Server = struct {
                 .dev = self.config.dev,
                 .verbose = self.config.verbose,
             };
-            // 0.16: Thread.Pool removed; spawn a detached thread per connection.
-            const t = std.Thread.spawn(.{}, handleConn, .{ctx}) catch {
+            self.pool.spawn(handleConn, .{ctx}) catch {
                 ctx.allocator.destroy(ctx);
-                stream.close(io);
-                continue;
+                conn.stream.close();
             };
-            t.detach();
         }
     }
 };
 
 const ConnCtx = struct {
-    stream: std.Io.net.Stream,
-    io: std.Io,
+    conn: std.net.Server.Connection,
     router: *const Router,
     watcher: ?*watcher_mod.Watcher,
     kuri: ?*kuri_mod.Kuri,
@@ -156,7 +132,7 @@ const ConnCtx = struct {
 
 fn handleConn(ctx: *ConnCtx) void {
     defer ctx.allocator.destroy(ctx);
-    defer ctx.stream.close(ctx.io);
+    defer ctx.conn.stream.close();
 
     var arena = std.heap.ArenaAllocator.init(ctx.allocator);
     defer arena.deinit();
@@ -164,10 +140,9 @@ fn handleConn(ctx: *ConnCtx) void {
 
     var read_buf: [16384]u8 = undefined;
     var write_buf: [65536]u8 = undefined;
-    // 0.16: Stream.reader/writer now take (stream, io, buffer).
-    var in = ctx.stream.reader(ctx.io, &read_buf);
-    var out = ctx.stream.writer(ctx.io, &write_buf);
-    var http_server = std.http.Server.init(&in.interface, &out.interface);
+    var in = ctx.conn.stream.reader(&read_buf);
+    var out = ctx.conn.stream.writer(&write_buf);
+    var http_server = std.http.Server.init(in.interface(), &out.interface);
 
     while (true) {
         var std_req = http_server.receiveHead() catch |err| {
@@ -177,44 +152,36 @@ fn handleConn(ctx: *ConnCtx) void {
             return;
         };
 
-        _request_start_ns = nanoTimestamp();
-        _ttfb_ns = 0;
-        const start = _request_start_ns;
-        serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.kuri, ctx.dev, ctx.verbose, ctx.io) catch |err| {
+        const start = std.time.nanoTimestamp();
+        serveRequest(alloc, &std_req, ctx.router, ctx.watcher, ctx.kuri, ctx.dev, ctx.verbose) catch |err| {
             log.err("serveRequest: {}", .{err});
             if (ctx.dev) {
                 dev_mod.sendErrorOverlay(&std_req, std_req.head.target, err, mer.version) catch {};
             }
+            // Telemetry: report error to Sentry + Datadog.
             telemetry.sentryCapture(@errorName(err), std_req.head.target, mer.version);
             telemetry.ddError(std_req.head.target, @tagName(std_req.head.method), @errorName(err));
             return;
         };
 
-        const elapsed_ns = nanoTimestamp() - start;
+        const elapsed_ns = std.time.nanoTimestamp() - start;
         const elapsed_us: u64 = @intCast(@divFloor(elapsed_ns, 1000));
-        const ttfb_us: u64 = if (_ttfb_ns > 0) @intCast(@divFloor(_ttfb_ns, 1000)) else elapsed_us;
 
+        // Telemetry: send request timing to Datadog.
         telemetry.ddTiming(std_req.head.target, @tagName(std_req.head.method), 200, elapsed_us);
 
         if (ctx.verbose) {
             const elapsed_f: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1000.0;
             if (elapsed_f < 1000.0) {
-                log.info("{s} {s} {d:.0}us (ttfb: {d}us)", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f, ttfb_us });
+                log.info("{s} {s} {d:.0}µs", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f });
             } else {
-                log.info("{s} {s} {d:.1}ms (ttfb: {d}us)", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f / 1000.0, ttfb_us });
+                log.info("{s} {s} {d:.1}ms", .{ @tagName(std_req.head.method), std_req.head.target, elapsed_f / 1000.0 });
             }
         }
 
         // Reset arena between requests on the same connection (keep-alive).
         _ = arena.reset(.retain_capacity);
     }
-}
-
-/// Replacement for std.time.nanoTimestamp() which was removed in Zig 0.16.
-fn nanoTimestamp() i128 {
-    var ts: std.c.timespec = undefined;
-    _ = std.c.clock_gettime(.REALTIME, &ts);
-    return @as(i128, ts.sec) * 1_000_000_000 + @as(i128, ts.nsec);
 }
 
 fn serveRequest(
@@ -225,7 +192,6 @@ fn serveRequest(
     kuri: ?*const kuri_mod.Kuri,
     dev: bool,
     verbose: bool,
-    io: std.Io,
 ) !void {
     _ = verbose;
     const raw_target = std_req.head.target;
@@ -270,11 +236,11 @@ fn serveRequest(
     }
 
     // Static files from public/.
-    if (static.tryServe(alloc, std_req, path, io)) |_| return;
+    if (static.tryServe(alloc, std_req, path)) |_| return;
 
     // Pre-rendered pages from dist/ (SSG).
     if (!dev) {
-        if (tryServePrerendered(alloc, std_req, path, io)) |_| return;
+        if (tryServePrerendered(alloc, std_req, path)) |_| return;
     }
 
     // ── Build Request ──────────────────────────────────────────────────────
@@ -328,9 +294,7 @@ fn serveRequest(
                 });
 
                 // Flush layout head immediately — browser starts rendering shell.
-                // Flush layout head immediately — browser starts rendering shell.
                 try bw.writer.writeAll(parts.head);
-                markTtfb();
                 try bw.flush();
 
                 // Create StreamWriter backed by the HTTP body writer.
@@ -376,7 +340,6 @@ fn serveRequest(
             },
         });
         try bw.writer.writeAll(result.head);
-        markTtfb();
         try bw.flush();
         try bw.writer.writeAll(result.body);
         try bw.flush();
@@ -437,7 +400,6 @@ fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void
                 .extra_headers = extra[0 .. 1 + n_cookies],
             },
         });
-        markTtfb();
         try bw.end();
         return;
     }
@@ -459,7 +421,6 @@ fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void
             .extra_headers = extra[0 .. fixed.len + n_cookies],
         },
     });
-    markTtfb();
     try bw.writer.writeAll(response.body);
     try bw.end();
 }
@@ -469,7 +430,6 @@ fn tryServePrerendered(
     alloc: std.mem.Allocator,
     std_req: *std.http.Server.Request,
     url_path: []const u8,
-    io: std.Io,
 ) ?void {
     const fs_path = if (std.mem.eql(u8, url_path, "/"))
         std.fmt.allocPrint(alloc, "dist/index.html", .{}) catch return null
@@ -479,8 +439,11 @@ fn tryServePrerendered(
     };
     defer alloc.free(fs_path);
 
-    const file_content = std.Io.Dir.cwd().readFileAlloc(io, fs_path, alloc, .limited(10 * 1024 * 1024)) catch return null;
-    const body = file_content;
+    const file = std.fs.cwd().openFile(fs_path, .{}) catch return null;
+    defer file.close();
+
+    const body = file.readToEndAlloc(alloc, 10 * 1024 * 1024) catch return null;
+    defer alloc.free(body);
 
     var header_buf: [512]u8 = undefined;
     var bw = std_req.respondStreaming(&header_buf, .{
