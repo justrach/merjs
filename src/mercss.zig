@@ -91,6 +91,165 @@ pub fn Component(comptime styles: anytype) type {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// RESPONSIVE COMPONENTS - Mobile-first breakpoints
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Tailwind-compatible breakpoints
+pub const Breakpoints = struct {
+    pub const sm = 640; // 640px
+    pub const md = 768; // 768px
+    pub const lg = 1024; // 1024px
+    pub const xl = 1280; // 1280px
+    pub const xl2 = 1536; // 1536px (2xl)
+};
+
+/// Generate responsive CSS with media queries at comptime
+fn generateResponsiveCss(comptime config: anytype) []const u8 {
+    comptime {
+        var css: []const u8 = "";
+
+        // Generate base styles (mobile-first)
+        if (@hasField(@TypeOf(config), "base")) {
+            css = css ++ generateCss(config.base);
+        }
+
+        // Generate sm breakpoint (640px+)
+        if (@hasField(@TypeOf(config), "sm")) {
+            const sm_css = generateBreakpointCss("sm", config.sm);
+            css = css ++ "@media (min-width: 640px){" ++ sm_css ++ "}";
+        }
+
+        // Generate md breakpoint (768px+)
+        if (@hasField(@TypeOf(config), "md")) {
+            const md_css = generateBreakpointCss("md", config.md);
+            css = css ++ "@media (min-width: 768px){" ++ md_css ++ "}";
+        }
+
+        // Generate lg breakpoint (1024px+)
+        if (@hasField(@TypeOf(config), "lg")) {
+            const lg_css = generateBreakpointCss("lg", config.lg);
+            css = css ++ "@media (min-width: 1024px){" ++ lg_css ++ "}";
+        }
+
+        // Generate xl breakpoint (1280px+)
+        if (@hasField(@TypeOf(config), "xl")) {
+            const xl_css = generateBreakpointCss("xl", config.xl);
+            css = css ++ "@media (min-width: 1280px){" ++ xl_css ++ "}";
+        }
+
+        return css;
+    }
+}
+
+/// Generate CSS for a specific breakpoint with prefixed class names
+fn generateBreakpointCss(comptime prefix: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        var css: []const u8 = "";
+
+        const T = @TypeOf(styles);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.fields) |field| {
+                    const value = @field(styles, field.name);
+                    const value_str = switch (@typeInfo(@TypeOf(value))) {
+                        .@"enum" => @tagName(value),
+                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
+                        else => value,
+                    };
+
+                    const css_property = toKebabCase(field.name);
+
+                    // Prefix class name with breakpoint
+                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}{{{s}:{s};}}", .{ prefix, field.name, css_property, value_str });
+                    css = css ++ rule;
+                }
+            },
+            else => {},
+        }
+
+        return css;
+    }
+}
+
+/// Get responsive class names
+fn getResponsiveClassNames(comptime config: anytype) []const u8 {
+    comptime {
+        var names: []const u8 = "";
+
+        // Base classes
+        if (@hasField(@TypeOf(config), "base")) {
+            const base_names = getClassNames(config.base);
+            names = names ++ base_names ++ " ";
+        }
+
+        // sm classes
+        if (@hasField(@TypeOf(config), "sm")) {
+            const sm_names = getBreakpointClassNames("sm", config.sm);
+            names = names ++ sm_names ++ " ";
+        }
+
+        // md classes
+        if (@hasField(@TypeOf(config), "md")) {
+            const md_names = getBreakpointClassNames("md", config.md);
+            names = names ++ md_names ++ " ";
+        }
+
+        // lg classes
+        if (@hasField(@TypeOf(config), "lg")) {
+            const lg_names = getBreakpointClassNames("lg", config.lg);
+            names = names ++ lg_names ++ " ";
+        }
+
+        // xl classes
+        if (@hasField(@TypeOf(config), "xl")) {
+            const xl_names = getBreakpointClassNames("xl", config.xl);
+            names = names ++ xl_names ++ " ";
+        }
+
+        // Remove trailing space
+        return if (names.len > 0) names[0 .. names.len - 1] else "";
+    }
+}
+
+/// Get class names for a specific breakpoint
+fn getBreakpointClassNames(comptime prefix: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        var names: []const u8 = "";
+
+        const T = @TypeOf(styles);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.fields) |field| {
+                    const name = std.fmt.comptimePrint("mcss-{s}-{s} ", .{ prefix, field.name });
+                    names = names ++ name;
+                }
+            },
+            else => {},
+        }
+
+        // Remove trailing space
+        return if (names.len > 0) names[0 .. names.len - 1] else "";
+    }
+}
+
+/// Create a responsive component with mobile-first breakpoints
+///
+/// Usage:
+/// ```zig
+/// const Button = mercss.ResponsiveComponent(.{
+///     .base = .{ .padding = "8px" },
+///     .sm = .{ .padding = "16px" },
+///     .md = .{ .padding = "24px" },
+/// });
+/// ```
+pub fn ResponsiveComponent(comptime config: anytype) type {
+    return struct {
+        pub const css = generateResponsiveCss(config);
+        pub const classes = getResponsiveClassNames(config);
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // DEMO: Design System & Components
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -220,6 +379,55 @@ test "CSS deduplication concept" {
     // Both point to same comptime-generated string
     try testing.expect(css1.len == css2.len);
     try testing.expect(std.mem.eql(u8, css1, css2));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RESPONSIVE COMPONENT TESTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Demo: Responsive container component
+pub const ResponsiveContainer = ResponsiveComponent(.{
+    .base = .{ .padding = "16px" },
+    .sm = .{ .padding = "24px" },
+    .md = .{ .padding = "32px" },
+    .lg = .{ .padding = "48px" },
+});
+
+test "Responsive component CSS generation" {
+    // Should contain media queries
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "min-width") != null);
+
+    // Should contain breakpoint classes
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "mcss-sm-") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "mcss-md-") != null);
+}
+
+test "Responsive component class names" {
+    // Should contain base class
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-padding") != null);
+
+    // Should contain breakpoint classes
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-sm-padding") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-md-padding") != null);
+}
+
+test "Responsive breakpoints structure" {
+    comptime {
+        // Raise branch quota for complex comptime string operations
+        @setEvalBranchQuota(5000);
+
+        // Base style should exist
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-padding{padding:16px;}") != null);
+
+        // sm breakpoint (640px+)
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media (min-width: 640px)") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-sm-padding{padding:24px;}") != null);
+
+        // md breakpoint (768px+)
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media (min-width: 768px)") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-md-padding{padding:32px;}") != null);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
