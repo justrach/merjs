@@ -15,8 +15,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    // Initialize std.Io runtime (Threaded for now; Evented for io_uring later)
-    runtime.init(alloc);
+    // Initialize std.Io runtime (Auto-selects Evented on Linux, Threaded elsewhere)
+    try runtime.init(alloc);
     defer runtime.deinit();
 
     // 0.16: args come through init parameter.
