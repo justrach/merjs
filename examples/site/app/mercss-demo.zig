@@ -103,17 +103,16 @@ const DangerButton = design.InteractiveComponent(.{
 const FeatureCard = design.InteractiveComponent(.{
     .base = .{
         .background = "white",
-        .border_radius = design.radius.xl,
-        .padding = design.space.xl3,
+        .border_radius = design.radius.lg,
+        .padding = design.space.xl2,
         .border = "1px solid " ++ design.slate.c200,
         .box_shadow = design.shadow.sm,
         .transition = "all 0.3s ease",
-        .position = "relative",
-        .overflow = "hidden",
+        .height = "100%",
     },
     .hover = .{
         .transform = "translateY(-4px)",
-        .box_shadow = design.shadow.xl,
+        .box_shadow = design.shadow.lg,
         .border_color = design.violet.c300,
     },
 });
@@ -224,23 +223,25 @@ const page_css =
     ".hero-actions{display:flex;gap:" ++ design.space.md ++ ";justify-content:center;flex-wrap:wrap;}" ++
 
     // Section styling
-    ".section{margin-bottom:" ++ design.space.xl5 ++ ";}" ++
-    ".section-header{text-align:center;margin-bottom:" ++ design.space.xl3 ++ ";}" ++
+    ".section{margin-bottom:" ++ design.space.xl4 ++ ";}" ++
+    ".section-header{text-align:center;margin-bottom:" ++ design.space.xl2 ++ ";}" ++
     ".section-label{color:" ++ design.violet.c600 ++ ";font-size:" ++ design.font.size.sm ++ ";font-weight:" ++ design.font.weight.semibold ++ ";text-transform:uppercase;letter-spacing:0.1em;margin-bottom:" ++ design.space.sm ++ ";}" ++
     ".section-title{font-size:" ++ design.font.size.xl3 ++ ";font-weight:" ++ design.font.weight.bold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.base ++ ";letter-spacing:-0.02em;}" ++
     ".section-desc{font-size:" ++ design.font.size.lg ++ ";color:" ++ design.slate.c600 ++ ";max-width:600px;margin:0 auto;line-height:1.6;}" ++
 
-    // Feature grid
-    ".feature-grid{display:grid;gap:" ++ design.space.xl ++ ";grid-template-columns:repeat(auto-fit,minmax(320px,1fr));}" ++
+    // Feature grid - 3 columns on desktop, 2 on tablet, 1 on mobile
+    ".feature-grid{display:grid;gap:" ++ design.space.lg ++ ";grid-template-columns:1fr;}" ++
+    "@media (min-width: 768px){.feature-grid{grid-template-columns:repeat(2,1fr);}}" ++
+    "@media (min-width: 1024px){.feature-grid{grid-template-columns:repeat(3,1fr);gap:" ++ design.space.xl ++ ";}}" ++
 
     // Feature card icon container
-    ".feature-icon-wrap{width:56px;height:56px;border-radius:" ++ design.radius.xl ++ ";display:flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:" ++ design.space.lg ++ ";box-shadow:" ++ design.shadow.md ++ ";}" ++
+    ".feature-icon-wrap{width:48px;height:48px;border-radius:" ++ design.radius.lg ++ ";display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:" ++ design.space.base ++ ";box-shadow:" ++ design.shadow.sm ++ ";}" ++
 
     // Feature title
-    ".feature-title{font-size:" ++ design.font.size.xl ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.sm ++ ";}" ++
+    ".feature-title{font-size:" ++ design.font.size.lg ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.xs ++ ";}" ++
 
     // Feature description
-    ".feature-desc{font-size:" ++ design.font.size.base ++ ";color:" ++ design.slate.c600 ++ ";line-height:1.7;margin:0;}" ++
+    ".feature-desc{font-size:" ++ design.font.size.sm ++ ";color:" ++ design.slate.c600 ++ ";line-height:1.6;margin:0;}" ++
 
     // Code example section
     ".code-section{background:white;border-radius:" ++ design.radius.xl ++ ";padding:" ++ design.space.xl3 ++ ";border:1px solid " ++ design.slate.c200 ++ ";box-shadow:" ++ design.shadow.sm ++ ";}" ++
