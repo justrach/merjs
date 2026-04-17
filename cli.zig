@@ -9,7 +9,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const runtime = @import("runtime.zig");
+const runtime = @import("runtime");
 
 pub const version = "0.2.5";
 

@@ -6,7 +6,7 @@
 
 const std = @import("std");
 const mer = @import("mer");
-const runtime = @import("runtime.zig");
+const runtime = @import("runtime");
 
 const log = std.log.scoped(.main);
 

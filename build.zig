@@ -20,6 +20,11 @@ pub fn build(b: *std.Build) void {
     //     .optimize = if (optimize != .Debug) optimize else .ReleaseFast,
     // });
 
+    // ── Runtime module (std.Io instance management) ───────────────────────────
+    const runtime_mod = b.addModule("runtime", .{
+        .root_source_file = b.path("src/runtime.zig"),
+    });
+
     // ── "mer" module (framework public API) ──────────────────────────────────
     const mer_mod = b.addModule("mer", .{
         .root_source_file = b.path("src/mer.zig"),
@@ -27,6 +32,7 @@ pub fn build(b: *std.Build) void {
     });
     mer_mod.addImport("dhi_model", dhi_model_mod);
     mer_mod.addImport("dhi_validator", dhi_validator_mod);
+    mer_mod.addImport("runtime", runtime_mod);
 
     // ── turboapi-core (shared router + HTTP utilities) ──
     const core_dep = b.dependency("turboapi_core", .{});
@@ -61,6 +67,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true, // 0.16: std.c.* (pthread, clock_gettime, etc.) needs explicit libc
     });
     main_mod.addImport("mer", mer_mod);
+    main_mod.addImport("runtime", runtime_mod);
     main_mod.addImport("counter_config", counter_config_mod);
     helpers.addDirModules(b, main_mod, mer_mod, "examples/site/app", "app", site_extras);
     helpers.addDirModules(b, main_mod, mer_mod, "examples/site/api", "api", &.{});
@@ -75,14 +82,14 @@ pub fn build(b: *std.Build) void {
     // b.getInstallStep().dependOn(&install_kuri.step);
 
     // ── Codegen ──────────────────────────────────────────────────────────────
-    const codegen_exe = b.addExecutable(.{
-        .name = "codegen",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/codegen.zig"),
-            .target = b.graph.host,
-            .optimize = .Debug,
-        }),
+    const codegen_mod = b.createModule(.{
+        .root_source_file = b.path("tools/codegen.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
     });
+    // Wire up runtime for tools/codegen.zig
+    codegen_mod.addImport("runtime", runtime_mod);
+    const codegen_exe = b.addExecutable(.{ .name = "codegen", .root_module = codegen_mod });
     const run_codegen = b.addRunArtifact(codegen_exe);
     run_codegen.setCwd(b.path("."));
     b.step("codegen", "Regenerate src/generated/routes.zig").dependOn(&run_codegen.step);
@@ -168,6 +175,7 @@ pub fn build(b: *std.Build) void {
         .strip = if (optimize != .Debug) true else null,
         .link_libc = true,
     });
+    cli_mod.addImport("runtime", runtime_mod);
     const cli_exe = b.addExecutable(.{ .name = "mer", .root_module = cli_mod });
     b.step("cli", "Build the `mer` CLI binary").dependOn(&b.addInstallArtifact(cli_exe, .{}).step);
 

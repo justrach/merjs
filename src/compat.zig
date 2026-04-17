@@ -1,5 +1,5 @@
 const std = @import("std");
-const runtime = @import("runtime.zig");
+const runtime = @import("runtime");
 
 /// Thin compat shims for std.Io adoption.
 ///

@@ -36,6 +36,15 @@ fn page() h.Node {
             h.span(.{ .class = "red" }, "no runtime at all."),
         }),
 
+        // Release banner
+        h.div(.{ .class = "release-banner" }, .{
+            h.span(.{ .class = "release-badge" }, "NEW"),
+            h.div(.{ .class = "release-content" }, .{
+                h.span(.{ .class = "release-text" }, "v0.2.5 — Now on Zig 0.16 with one-line install:"),
+                h.raw("<code class=\"release-code\" onclick=\"navigator.clipboard.writeText(this.textContent); this.classList.add('copied'); setTimeout(() => this.classList.remove('copied'), 1500);\">curl -fsSL merjs.trilok.ai/install.sh | bash</code>"),
+            }),
+        }),
+
         // Benchmark comparison
         // Benchmark comparison
         h.div(.{ .class = "bench" }, .{
@@ -113,7 +122,7 @@ fn page() h.Node {
             h.a(.{ .href = "/about", .class = "btn-ghost" }, "Read the philosophy"),
             h.p(.{ .class = "footer-note" }, .{
                 h.text("Built in "),
-                h.a(.{ .href = "https://ziglang.org" }, "Zig 0.15"),
+                h.a(.{ .href = "https://ziglang.org" }, "Zig 0.16"),
                 h.raw(" &middot; Validation by "),
                 h.a(.{ .href = "https://github.com/justrach/dhi" }, "dhi"),
                 h.raw(" &middot; Zero node_modules"),
@@ -150,6 +159,55 @@ fn item(num: []const u8, heading: []const u8, body_children: anytype) h.Node {
 
 const page_css =
     \\.page { max-width: 800px; margin: 0 auto; padding: 56px 40px 120px; }
+    \\.release-banner {
+    \\  display: flex; align-items: flex-start; gap: 12px;
+    \\  background: var(--bg2); border: 1px solid var(--border);
+    \\  border-radius: 8px; padding: 14px 18px; margin-bottom: 48px;
+    \\}
+    \\.release-badge {
+    \\  background: var(--red); color: var(--bg);
+    \\  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+    \\  padding: 4px 8px; border-radius: 4px; flex-shrink: 0; margin-top: 2px;
+    \\}
+    \\.release-content {
+    \\  display: flex; flex-direction: column; gap: 6px;
+    \\  flex: 1;
+    \\}
+    \\.release-text {
+    \\  font-size: 14px; color: var(--text); line-height: 1.4;
+    \\}
+    \\.release-code {
+    \\  font-family: 'SF Mono', 'Fira Code', monospace;
+    \\  font-size: 13px;
+    \\  background: var(--bg3);
+    \\  border: 1px solid var(--border);
+    \\  border-radius: 6px;
+    \\  padding: 8px 12px;
+    \\  color: var(--text);
+    \\  cursor: pointer;
+    \\  user-select: all;
+    \\  transition: background 0.15s, border-color 0.15s;
+    \\  display: inline-block;
+    \\  position: relative;
+    \\}
+    \\.release-code:hover {
+    \\  background: var(--bg);
+    \\  border-color: var(--text);
+    \\}
+    \\.release-code.copied {
+    \\  background: var(--red);
+    \\  color: var(--bg);
+    \\}
+    \\.release-code.copied::after {
+    \\  content: "copied!";
+    \\  position: absolute;
+    \\  right: -60px;
+    \\  top: 50%;
+    \\  transform: translateY(-50%);
+    \\  font-size: 11px;
+    \\  color: var(--red);
+    \\  font-weight: 600;
+    \\}
     \\.lede {
     \\  font-family: 'DM Serif Display', Georgia, serif;
     \\  font-size: clamp(36px, 5vw, 58px);

@@ -8,6 +8,7 @@ const dispatch_mod = @import("dispatch.zig");
 const static = @import("static.zig");
 const watcher_mod = @import("watcher.zig");
 const kuri_mod = @import("kuri.zig");
+const runtime = @import("runtime");
 const telemetry = mer.telemetry;
 const dev_mod = mer.dev;
 
@@ -99,8 +100,9 @@ pub const Server = struct {
         }
         defer if (self.kuri) |*k| k.deinit();
 
-        // 0.16: Use std.Io.net.IpAddress.parse() + IpAddress.listen(io).
-        var threaded: std.Io.Threaded = .init(self.allocator, .{}); const io = threaded.io(); self.io = io;
+        // Use shared runtime.io for all I/O (Threaded now, Evented for io_uring later)
+        const io = runtime.io;
+        self.io = io;
         const addr = try std.Io.net.IpAddress.parse(self.config.host, self.config.port);
         var net_server = try addr.listen(io, .{});
         defer net_server.deinit(io);

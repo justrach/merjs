@@ -2,7 +2,7 @@
 // Run via: zig build codegen
 
 const std = @import("std");
-const runtime = @import("runtime.zig");
+const runtime = @import("runtime");
 
 pub fn main() !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
