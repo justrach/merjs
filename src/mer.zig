@@ -11,6 +11,9 @@ const fetch_mod = @import("fetch.zig");
 // Compile-time CSS generation (experimental)
 pub const mercss = @import("mercss.zig");
 
+// Design system (comprehensive tokens + components)
+pub const design = @import("mercss-design.zig");
+
 /// Framework version — kept in sync with build.zig.zon.
 pub const version = "0.2.5";
 
