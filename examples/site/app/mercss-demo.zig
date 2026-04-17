@@ -103,16 +103,17 @@ const DangerButton = design.InteractiveComponent(.{
 const FeatureCard = design.InteractiveComponent(.{
     .base = .{
         .background = "white",
-        .border_radius = design.radius.lg,
-        .padding = design.space.xl2,
+        .border_radius = design.radius.md,
+        .padding = design.space.lg,
         .border = "1px solid " ++ design.slate.c200,
         .box_shadow = design.shadow.sm,
         .transition = "all 0.3s ease",
-        .height = "100%",
+        .display = "flex",
+        .flex_direction = "column",
     },
     .hover = .{
         .transform = "translateY(-4px)",
-        .box_shadow = design.shadow.lg,
+        .box_shadow = design.shadow.md,
         .border_color = design.violet.c300,
     },
 });
@@ -121,12 +122,13 @@ const FeatureCard = design.InteractiveComponent(.{
 const CodeBlock = design.Component(.{
     .background = design.slate.c900,
     .color = design.slate.c50,
-    .padding = design.space.xl3,
-    .border_radius = design.radius.lg,
+    .padding = design.space.lg,
+    .border_radius = design.radius.md,
     .font_family = design.font.family.mono,
     .font_size = design.font.size.sm,
     .line_height = "1.6",
     .overflow = "auto",
+    .margin = "0",
 });
 
 // Alert variants
@@ -244,7 +246,7 @@ const page_css =
     ".feature-desc{font-size:" ++ design.font.size.sm ++ ";color:" ++ design.slate.c600 ++ ";line-height:1.6;margin:0;}" ++
 
     // Code example section
-    ".code-section{background:white;border-radius:" ++ design.radius.xl ++ ";padding:" ++ design.space.xl3 ++ ";border:1px solid " ++ design.slate.c200 ++ ";box-shadow:" ++ design.shadow.sm ++ ";}" ++
+    ".code-section{background:white;border-radius:" ++ design.radius.lg ++ ";padding:" ++ design.space.xl2 ++ ";border:1px solid " ++ design.slate.c200 ++ ";box-shadow:" ++ design.shadow.sm ++ ";}" ++
     ".code-header{display:flex;align-items:center;gap:" ++ design.space.sm ++ ";margin-bottom:" ++ design.space.lg ++ ";padding-bottom:" ++ design.space.base ++ ";border-bottom:1px solid " ++ design.slate.c200 ++ ";}" ++
     ".code-dot{width:12px;height:12px;border-radius:50%;}" ++
     ".code-dot-red{background:" ++ design.rose.c500 ++ ";}" ++
@@ -253,7 +255,7 @@ const page_css =
     ".code-title{font-size:" ++ design.font.size.sm ++ ";color:" ++ design.slate.c500 ++ ";font-weight:" ++ design.font.weight.medium ++ ";margin-left:auto;}" ++
 
     // Interactive demo section
-    ".interactive-demo{background:linear-gradient(135deg," ++ design.violet.c50 ++ " 0%," ++ design.purple.c50 ++ " 100%);border-radius:" ++ design.radius.xl ++ ";padding:" ++ design.space.xl3 ++ ";border:1px solid " ++ design.violet.c200 ++ ";}" ++
+    ".interactive-demo{background:linear-gradient(135deg," ++ design.violet.c50 ++ " 0%," ++ design.purple.c50 ++ " 100%);border-radius:" ++ design.radius.lg ++ ";padding:" ++ design.space.xl2 ++ ";border:1px solid " ++ design.violet.c200 ++ ";}" ++
     ".interactive-title{font-size:" ++ design.font.size.xl ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.base ++ ";}" ++
     ".interactive-desc{font-size:" ++ design.font.size.base ++ ";color:" ++ design.slate.c600 ++ ";margin:0 0 " ++ design.space.xl2 ++ ";}" ++
     ".button-row{display:flex;gap:" ++ design.space.md ++ ";flex-wrap:wrap;align-items:center;}" ++
