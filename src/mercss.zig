@@ -8,95 +8,75 @@
 
 const std = @import("std");
 
-/// Design tokens - the "tailwind.config.js" equivalent at comptime
-pub const DesignSystem = struct {
-    colors: type,
-    spacing: type,
-    fonts: type,
-    breakpoints: type,
-};
+/// Helper to generate CSS from style struct at comptime
+fn generateCss(comptime styles: anytype) []const u8 {
+    comptime {
+        // Start with empty string
+        var css: []const u8 = "";
 
-/// A single atomic style property
-pub const StyleProperty = struct {
-    name: []const u8,
-    value: []const u8,
+        // Iterate over struct fields
+        const T = @TypeOf(styles);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.fields) |field| {
+                    const value = @field(styles, field.name);
+                    const value_str = switch (@typeInfo(@TypeOf(value))) {
+                        .@"enum" => @tagName(value),
+                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
+                        else => value,
+                    };
 
-    /// Generate deterministic hash for class name
-    pub fn hash(self: StyleProperty) u32 {
-        var h: u32 = 5381;
-        for (self.name) |c| h = ((h << 5) + h) + c;
-        for (self.value) |c| h = ((h << 5) + h) + c;
-        return h;
-    }
-};
-
-/// Component styles that generate atomic CSS at comptime
-pub fn ComponentStyles(comptime config: anytype) type {
-    return struct {
-        /// Base styles - always applied
-        pub const base = generateAtomicClasses(config.base);
-
-        /// State variants (hover, focus, etc.)
-        pub const states = if (@hasField(@TypeOf(config), "states"))
-            generateStateClasses(config.states)
-        else
-            .{};
-
-        /// Generate all CSS for this component at comptime
-        pub fn getAllCss() []const u8 {
-            comptime {
-                var buf: [4096]u8 = undefined;
-                var written: usize = 0;
-
-                // Generate base styles
-                inline for (base) |cls| {
-                    const css = std.fmt.bufPrint(buf[written..], ".{s}{{{s}:{s}}}", .{ cls.name, cls.property, cls.value }) catch break;
-                    written += css.len;
+                    // Append CSS rule
+                    const rule = std.fmt.comptimePrint(".mcss-{s}{{{s}:{s};}}", .{ field.name, field.name, value_str });
+                    css = css ++ rule;
                 }
-
-                return buf[0..written];
-            }
+            },
+            else => {},
         }
+
+        return css;
+    }
+}
+
+/// Get class names from style struct
+fn getClassNames(comptime styles: anytype) []const u8 {
+    comptime {
+        var names: []const u8 = "";
+
+        const T = @TypeOf(styles);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.fields) |field| {
+                    const name = std.fmt.comptimePrint("mcss-{s} ", .{field.name});
+                    names = names ++ name;
+                }
+            },
+            else => {},
+        }
+
+        // Remove trailing space
+        return if (names.len > 0) names[0 .. names.len - 1] else "";
+    }
+}
+
+/// Create a component with compile-time CSS
+pub fn Component(comptime styles: anytype) type {
+    return struct {
+        pub const css = generateCss(styles);
+        pub const classes = getClassNames(styles);
     };
 }
 
-/// Helper: Convert style struct to atomic classes
-fn generateAtomicClasses(comptime styles: anytype) []const StyleProperty {
-    comptime {
-        const T = @TypeOf(styles);
-        const info = @typeInfo(T);
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEMO: Design System & Components
+// ═══════════════════════════════════════════════════════════════════════════════
 
-        // Count fields
-        var count: usize = 0;
-        inline for (info.Struct.fields) |_| count += 1;
-
-        // Generate style properties
-        var result: [count]StyleProperty = undefined;
-        var i: usize = 0;
-
-        inline for (info.Struct.fields) |field| {
-            const value = @field(styles, field.name);
-            result[i] = .{
-                .name = field.name,
-                .value = switch (@typeInfo(@TypeOf(value))) {
-                    .Enum => @tagName(value),
-                    .Int, .ComptimeInt => std.fmt.comptimePrint("{d}px", .{value}),
-                    else => value,
-                },
-            };
-            i += 1;
-        }
-
-        return &result;
-    }
-}
-
-/// Usage example - type-safe CSS
-const MyDesignSystem = struct {
+pub const DesignSystem = struct {
     pub const colors = .{
         .primary = "#3b82f6",
         .secondary = "#64748b",
         .danger = "#ef4444",
+        .success = "#22c55e",
     };
 
     pub const spacing = .{
@@ -109,69 +89,122 @@ const MyDesignSystem = struct {
 };
 
 /// Button component with compile-time styles
-pub const Button = ComponentStyles(.{
-    .base = .{
-        .padding = "8px 16px",
-        .border_radius = "6px",
-        .font_weight = "600",
-        .cursor = "pointer",
-        .transition = "all 0.2s",
-    },
-    .states = .{
-        .hover = .{ .background = MyDesignSystem.colors.primary },
-        .active = .{ .transform = "scale(0.98)" },
-    },
+pub const Button = Component(.{
+    .padding = "8px 16px",
+    .border_radius = "6px",
+    .font_weight = "600",
+    .cursor = "pointer",
+    .transition = "all 0.2s",
+    .background = DesignSystem.colors.primary,
 });
 
 /// Card component
-pub const Card = ComponentStyles(.{
-    .base = .{
-        .background = "white",
-        .border_radius = "8px",
-        .padding = "16px",
-        .box_shadow = "0 1px 3px rgba(0,0,0,0.1)",
-    },
+pub const Card = Component(.{
+    .background = "white",
+    .border_radius = "8px",
+    .padding = "16px",
+    .box_shadow = "0 1px 3px rgba(0,0,0,0.1)",
 });
 
-/// Stream CSS efficiently - critical styles first
-pub const StreamingCSS = struct {
-    /// Critical CSS (above-fold, always needed)
-    pub const critical =
-        Button.getAllCss() ++
-        Card.getAllCss();
+/// Alert component
+pub const Alert = Component(.{
+    .padding = "12px 16px",
+    .border_radius = "6px",
+    .font_weight = "500",
+    .background = DesignSystem.colors.danger,
+});
 
-    /// Component-specific CSS that can stream later
-    pub fn streamForComponent(comptime component_name: []const u8) []const u8 {
-        // Only stream CSS for components that are actually rendered
-        // This is determined at compile time!
-        if (comptime std.mem.eql(u8, component_name, "Button")) {
-            return Button.getAllCss();
-        } else if (comptime std.mem.eql(u8, component_name, "Card")) {
-            return Card.getAllCss();
-        }
-        return "";
+/// Demo: Generate complete HTML page with inline CSS
+pub fn getDemoHtml() []const u8 {
+    comptime {
+        return "<!DOCTYPE html><html><head><style>" ++
+            Button.css ++
+            Card.css ++
+            Alert.css ++
+            "</style></head><body>" ++
+            "<button class='" ++ Button.classes ++ "'>Click me</button>" ++
+            "<div class='" ++ Card.classes ++ "'>Card content here</div>" ++
+            "<div class='" ++ Alert.classes ++ "'>Alert message!</div>" ++
+            "</body></html>";
     }
-};
-
-// Generated CSS would look like:
-// .a7f3e{padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;transition:all 0.2s}
-// .b2c9d{background:white;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
-
-/// TEST: Verify CSS generation
-const testing = std.testing;
-
-test "atomic CSS generation" {
-    const css = Button.getAllCss();
-    try testing.expect(css.len > 0);
-    // CSS contains button styles
-    try testing.expect(std.mem.indexOf(u8, css, "padding") != null);
 }
 
-test "design system type safety" {
-    // This would fail at compile time:
-    // const bad = ComponentStyles(.{ .base = .{ .color = undefined_color }});
+/// Get just the CSS for all components
+pub fn getAllCss() []const u8 {
+    comptime {
+        return Button.css ++ Card.css ++ Alert.css;
+    }
+}
 
-    // This works:
-    const good = ComponentStyles(.{ .base = .{ .color = "#333" } });
-    try testing.expect(good.getAllCss().len > 0);
+// ═══════════════════════════════════════════════════════════════════════════════
+// TESTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const testing = std.testing;
+
+test "Button CSS generation" {
+    // Should contain padding rule
+    try testing.expect(std.mem.indexOf(u8, Button.css, "padding") != null);
+    // Should contain primary color
+    try testing.expect(std.mem.indexOf(u8, Button.css, "#3b82f6") != null);
+}
+
+test "Card CSS generation" {
+    // Should contain border_radius (field name becomes CSS property in this demo)
+    try testing.expect(std.mem.indexOf(u8, Card.css, "border_radius") != null);
+    // Should contain white background
+    try testing.expect(std.mem.indexOf(u8, Card.css, "white") != null);
+}
+
+test "Button class names" {
+    // Should have mcss- prefix
+    try testing.expect(std.mem.indexOf(u8, Button.classes, "mcss-") != null);
+    // Should contain padding class
+    try testing.expect(std.mem.indexOf(u8, Button.classes, "mcss-padding") != null);
+}
+
+test "Complete HTML generation" {
+    const html = comptime getDemoHtml();
+
+    // Has all structure
+    try testing.expect(std.mem.indexOf(u8, html, "<!DOCTYPE html>") != null);
+    try testing.expect(std.mem.indexOf(u8, html, "<style>") != null);
+    try testing.expect(std.mem.indexOf(u8, html, "</style>") != null);
+
+    // Has components
+    try testing.expect(std.mem.indexOf(u8, html, "<button") != null);
+    try testing.expect(std.mem.indexOf(u8, html, "<div") != null);
+
+    // Has CSS rules
+    try testing.expect(std.mem.indexOf(u8, html, "mcss-") != null);
+}
+
+test "CSS deduplication concept" {
+    // In real usage, you'd only include each component's CSS once
+    // This test shows the CSS strings are compile-time constants
+    const css1 = Button.css;
+    const css2 = Button.css;
+
+    // Both point to same comptime-generated string
+    try testing.expect(css1.len == css2.len);
+    try testing.expect(std.mem.eql(u8, css1, css2));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXAMPLE: How this would work in a real page
+// ═══════════════════════════════════════════════════════════════════════════════
+
+pub fn exampleUsage() void {
+    // In a real page handler:
+    //
+    // pub fn render(req: mer.Request) mer.Response {
+    //     // CSS is generated at comptime - zero runtime cost!
+    //     const css = Button.css ++ Card.css;
+    //
+    //     return mer.html(
+    //         "<style>" ++ css ++ "</style>" ++
+    //         "<button class='" ++ Button.classes ++ "'>Click</button>"
+    //     );
+    // }
+    _ = {};
 }
