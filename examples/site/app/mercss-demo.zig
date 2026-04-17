@@ -3,7 +3,7 @@ const h = mer.h;
 const design = mer.design;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// mercss DESIGN SYSTEM DEMO - Stunning visuals
+// mercss DESIGN SYSTEM DEMO - Polished visuals
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Primary action button
@@ -29,10 +29,10 @@ const PrimaryButton = design.ResponsiveComponent(.{
     },
 });
 
-// Hero card with gradient-like effect
+// Hero card - solid color instead of gradient
 const HeroCard = design.ResponsiveComponent(.{
     .base = .{
-        .background = "linear-gradient(135deg, " ++ design.primary.c500 ++ " 0%, " ++ design.indigo.c600 ++ " 100%)",
+        .background = design.indigo.c600,
         .color = "white",
         .padding = design.space.xl3,
         .border_radius = design.radius.xl,
@@ -69,6 +69,7 @@ const SuccessAlert = design.Component(.{
     .padding = design.space.md ++ " " ++ design.space.lg,
     .border_radius = design.radius.md,
     .font_size = design.font.size.sm,
+    .max_width = "600px",
 });
 
 const WarningAlert = design.Component(.{
@@ -78,6 +79,7 @@ const WarningAlert = design.Component(.{
     .padding = design.space.md ++ " " ++ design.space.lg,
     .border_radius = design.radius.md,
     .font_size = design.font.size.sm,
+    .max_width = "600px",
 });
 
 const InfoAlert = design.Component(.{
@@ -87,6 +89,7 @@ const InfoAlert = design.Component(.{
     .padding = design.space.md ++ " " ++ design.space.lg,
     .border_radius = design.radius.md,
     .font_size = design.font.size.sm,
+    .max_width = "600px",
 });
 
 // Input field
@@ -102,7 +105,7 @@ const Input = design.Component(.{
     .transition = design.transition.colors,
 });
 
-// Page CSS
+// Page CSS - all the generated CSS concatenated
 const page_css =
     PrimaryButton.css ++
     HeroCard.css ++
@@ -111,19 +114,21 @@ const page_css =
     WarningAlert.css ++
     InfoAlert.css ++
     Input.css ++
-    "body{font-family:" ++ design.font.family.sans ++ ";background:" ++ design.slate.c50 ++ ";margin:0;}" ++
+    // Additional custom styles for layout and typography
+    "body{font-family:" ++ design.font.family.sans ++ ";background:" ++ design.slate.c50 ++ ";margin:0;padding:0;line-height:1.6;color:" ++ design.slate.c900 ++ ";}" ++
     ".page{max-width:1200px;margin:0 auto;padding:" ++ design.space.xl3 ++ ";}" ++
-    ".hero-title{font-size:" ++ design.font.size.xl5 ++ ";font-weight:" ++ design.font.weight.bold ++ ";margin:0 0 " ++ design.space.lg ++ ";}" ++
-    ".hero-subtitle{font-size:" ++ design.font.size.xl ++ ";opacity:0.9;margin:0 0 " ++ design.space.xl ++ ";}" ++
+    ".hero-title{font-size:" ++ design.font.size.xl4 ++ ";font-weight:" ++ design.font.weight.bold ++ ";margin:0 0 " ++ design.space.lg ++ ";line-height:1.2;}" ++
+    ".hero-subtitle{font-size:" ++ design.font.size.xl ++ ";opacity:0.9;margin:0 0 " ++ design.space.xl ++ ";line-height:1.5;}" ++
     ".section-title{font-size:" ++ design.font.size.xl2 ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c900 ++ ";margin:" ++ design.space.xl4 ++ " 0 " ++ design.space.lg ++ ";}" ++
     ".grid{display:grid;gap:" ++ design.space.xl ++ ";}" ++
     ".grid-3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));}" ++
     ".feature-icon{width:48px;height:48px;border-radius:" ++ design.radius.lg ++ ";display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:" ++ design.space.md ++ ";}" ++
     ".feature-title{font-size:" ++ design.font.size.lg ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.sm ++ ";}" ++
     ".feature-desc{font-size:" ++ design.font.size.base ++ ";color:" ++ design.slate.c600 ++ ";line-height:1.6;margin:0;}" ++
-    ".alert-title{font-weight:" ++ design.font.weight.semibold ++ ";margin-bottom:" ++ design.space.xs ++ ";}" ++
+    ".alert-title{font-weight:" ++ design.font.weight.semibold ++ ";margin-bottom:" ++ design.space.xs ++ ";font-size:" ++ design.font.size.base ++ ";}" ++
+    ".alert-text{font-size:" ++ design.font.size.sm ++ ";line-height:1.5;}" ++
     ".demo-section{margin-bottom:" ++ design.space.xl4 ++ ";}" ++
-    "input." ++ Input.classes ++ ":focus{outline:none;border-color:" ++ design.primary.c500 ++ ";box-shadow:0 0 0 3px " ++ design.primary.c100 ++ ";}";
+    "input.mcss-width:focus{outline:none;border-color:" ++ design.primary.c500 ++ ";box-shadow:0 0 0 3px " ++ design.primary.c100 ++ ";}";
 
 pub const meta: mer.Meta = .{
     .title = "mercss Design System - The Best in Town",
@@ -146,17 +151,17 @@ pub fn render(req: mer.Request) mer.Response {
             h.h2(.{ .class = "section-title" }, "Alert Variants"),
             h.div(.{ .class = SuccessAlert.classes }, .{
                 h.div(.{ .class = "alert-title" }, "Success!"),
-                h.text("Your changes have been saved successfully."),
+                h.div(.{ .class = "alert-text" }, "Your changes have been saved successfully."),
             }),
             h.br(),
             h.div(.{ .class = WarningAlert.classes }, .{
                 h.div(.{ .class = "alert-title" }, "Warning"),
-                h.text("Please review your settings before continuing."),
+                h.div(.{ .class = "alert-text" }, "Please review your settings before continuing."),
             }),
             h.br(),
             h.div(.{ .class = InfoAlert.classes }, .{
                 h.div(.{ .class = "alert-title" }, "Info"),
-                h.text("New features are available in the latest version."),
+                h.div(.{ .class = "alert-text" }, "New features are available in the latest version."),
             }),
         }),
 
@@ -207,9 +212,7 @@ pub fn render(req: mer.Request) mer.Response {
             h.h2(.{ .class = "section-title" }, "Form Components"),
             h.div(.{ .class = FeatureCard.classes, .style = "max-width:400px;" }, .{
                 h.raw("<input class='" ++ Input.classes ++ "' type='text' placeholder='Type something...' />"),
-                h.br(),
                 h.raw("<input class='" ++ Input.classes ++ "' type='email' placeholder='email@example.com' style='margin-top:" ++ design.space.md ++ ";' />"),
-                h.br(),
                 h.raw("<button class='" ++ PrimaryButton.classes ++ "' style='margin-top:" ++ design.space.lg ++ ";'>Submit</button>"),
             }),
         }),
