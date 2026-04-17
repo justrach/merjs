@@ -107,9 +107,8 @@ fn renderSvg(alloc: std.mem.Allocator, body: []u8, city: City, theme: Theme) []c
     const pad: f64 = 15;
     const scale_x = (w - 2 * pad) / (2 * r);
 
-    var buf: std.ArrayList(u8) = .{};
-    const wr = buf.writer(alloc);
-
+    var buf: std.Io.Writer.Allocating = .init(alloc);
+    const wr = &buf.writer;
     wr.print("<svg viewBox=\"0 0 {d:.0} {d:.0}\" xmlns=\"http://www.w3.org/2000/svg\" style=\"width:100%;display:block;border-radius:8px 8px 0 0\">", .{ w, svg_h }) catch {};
     wr.print("<rect width=\"{d:.0}\" height=\"{d:.0}\" fill=\"{s}\"/>", .{ w, svg_h, theme.bg }) catch {};
 
@@ -155,7 +154,7 @@ fn renderSvg(alloc: std.mem.Allocator, body: []u8, city: City, theme: Theme) []c
     wr.print("<text x=\"{d:.0}\" y=\"{d:.0}\" text-anchor=\"middle\" fill=\"{s}\" font-family=\"Georgia,serif\" font-size=\"22\" font-weight=\"bold\">{s}</text>", .{ w / 2, svg_h - 28, theme.tc, city.name }) catch {};
     wr.print("<text x=\"{d:.0}\" y=\"{d:.0}\" text-anchor=\"middle\" fill=\"{s}\" font-family=\"sans-serif\" font-size=\"9\" opacity=\"0.4\">{d} roads rendered</text>", .{ w / 2, svg_h - 12, theme.tc, road_count }) catch {};
     wr.writeAll("</svg>") catch {};
-    return buf.items;
+    return buf.written();
 }
 
 fn svgError(msg: []const u8) []const u8 {

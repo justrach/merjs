@@ -11,10 +11,17 @@ const dispatch_mod = @import("dispatch.zig");
 
 const log = std.log.scoped(.prerender);
 
+var g_io: std.Io = undefined;
+
 pub fn run(alloc: std.mem.Allocator, router: *const Router) !void {
+    // 0.16: Dir methods need Io. Create a threaded runtime for prerender.
+    var threaded: std.Io.Threaded = .init(alloc, .{});
+    defer threaded.deinit();
+    g_io = threaded.io();
+
     // Clean and recreate dist/
-    std.fs.cwd().deleteTree("dist") catch {};
-    try std.fs.cwd().makePath("dist");
+    std.Io.Dir.cwd().deleteTree(g_io, "dist") catch {};
+    _ = std.Io.Dir.cwd().createDirPathOpen(g_io, "dist", .{}) catch {};
 
     var rendered: usize = 0;
     var skipped: usize = 0;
@@ -47,12 +54,12 @@ pub fn run(alloc: std.mem.Allocator, router: *const Router) !void {
 
         // Ensure parent dirs exist.
         if (std.mem.lastIndexOfScalar(u8, fs_path, '/')) |sep| {
-            try std.fs.cwd().makePath(fs_path[0..sep]);
+            _ = std.Io.Dir.cwd().createDirPathOpen(g_io, fs_path[0..sep], .{}) catch {};
         }
 
-        const file = try std.fs.cwd().createFile(fs_path, .{});
-        defer file.close();
-        try file.writeAll(response.body);
+        const file = try std.Io.Dir.cwd().createFile(g_io, fs_path, .{});
+        defer file.close(g_io);
+        try file.writePositionalAll(g_io, response.body, 0);
 
         rendered += 1;
         log.info("{s} → {s} ({d} bytes)", .{ route.path, fs_path, response.body.len });
@@ -75,17 +82,17 @@ fn urlToFsPath(alloc: std.mem.Allocator, url_path: []const u8) ![]u8 {
 }
 
 fn copyPublicDir(alloc: std.mem.Allocator) !void {
-    var dir = try std.fs.cwd().openDir("public", .{ .iterate = true });
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(g_io, "public", .{ .iterate = true });
+    defer dir.close(g_io);
     var it = dir.iterate();
-    while (try it.next()) |entry| {
+    while (try it.next(g_io)) |entry| {
         if (entry.kind != .file) continue;
         if (std.mem.eql(u8, entry.name, ".gitkeep")) continue;
         const src_path = try std.fmt.allocPrint(alloc, "public/{s}", .{entry.name});
         defer alloc.free(src_path);
         const dst_path = try std.fmt.allocPrint(alloc, "dist/{s}", .{entry.name});
         defer alloc.free(dst_path);
-        std.fs.cwd().copyFile(src_path, std.fs.cwd(), dst_path, .{}) catch |err| {
+        std.Io.Dir.cwd().copyFile(src_path, std.Io.Dir.cwd(), dst_path, g_io, .{}) catch |err| {
             log.warn("copy {s}: {s}", .{ entry.name, @errorName(err) });
         };
     }

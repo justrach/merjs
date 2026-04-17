@@ -8,8 +8,11 @@ const res_mod = @import("response.zig");
 const session_mod = @import("session.zig");
 const fetch_mod = @import("fetch.zig");
 
+// Compile-time CSS generation (experimental)
+pub const mercss = @import("mercss.zig");
+
 /// Framework version — kept in sync with build.zig.zon.
-pub const version = "0.2.2";
+pub const version = "0.2.5";
 
 // --- Streaming SSR ----------------------------------------------------------
 
@@ -74,7 +77,7 @@ pub const redirect = res_mod.redirect;
 pub const withCookies = res_mod.withCookies;
 
 pub fn typedJson(allocator: std.mem.Allocator, value: anytype) Response {
-    var out: std.io.Writer.Allocating = .init(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
     jw.write(value) catch return internalError("json write failed");
     return res_mod.Response.init(.ok, .json, out.written());

@@ -15,10 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Zig 0.15.1
+      - name: Setup Zig 0.16.0
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.15.1
+          version: 0.16.0
 
       - name: Build check
         run: |
@@ -40,6 +40,10 @@ jobs:
           zig build cli -Doptimize=ReleaseSmall -Dtarget=aarch64-linux
           cp zig-out/bin/mer release/mer-linux-aarch64
 
+      - name: Create install.sh release asset
+        run: |
+          cp install.sh release/install.sh
+
       - name: Generate checksums
         working-directory: release
         run: sha256sum mer-* > checksums.txt
@@ -47,13 +51,49 @@ jobs:
       - name: Write release notes
         run: |
           cat > release/notes.md <<'EOF'
-          ## Install
+          ## 🚀 merjs ${{ github.ref_name }}
 
+          ### Quick Install
+          
+          **macOS/Linux:**
           ```bash
-          curl -fsSL https://raw.githubusercontent.com/justrach/merjs/main/scripts/install-mer.sh | sh
+          curl -fsSL https://merjs.trilok.ai/install.sh | bash
           ```
 
-          Manual install: download the matching `mer-*` binary below, rename it to `mer`, then place it on your `PATH`.
+          Or with wget:
+          ```bash
+          wget -qO- https://merjs.trilok.ai/install.sh | bash
+          ```
+
+          **Manual Install:**
+          1. Download the matching `mer-*` binary below for your platform
+          2. Rename it to `mer`
+          3. Move it to a directory in your PATH (e.g., `/usr/local/bin/`)
+          4. Make it executable: `chmod +x /usr/local/bin/mer`
+
+          ### Quick Start
+          
+          ```bash
+          mer init myapp    # Create new project
+          cd myapp          # Enter project
+          mer dev           # Start dev server with hot reload
+          ```
+
+          ### Available Binaries
+
+          | Platform | Binary |
+          |----------|--------|
+          | macOS (Apple Silicon) | `mer-macos-aarch64` |
+          | macOS (Intel) | `mer-macos-x86_64` |
+          | Linux (x86_64) | `mer-linux-x86_64` |
+          | Linux (ARM64) | `mer-linux-aarch64` |
+
+          ### Verification
+
+          Check the SHA256 checksums:
+          ```bash
+          sha256sum -c checksums.txt
+          ```
           EOF
 
       - name: Create release
@@ -63,6 +103,7 @@ jobs:
             release/mer-macos-x86_64 \
             release/mer-linux-x86_64 \
             release/mer-linux-aarch64 \
+            release/install.sh \
             release/checksums.txt \
             --notes-file release/notes.md \
             --title "${{ github.ref_name }}" \

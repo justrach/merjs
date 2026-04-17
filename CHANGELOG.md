@@ -14,10 +14,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This p
 - Replace `queryParamFromStr` with turboapi-core's `queryStringGet`
 - Optional: radix trie for dynamic page routes (perf upgrade for large route counts)
 
+## [0.2.5] — 2026-04-17
+
+### Added
+- **Zig 0.16.0 support** — Full migration from Zig 0.15 to 0.16. See MIGRATION_0.16.md for details.
+- **Cloudflare Workers installer** — `merjs.trilok.ai/install.sh` now serves the installer from the edge
+- **One-line install** — `curl -fsSL https://merjs.trilok.ai/install.sh | bash`
+
+### Changed
+- Updated all `std.net` → `std.Io.net` APIs
+- Updated `std.io` → `std.Io` APIs  
+- Replaced `std.time.timestamp()` → `std.c.clock_gettime()`
+- Updated `ArrayListUnmanaged .{}` → `.empty`
+
 ---
 
 ## [Unreleased]
-
 ### Added
 - **Shell-first HTML rendering** — layout splits into head (CSS, meta, nav) and tail (footer, closing tags). The server flushes the head chunk immediately via chunked transfer encoding before the page's `render()` runs. This is NOT true streaming SSR (render still blocks) — it's early shell flushing so the browser can start painting the layout while waiting for page content.
 - **`mer.fetchAll()`** — parallel HTTP fetching. Spawns a thread per request, joins all. Cuts total latency to the slowest single fetch instead of the sum.

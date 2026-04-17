@@ -87,7 +87,7 @@ const TokenResponse = struct {
 // ── URL encoding ───────────────────────────────────────────────────────────
 
 fn urlEncode(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
-    var out: std.ArrayList(u8) = .{};
+    var out: std.ArrayList(u8) = .empty;
     defer out.deinit(alloc);
     for (input) |c| {
         if (isUnreserved(c)) {
@@ -123,7 +123,7 @@ fn appendParam(
 }
 
 fn buildFormBody(alloc: std.mem.Allocator, params: []const [2][]const u8) ![]u8 {
-    var buf: std.ArrayList(u8) = .{};
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
     for (params) |kv| try appendParam(alloc, &buf, kv[0], kv[1]);
     return buf.toOwnedSlice(alloc);
@@ -225,7 +225,7 @@ pub fn initiate(ctx: anytype, provider_id: []const u8) anyerror!mer.Response {
 
     const scope = try std.mem.join(alloc, " ", provider.scopes);
 
-    var qbuf: std.ArrayList(u8) = .{};
+    var qbuf: std.ArrayList(u8) = .empty;
     defer qbuf.deinit(alloc);
     try appendParam(alloc, &qbuf, "response_type", "code");
     try appendParam(alloc, &qbuf, "client_id", provider.client_id);

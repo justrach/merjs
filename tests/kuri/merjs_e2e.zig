@@ -94,7 +94,7 @@ fn pageSnap(a: std.mem.Allocator, tab_id: []const u8, path: []const u8) ![]const
 }
 
 pub fn main() !void {
-    var gpa_impl: std.heap.GeneralPurposeAllocator(.{}) = .init;
+    var gpa_impl: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa_impl.deinit();
     var arena_impl: std.heap.ArenaAllocator = .init(gpa_impl.allocator());
     defer arena_impl.deinit();

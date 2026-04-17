@@ -1,0 +1,15 @@
+name = "merjs-installer"
+compatibility_date = "2024-04-17"
+
+# Static assets configuration
+[assets]
+directory = "./public"
+
+# Custom domain route - add via Cloudflare dashboard:
+# Workers & Pages → merjs-installer → Settings → Triggers → Custom Domains
+# Add: merjs.trilok.ai
+#
+# Or uncomment below:
+# [[routes]]
+# pattern = "merjs.trilok.ai"
+# custom_domain = true

@@ -71,17 +71,17 @@ fn addRoutesModule(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Mo
 fn addDirModules(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Module, dir: []const u8) void {
     const layout_path = b.fmt("{s}/layout.zig", .{dir});
     const layout_mod: ?*std.Build.Module = blk: {
-        std.fs.cwd().access(layout_path, .{}) catch break :blk null;
+        std.Io.Dir.cwd().access(b.graph.io, layout_path, .{}) catch break :blk null;
         const m = b.createModule(.{ .root_source_file = b.path(layout_path) });
         m.addImport("mer", mer_mod);
         mod.addImport(b.fmt("{s}/layout", .{dir}), m);
         break :blk m;
     };
-    var d = std.fs.cwd().openDir(dir, .{ .iterate = true }) catch return;
-    defer d.close();
+    var d = std.Io.Dir.cwd().openDir(b.graph.io, dir, .{ .iterate = true }) catch return;
+    defer d.close(b.graph.io);
     var walker = d.walk(b.allocator) catch return;
     defer walker.deinit();
-    while (walker.next() catch null) |entry| {
+    while (walker.next(b.graph.io) catch null) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
         if (std.mem.eql(u8, entry.path, "layout.zig")) continue;

@@ -13,6 +13,6 @@ pub fn render(req: mer.Request) mer.Response {
         .message = "hello from merjs",
         .framework = "zig",
         .node_modules = 0,
-        .zig_version = "0.15",
+        .zig_version = "0.16",
     });
 }

@@ -18,6 +18,13 @@ const session = @import("../session.zig");
 const mer = @import("mer");
 const AuthContext = @import("../auth.zig").AuthContext;
 
+/// Get current Unix timestamp in seconds (Zig 0.16 compatible).
+fn currentUnixSeconds() i64 {
+    var ts: std.c.time.timespec = undefined;
+    _ = std.c.clock_gettime(std.c.time.CLOCK.REALTIME, &ts);
+    return ts.sec;
+}
+
 // ── SAML session TTL ──────────────────────────────────────────────────────
 
 /// In-flight SAML session expires after 5 minutes.
@@ -45,6 +52,7 @@ pub fn initiate(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Respons
         break :blk try std.fmt.allocPrint(alloc, "{s}/auth/saml/{s}/metadata", .{ base_url, provider.id });
     };
     const acs_url = try std.fmt.allocPrint(alloc, "{s}/auth/saml/{s}/callback", .{ base_url, provider.id });
+    const now_unix = currentUnixSeconds();
 
     // Generate IDs.
     const request_id = try authn.generateRequestId(alloc);
@@ -52,7 +60,6 @@ pub fn initiate(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Respons
 
     // Persist the in-flight SAML session for replay-attack prevention.
     const session_id = try crypto.generateUuid(alloc);
-    const now_unix = @divTrunc(std.time.milliTimestamp(), 1000);
     const expires_at = now_unix + SAML_SESSION_TTL_S;
 
     // INSERT INTO mauth_saml_sessions (id, provider_id, request_id, relay_state, expires_at, created_at)
@@ -120,14 +127,13 @@ pub fn callback(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Respons
     std.base64.standard.Decoder.decode(xml_bytes, saml_response_b64) catch {
         return mer.badRequest("invalid SAMLResponse base64");
     };
-
+    const now_unix = currentUnixSeconds();
     // Resolve SP entity ID for audience validation.
     const base_url = mer.env("BASE_URL") orelse "http://localhost:3000";
     const sp_entity_id = if (provider.sp_entity_id) |eid| eid else blk: {
         break :blk try std.fmt.allocPrint(alloc, "{s}/auth/saml/{s}/metadata", .{ base_url, provider.id });
     };
 
-    const now_unix = @divTrunc(std.time.milliTimestamp(), 1000);
 
     // Parse and validate the assertion (structure, conditions, audience, status).
     const assertion = xml.parseSamlResponse(xml_bytes, sp_entity_id, now_unix, alloc) catch |err| {
@@ -380,7 +386,7 @@ fn replacePlaceholder(alloc: Allocator, template: []const u8, placeholder: []con
 /// URL-decode a percent-encoded string (e.g. from form body).
 /// Only decodes %XX sequences; '+' is NOT treated as space (SAML spec).
 fn urlDecode(alloc: Allocator, input: []const u8) ![]u8 {
-    var out: std.ArrayListUnmanaged(u8) = .{};
+    var out: std.ArrayListUnmanaged(u8) = .empty;
     defer out.deinit(alloc);
     var i: usize = 0;
     while (i < input.len) {

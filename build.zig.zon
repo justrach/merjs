@@ -1,17 +1,18 @@
 .{
     .name = .merjs,
     .fingerprint = 0xaa135c45924bbfa8,
-    .version = "0.2.2",
-    .minimum_zig_version = "0.15.1",
+    .version = "0.2.5",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .dhi = .{
             .url = "git+https://github.com/justrach/dhi.git#20bbf6a25e9f0d28bd915f6dc7e18a9766b1134a",
             .hash = "dhi-0.1.0-Fz3bn3g6AwCFCeeGWyrLnJo-V95C5VkFxdVaWMEqc7iy",
         },
-        .kuri = .{
-            .url = "git+https://github.com/justrach/kuri.git#81baa2ffb060f87d2e8f6de2aa69eb509c700b91",
-            .hash = "agentic_browdie-0.1.0-uVYLKYovCADlIJw6TDdL9NnVr-LAtCLt5Sz4o1e8l6Y2",
-        },
+        // TODO: re-enable once kuri is updated for Zig 0.16
+        // .kuri = .{
+        //     .url = "git+https://github.com/justrach/kuri.git#81baa2ffb060f87d2e8f6de2aa69eb509c700b91",
+        //     .hash = "agentic_browdie-0.1.0-uVYLKYovCADlIJw6TDdL9NnVr-LAtCLt5Sz4o1e8l6Y2",
+        // },
         .turboapi_core = .{
             .url = "git+https://github.com/justrach/turboapi-core.git#6c4217b8d0cdc297f5b827527cdc9237213b14f1",
             .hash = "turboapi_core-0.1.0-DjdHgu19AABfWBxcHyuAg51BxbZ7jmtlJ5VRt9GTURAP",

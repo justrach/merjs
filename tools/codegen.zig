@@ -2,15 +2,20 @@
 // Run via: zig build codegen
 
 const std = @import("std");
+const runtime = @import("runtime");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
+    // Initialize std.Io runtime (Auto-selects Evented on Linux, Threaded elsewhere)
+    try runtime.init(alloc);
+    defer runtime.deinit();
+
     // Each entry stores the full relative path from the project root.
     // e.g. "app/about.zig", "api/hello.zig"
-    var entries: std.ArrayList([]u8) = .{};
+    var entries: std.ArrayList([]u8) = .empty;
     defer {
         for (entries.items) |e| alloc.free(e);
         entries.deinit(alloc);
@@ -30,11 +35,11 @@ pub fn main() !void {
         }
     }.lessThan);
 
-    var buf: std.ArrayList(u8) = .{};
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(alloc);
-    const w = buf.writer(alloc);
+    // 0.16: ArrayList no longer has .writer() — use appendSlice/print directly.
 
-    try w.writeAll(
+    try buf.appendSlice(alloc,
         \\// GENERATED — do not edit by hand.
         \\// Re-run `zig build codegen` to regenerate.
         \\
@@ -48,60 +53,60 @@ pub fn main() !void {
         defer alloc.free(ident);
         const import_name = try toImportName(alloc, path);
         defer alloc.free(import_name);
-        try w.print("const {s} = @import(\"{s}\");\n", .{ ident, import_name });
+        try buf.print(alloc, "const {s} = @import(\"{s}\");\n", .{ ident, import_name });
     }
 
-    try w.writeAll("\npub const routes: []const Route = &.{\n");
+    try buf.appendSlice(alloc, "\npub const routes: []const Route = &.{\n");
     for (entries.items) |path| {
         const ident = try toIdent(alloc, path);
         defer alloc.free(ident);
         const url = try toUrl(alloc, path);
         defer alloc.free(url);
-        try w.print("    .{{ .path = \"{s}\", .render = {s}.render, .render_stream = if (@hasDecl({s}, \"renderStream\")) {s}.renderStream else null, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}}, .prerender = if (@hasDecl({s}, \"prerender\")) {s}.prerender else false }},\n", .{ url, ident, ident, ident, ident, ident, ident, ident });
+        try buf.print(alloc, "    .{{ .path = \"{s}\", .render = {s}.render, .render_stream = if (@hasDecl({s}, \"renderStream\")) {s}.renderStream else null, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}}, .prerender = if (@hasDecl({s}, \"prerender\")) {s}.prerender else false }},\n", .{ url, ident, ident, ident, ident, ident, ident, ident });
     }
-    try w.writeAll("};\n\n");
+    try buf.appendSlice(alloc, "};\n\n");
 
     // Enforce: every app/ page must export `pub const meta: mer.Meta`.
-    try w.writeAll("comptime {\n");
+    try buf.appendSlice(alloc, "comptime {\n");
     for (entries.items) |path| {
         if (!std.mem.startsWith(u8, path, "app/")) continue;
         const ident = try toIdent(alloc, path);
         defer alloc.free(ident);
-        try w.print("    if (!@hasDecl({s}, \"meta\")) @compileError(\"{s} must export pub const meta: mer.Meta\");\n", .{ ident, path });
+        try buf.print(alloc, "    if (!@hasDecl({s}, \"meta\")) @compileError(\"{s} must export pub const meta: mer.Meta\");\n", .{ ident, path });
     }
-    try w.writeAll("}\n\n");
+    try buf.appendSlice(alloc, "}\n\n");
 
     // --- Framework primitives (auto-detected) ---
 
     // Layout — if app/layout.zig exists, export its wrap function.
     // Also export streamWrap for streaming SSR if the layout provides it.
     if (fileExists("app/layout.zig")) {
-        try w.writeAll("const app_layout = @import(\"app/layout\");\n");
-        try w.writeAll("pub const layout = app_layout.wrap;\n");
-        try w.writeAll("pub const streamLayout = if (@hasDecl(app_layout, \"streamWrap\")) app_layout.streamWrap else null;\n");
+        try buf.appendSlice(alloc, "const app_layout = @import(\"app/layout\");\n");
+        try buf.appendSlice(alloc, "pub const layout = app_layout.wrap;\n");
+        try buf.appendSlice(alloc, "pub const streamLayout = if (@hasDecl(app_layout, \"streamWrap\")) app_layout.streamWrap else null;\n");
     }
 
     // Error handlers — if app/404.zig exists, export its render function.
     if (fileExists("app/404.zig")) {
-        try w.writeAll("const app_404 = @import(\"app/404\");\n");
-        try w.writeAll("pub const notFound = app_404.render;\n");
+        try buf.appendSlice(alloc, "const app_404 = @import(\"app/404\");\n");
+        try buf.appendSlice(alloc, "pub const notFound = app_404.render;\n");
     }
 
-    try std.fs.cwd().makePath("src/generated");
-    const out = try std.fs.cwd().createFile("src/generated/routes.zig", .{});
-    defer out.close();
-    try out.writeAll(buf.items);
+    _ = try std.Io.Dir.cwd().createDirPathOpen(runtime.io, "src/generated", .{});
+    const out = try std.Io.Dir.cwd().createFile(runtime.io, "src/generated/routes.zig", .{});
+    defer out.close(runtime.io);
+    try out.writePositionalAll(runtime.io, buf.items, 0);
 
     std.debug.print("codegen: wrote {d} route(s) to src/generated/routes.zig\n", .{entries.items.len});
 }
 
 /// Scan dir/ for *.zig files, appending "dir/file.zig" to entries.
 fn scanDir(alloc: std.mem.Allocator, entries: *std.ArrayList([]u8), dir: []const u8) !void {
-    var d = std.fs.cwd().openDir(dir, .{ .iterate = true }) catch return;
-    defer d.close();
+    var d = std.Io.Dir.cwd().openDir(runtime.io, dir, .{ .iterate = true }) catch return;
+    defer d.close(runtime.io);
     var walker = try d.walk(alloc);
     defer walker.deinit();
-    while (try walker.next()) |entry| {
+    while (try walker.next(runtime.io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
         // Skip layout.zig — it's a shared layout module, not a route.
@@ -202,7 +207,7 @@ fn toUrl(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
 }
 
 fn fileExists(path: []const u8) bool {
-    std.fs.cwd().access(path, .{}) catch return false;
+    std.Io.Dir.cwd().access(runtime.io, path, .{}) catch return false;
     return true;
 }
 
