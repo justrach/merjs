@@ -8,6 +8,26 @@
 
 const std = @import("std");
 
+/// Convert snake_case to kebab-case at comptime
+fn toKebabCase(comptime str: []const u8) []const u8 {
+    comptime {
+        var result: [str.len * 2]u8 = undefined;
+        var j: usize = 0;
+
+        for (str, 0..) |c, i| {
+            if (c == '_' and i > 0 and i < str.len - 1) {
+                result[j] = '-';
+                j += 1;
+            } else if (c != '_') {
+                result[j] = c;
+                j += 1;
+            }
+        }
+
+        return result[0..j];
+    }
+}
+
 /// Helper to generate CSS from style struct at comptime
 fn generateCss(comptime styles: anytype) []const u8 {
     comptime {
@@ -26,8 +46,11 @@ fn generateCss(comptime styles: anytype) []const u8 {
                         else => value,
                     };
 
+                    // Convert property name to kebab-case for CSS
+                    const css_property = toKebabCase(field.name);
+
                     // Append CSS rule
-                    const rule = std.fmt.comptimePrint(".mcss-{s}{{{s}:{s};}}", .{ field.name, field.name, value_str });
+                    const rule = std.fmt.comptimePrint(".mcss-{s}{{{s}:{s};}}", .{ field.name, css_property, value_str });
                     css = css ++ rule;
                 }
             },
@@ -150,10 +173,19 @@ test "Button CSS generation" {
 }
 
 test "Card CSS generation" {
-    // Should contain border_radius (field name becomes CSS property in this demo)
-    try testing.expect(std.mem.indexOf(u8, Card.css, "border_radius") != null);
+    // Should contain border-radius (kebab-case conversion)
+    try testing.expect(std.mem.indexOf(u8, Card.css, "border-radius") != null);
     // Should contain white background
     try testing.expect(std.mem.indexOf(u8, Card.css, "white") != null);
+}
+
+test "kebab-case conversion" {
+    // Test snake_case to kebab-case conversion
+    comptime {
+        try testing.expectEqualStrings("border-radius", toKebabCase("border_radius"));
+        try testing.expectEqualStrings("background-color", toKebabCase("background_color"));
+        try testing.expectEqualStrings("font-size", toKebabCase("font_size"));
+    }
 }
 
 test "Button class names" {
