@@ -2,21 +2,16 @@
 // Polls file mtimes every 300ms. Notifies SSE clients on any change.
 
 const std = @import("std");
-
-// --- Zig 0.16 shims: Thread.sleep and Thread.Mutex were removed ---
-
-fn threadSleep(ns: u64) void {
-    const ts = std.c.timespec{
-        .sec = @intCast(ns / std.time.ns_per_s),
-        .nsec = @intCast(ns % std.time.ns_per_s),
-    };
-    _ = std.c.nanosleep(&ts, null);
-}
+const runtime = @import("runtime");
 
 const PthreadMutex = struct {
     inner: std.c.pthread_mutex_t = std.c.PTHREAD_MUTEX_INITIALIZER,
-    pub fn lock(m: *PthreadMutex) void { _ = std.c.pthread_mutex_lock(&m.inner); }
-    pub fn unlock(m: *PthreadMutex) void { _ = std.c.pthread_mutex_unlock(&m.inner); }
+    pub fn lock(m: *PthreadMutex) void {
+        _ = std.c.pthread_mutex_lock(&m.inner);
+    }
+    pub fn unlock(m: *PthreadMutex) void {
+        _ = std.c.pthread_mutex_unlock(&m.inner);
+    }
 };
 const log = std.log.scoped(.watcher);
 
@@ -45,19 +40,16 @@ pub const Watcher = struct {
     clients: std.ArrayList(*Client),
     mutex: PthreadMutex,
     mtimes: std.StringHashMap(std.Io.Timestamp),
-    threaded: std.Io.Threaded,
     io: std.Io,
 
     pub fn init(allocator: std.mem.Allocator, watch_dir: []const u8) Watcher {
-        var threaded: std.Io.Threaded = .init(allocator, .{});
         return .{
             .allocator = allocator,
             .watch_dir = watch_dir,
             .clients = .empty,
             .mutex = .{},
             .mtimes = std.StringHashMap(std.Io.Timestamp).init(allocator),
-            .io = threaded.io(),
-            .threaded = threaded,
+            .io = runtime.io, // Use shared runtime.io instead of creating new Threaded
         };
     }
 
@@ -151,4 +143,9 @@ pub fn handleSse(
 
     try bw.writer.writeAll("data: reload\n\n");
     try bw.end();
+}
+
+fn threadSleep(ns: u64) void {
+    // Use Io.sleep with awake clock (monotonic, excludes system suspend time)
+    _ = std.Io.sleep(runtime.io, .fromNanoseconds(ns), .awake) catch {};
 }

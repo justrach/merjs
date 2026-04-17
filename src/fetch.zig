@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const runtime = @import("runtime");
 
 /// Options for a single HTTP request made during server-side rendering.
 pub const FetchRequest = struct {
@@ -67,9 +68,8 @@ pub fn wasmClearCache() void {
 /// Make an HTTP request from a server-side page handler.
 pub fn fetch(allocator: std.mem.Allocator, opts: FetchRequest) !FetchResponse {
     if (comptime builtin.os.tag == .freestanding) return error.NotSupported;
-    var threaded: std.Io.Threaded = .init(allocator, .{});
-    defer threaded.deinit();
-    var client = std.http.Client{ .allocator = allocator, .io = threaded.io() };
+    // Use shared runtime.io instead of creating new Threaded instance
+    var client = std.http.Client{ .allocator = allocator, .io = runtime.io };
     defer client.deinit();
 
     var collecting: std.Io.Writer.Allocating = .init(allocator);

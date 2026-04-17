@@ -5,6 +5,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const env_mod = @import("env.zig");
+const runtime = @import("runtime");
 
 fn env(name: []const u8) ?[]const u8 {
     return env_mod.get(name);
@@ -54,8 +55,10 @@ pub fn sentryCapture(
 
     // Build the POST URL.
     var url_buf: [256]u8 = undefined;
-    const url = std.fmt.bufPrint(&url_buf,
-        "https://{s}/api/{s}/envelope/", .{ cfg.host, cfg.project_id },
+    const url = std.fmt.bufPrint(
+        &url_buf,
+        "https://{s}/api/{s}/envelope/",
+        .{ cfg.host, cfg.project_id },
     ) catch return;
 
     // Copy to heap for the thread.
@@ -80,9 +83,8 @@ fn sentrySendThread(gpa: *std.heap.DebugAllocator(.{}), url: []const u8, payload
         _ = gpa.deinit();
     }
     const alloc = gpa.allocator();
-    var threaded_io: std.Io.Threaded = .init(alloc, .{});
-    defer threaded_io.deinit();
-    var client = std.http.Client{ .allocator = alloc, .io = threaded_io.io() };
+    // Use shared runtime.io instead of creating new Threaded instance
+    var client = std.http.Client{ .allocator = alloc, .io = runtime.io };
     defer client.deinit();
 
     _ = client.fetch(.{
@@ -112,9 +114,9 @@ fn getStatsdSocket() ?*const std.Io.net.Socket {
     const port_str = env("DD_DOGSTATSD_PORT") orelse "8125";
     const port = std.fmt.parseInt(u16, port_str, 10) catch 8125;
     statsd_addr = std.Io.net.IpAddress.parse(host, port) catch return null;
-    var threaded: std.Io.Threaded = .init(std.heap.c_allocator, .{}); const io = threaded.io();
-    statsd_io = io;
-    statsd_sock = std.Io.net.IpAddress.bind(&statsd_addr.?, io, .{ .mode = .dgram }) catch return null;
+    // Use shared runtime.io instead of creating new Threaded instance
+    statsd_io = runtime.io;
+    statsd_sock = std.Io.net.IpAddress.bind(&statsd_addr.?, runtime.io, .{ .mode = .dgram }) catch return null;
     return &statsd_sock.?;
 }
 
@@ -126,7 +128,8 @@ pub fn ddTiming(path: []const u8, method: []const u8, status: u16, duration_us: 
     const io = statsd_io orelse return;
 
     var buf: [512]u8 = undefined;
-    const msg = std.fmt.bufPrint(&buf,
+    const msg = std.fmt.bufPrint(
+        &buf,
         "merjs.request.duration:{d}|ms|#path:{s},method:{s},status:{d}\n" ++
             "merjs.request.count:1|c|#path:{s},method:{s},status:{d}",
         .{ duration_us / 1000, path, method, status, path, method, status },
@@ -142,7 +145,8 @@ pub fn ddError(path: []const u8, method: []const u8, error_name: []const u8) voi
     const io = statsd_io orelse return;
 
     var buf: [512]u8 = undefined;
-    const msg = std.fmt.bufPrint(&buf,
+    const msg = std.fmt.bufPrint(
+        &buf,
         "merjs.request.error:1|c|#path:{s},method:{s},error:{s}",
         .{ path, method, error_name },
     ) catch return;
