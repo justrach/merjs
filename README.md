@@ -229,6 +229,60 @@ const server_mod = merjs_dep.module("server");
 ```
 
 Fresh `mer init` apps also vendor their own `tools/codegen.zig`, so route generation no longer depends on internal merjs package paths.
+
+---
+
+## Troubleshooting
+
+### Server crashes or "Connection refused"
+
+**Problem:** Server stops when terminal closes or shows "ERR_CONNECTION_REFUSED"
+
+**Solutions:**
+
+**1. Run in foreground (development):**
+```bash
+mer dev
+# or
+zig build serve
+```
+Server runs in terminal. Press `Ctrl+C` to stop.
+
+**2. Run in background with `nohup` (keeps running):**
+```bash
+# Build first
+zig build -Doptimize=ReleaseFast
+
+# Run with nohup (won't stop when terminal closes)
+nohup ./zig-out/bin/merjs --port 3000 --no-dev > merjs.log 2>&1 &
+
+# Check it's running
+curl http://localhost:3000
+
+# View logs
+tail -f merjs.log
+
+# Stop server
+pkill -f "merjs"
+```
+
+**3. Common fixes:**
+```bash
+# Port already in use?
+lsof -i :3000
+kill -9 <PID>
+
+# Or use different port
+./zig-out/bin/merjs --port 3001 --no-dev
+
+# Check binary exists
+ls -la zig-out/bin/merjs
+
+# Clean build
+rm -rf .zig-cache zig-out
+zig build -Doptimize=ReleaseFast
+```
+
 ---
 
 ## Demo
