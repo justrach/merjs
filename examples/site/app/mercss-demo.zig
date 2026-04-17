@@ -103,16 +103,14 @@ const DangerButton = design.InteractiveComponent(.{
 const FeatureCard = design.InteractiveComponent(.{
     .base = .{
         .background = "white",
-        .border_radius = design.radius.md,
+        .border_radius = design.radius.sm,
         .padding = design.space.lg,
         .border = "1px solid " ++ design.slate.c200,
         .box_shadow = design.shadow.sm,
         .transition = "all 0.3s ease",
-        .display = "flex",
-        .flex_direction = "column",
     },
     .hover = .{
-        .transform = "translateY(-4px)",
+        .transform = "translateY(-2px)",
         .box_shadow = design.shadow.md,
         .border_color = design.violet.c300,
     },
@@ -206,14 +204,14 @@ const page_css =
     ".page{max-width:1280px;margin:0 auto;padding:" ++ design.space.xl4 ++ " " ++ design.space.xl3 ++ ";}" ++
 
     // Hero section with elegant gradient background using solid colors
-    ".hero{background:linear-gradient(145deg," ++ design.slate.c900 ++ " 0%," ++ design.violet.c900 ++ " 50%," ++ design.purple.c900 ++ " 100%);color:white;padding:" ++ design.space.xl6 ++ " " ++ design.space.xl4 ++ ";text-align:center;border-radius:" ++ design.radius.xl2 ++ ";margin-bottom:" ++ design.space.xl5 ++ ";box-shadow:" ++ design.shadow.xl2 ++ ";position:relative;overflow:hidden;}" ++
+    ".hero{background:linear-gradient(145deg," ++ design.slate.c900 ++ " 0%," ++ design.violet.c900 ++ " 50%," ++ design.purple.c900 ++ " 100%);color:white;padding:" ++ design.space.xl6 ++ " " ++ design.space.xl4 ++ ";text-align:center;border-radius:" ++ design.radius.lg ++ ";margin-bottom:" ++ design.space.xl4 ++ ";box-shadow:" ++ design.shadow.xl ++ ";position:relative;overflow:hidden;}" ++
     ".hero::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 30% 50%,rgba(124,58,237,0.3) 0%,transparent 50%),radial-gradient(circle at 70% 50%,rgba(168,85,247,0.2) 0%,transparent 50%);pointer-events:none;}" ++
 
     // Hero content (relative to appear above pseudo-elements)
     ".hero-content{position:relative;z-index:1;}" ++
 
     // Hero badge
-    ".hero-badge{display:inline-flex;align-items:center;gap:" ++ design.space.sm ++ ";background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);padding:" ++ design.space.sm ++ " " ++ design.space.base ++ ";border-radius:" ++ design.radius.full ++ ";font-size:" ++ design.font.size.sm ++ ";font-weight:" ++ design.font.weight.medium ++ ";margin-bottom:" ++ design.space.xl ++ ";border:1px solid rgba(255,255,255,0.2);}" ++
+    ".hero-badge{display:inline-flex;align-items:center;gap:" ++ design.space.sm ++ ";background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);padding:" ++ design.space.sm ++ " " ++ design.space.base ++ ";border-radius:" ++ design.radius.lg ++ ";font-size:" ++ design.font.size.sm ++ ";font-weight:" ++ design.font.weight.medium ++ ";margin-bottom:" ++ design.space.xl ++ ";border:1px solid rgba(255,255,255,0.2);}" ++
 
     // Hero title
     ".hero-title{font-size:" ++ design.font.size.xl5 ++ ";font-weight:" ++ design.font.weight.bold ++ ";margin:0 0 " ++ design.space.lg ++ ";line-height:1.1;letter-spacing:-0.02em;background:linear-gradient(135deg,#fff 0%,#e9d5ff 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}" ++
@@ -225,8 +223,8 @@ const page_css =
     ".hero-actions{display:flex;gap:" ++ design.space.md ++ ";justify-content:center;flex-wrap:wrap;}" ++
 
     // Section styling
-    ".section{margin-bottom:" ++ design.space.xl4 ++ ";}" ++
-    ".section-header{text-align:center;margin-bottom:" ++ design.space.xl2 ++ ";}" ++
+    ".section{margin-bottom:" ++ design.space.xl3 ++ ";}" ++
+    ".section-header{text-align:center;margin-bottom:" ++ design.space.xl ++ ";max-width:100%;overflow:hidden;}" ++
     ".section-label{color:" ++ design.violet.c600 ++ ";font-size:" ++ design.font.size.sm ++ ";font-weight:" ++ design.font.weight.semibold ++ ";text-transform:uppercase;letter-spacing:0.1em;margin-bottom:" ++ design.space.sm ++ ";}" ++
     ".section-title{font-size:" ++ design.font.size.xl3 ++ ";font-weight:" ++ design.font.weight.bold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.base ++ ";letter-spacing:-0.02em;}" ++
     ".section-desc{font-size:" ++ design.font.size.lg ++ ";color:" ++ design.slate.c600 ++ ";max-width:600px;margin:0 auto;line-height:1.6;}" ++
@@ -237,7 +235,7 @@ const page_css =
     "@media (min-width: 1024px){.feature-grid{grid-template-columns:repeat(3,1fr);gap:" ++ design.space.xl ++ ";}}" ++
 
     // Feature card icon container
-    ".feature-icon-wrap{width:48px;height:48px;border-radius:" ++ design.radius.lg ++ ";display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:" ++ design.space.base ++ ";box-shadow:" ++ design.shadow.sm ++ ";}" ++
+    ".feature-icon-wrap{width:48px;height:48px;border-radius:" ++ design.radius.md ++ ";display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:" ++ design.space.md ++ ";}" ++
 
     // Feature title
     ".feature-title{font-size:" ++ design.font.size.lg ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.xs ++ ";}" ++
@@ -246,7 +244,7 @@ const page_css =
     ".feature-desc{font-size:" ++ design.font.size.sm ++ ";color:" ++ design.slate.c600 ++ ";line-height:1.6;margin:0;}" ++
 
     // Code example section
-    ".code-section{background:white;border-radius:" ++ design.radius.lg ++ ";padding:" ++ design.space.xl2 ++ ";border:1px solid " ++ design.slate.c200 ++ ";box-shadow:" ++ design.shadow.sm ++ ";}" ++
+    ".code-section{background:white;border-radius:" ++ design.radius.md ++ ";padding:" ++ design.space.xl ++ ";border:1px solid " ++ design.slate.c200 ++ ";box-shadow:" ++ design.shadow.sm ++ ";}" ++
     ".code-header{display:flex;align-items:center;gap:" ++ design.space.sm ++ ";margin-bottom:" ++ design.space.lg ++ ";padding-bottom:" ++ design.space.base ++ ";border-bottom:1px solid " ++ design.slate.c200 ++ ";}" ++
     ".code-dot{width:12px;height:12px;border-radius:50%;}" ++
     ".code-dot-red{background:" ++ design.rose.c500 ++ ";}" ++
@@ -255,7 +253,7 @@ const page_css =
     ".code-title{font-size:" ++ design.font.size.sm ++ ";color:" ++ design.slate.c500 ++ ";font-weight:" ++ design.font.weight.medium ++ ";margin-left:auto;}" ++
 
     // Interactive demo section
-    ".interactive-demo{background:linear-gradient(135deg," ++ design.violet.c50 ++ " 0%," ++ design.purple.c50 ++ " 100%);border-radius:" ++ design.radius.lg ++ ";padding:" ++ design.space.xl2 ++ ";border:1px solid " ++ design.violet.c200 ++ ";}" ++
+    ".interactive-demo{background:" ++ design.violet.c50 ++ ";border-radius:" ++ design.radius.md ++ ";padding:" ++ design.space.xl ++ ";border:1px solid " ++ design.violet.c200 ++ ";}" ++
     ".interactive-title{font-size:" ++ design.font.size.xl ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.base ++ ";}" ++
     ".interactive-desc{font-size:" ++ design.font.size.base ++ ";color:" ++ design.slate.c600 ++ ";margin:0 0 " ++ design.space.xl2 ++ ";}" ++
     ".button-row{display:flex;gap:" ++ design.space.md ++ ";flex-wrap:wrap;align-items:center;}" ++
