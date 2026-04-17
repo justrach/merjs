@@ -1,9 +1,10 @@
 const mer = @import("mer");
 const h = mer.h;
 const design = mer.design;
+const mercss = @import("mercss");
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// mercss DESIGN SYSTEM DEMO - Polished visuals
+// mercss DESIGN SYSTEM DEMO - Interactive Components with State Variants
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Primary action button
@@ -26,6 +27,105 @@ const PrimaryButton = design.ResponsiveComponent(.{
     .md = .{
         .padding = design.space.base ++ " " ++ design.space.xl2,
         .font_size = design.font.size.base,
+    },
+});
+
+// Interactive button with hover:, focus:, active: states
+const InteractiveButton = mercss.InteractiveComponent(.{
+    .base = .{
+        .display = "inline-flex",
+        .align_items = "center",
+        .justify_content = "center",
+        .padding = design.space.md ++ " " ++ design.space.lg,
+        .background = design.primary.c600,
+        .color = "white",
+        .font_size = design.font.size.base,
+        .font_weight = design.font.weight.semibold,
+        .border_radius = design.radius.md,
+        .border = "none",
+        .cursor = "pointer",
+        .box_shadow = design.shadow.md,
+        .transition = "all 0.2s ease",
+    },
+    .hover = .{
+        .background = design.primary.c700,
+        .transform = "translateY(-2px)",
+        .box_shadow = design.shadow.lg,
+    },
+    .focus = .{
+        .outline = "none",
+        .box_shadow = "0 0 0 3px " ++ design.primary.c200,
+    },
+    .active = .{
+        .transform = "scale(0.98) translateY(0)",
+        .background = design.primary.c800,
+        .box_shadow = design.shadow.sm,
+    },
+    .md = .{
+        .base = .{ .padding = design.space.lg ++ " " ++ design.space.xl2 },
+        .hover = .{ .transform = "translateY(-3px)" },
+    },
+});
+
+// Interactive danger button (red)
+const DangerButton = mercss.InteractiveComponent(.{
+    .base = .{
+        .display = "inline-flex",
+        .align_items = "center",
+        .justify_content = "center",
+        .padding = design.space.md ++ " " ++ design.space.lg,
+        .background = design.danger.c600,
+        .color = "white",
+        .font_size = design.font.size.base,
+        .font_weight = design.font.weight.semibold,
+        .border_radius = design.radius.md,
+        .border = "none",
+        .cursor = "pointer",
+        .box_shadow = design.shadow.md,
+        .transition = "all 0.2s ease",
+    },
+    .hover = .{
+        .background = design.danger.c700,
+        .transform = "translateY(-2px)",
+    },
+    .focus = .{
+        .outline = "none",
+        .box_shadow = "0 0 0 3px " ++ design.danger.c200,
+    },
+    .active = .{
+        .transform = "scale(0.98)",
+        .background = design.danger.c800,
+    },
+});
+
+// Interactive ghost button (subtle)
+const GhostButton = mercss.InteractiveComponent(.{
+    .base = .{
+        .display = "inline-flex",
+        .align_items = "center",
+        .justify_content = "center",
+        .padding = design.space.md ++ " " ++ design.space.lg,
+        .background = "transparent",
+        .color = design.slate.c700,
+        .font_size = design.font.size.base,
+        .font_weight = design.font.weight.medium,
+        .border_radius = design.radius.md,
+        .border = "1px solid " ++ design.slate.c300,
+        .cursor = "pointer",
+        .transition = "all 0.2s ease",
+    },
+    .hover = .{
+        .background = design.slate.c100,
+        .border_color = design.slate.c400,
+    },
+    .focus = .{
+        .outline = "none",
+        .border_color = design.primary.c500,
+        .box_shadow = "0 0 0 3px " ++ design.slate.c200,
+    },
+    .active = .{
+        .background = design.slate.c200,
+        .transform = "scale(0.98)",
     },
 });
 
@@ -108,6 +208,9 @@ const Input = design.Component(.{
 // Page CSS - all the generated CSS concatenated
 const page_css =
     PrimaryButton.css ++
+    InteractiveButton.css ++
+    DangerButton.css ++
+    GhostButton.css ++
     HeroCard.css ++
     FeatureCard.css ++
     SuccessAlert.css ++
@@ -214,6 +317,59 @@ pub fn render(req: mer.Request) mer.Response {
                 h.raw("<input class='" ++ Input.classes ++ "' type='text' placeholder='Type something...' />"),
                 h.raw("<input class='" ++ Input.classes ++ "' type='email' placeholder='email@example.com' style='margin-top:" ++ design.space.md ++ ";' />"),
                 h.raw("<button class='" ++ PrimaryButton.classes ++ "' style='margin-top:" ++ design.space.lg ++ ";'>Submit</button>"),
+            }),
+        }),
+
+        // INTERACTIVE COMPONENTS DEMO - State Variants (hover:, focus:, active:)
+        h.div(.{ .class = "demo-section" }, .{
+            h.h2(.{ .class = "section-title" }, "Interactive Components (New!)"),
+            h.p(.{ .style = "color:" ++ design.slate.c600 ++ ";margin-bottom:" ++ design.space.lg ++ ";" }, "Try hovering, focusing (tab), and clicking these buttons. State variants: hover:, focus:, active:"),
+            h.div(.{ .style = "display:flex;gap:" ++ design.space.md ++ ";flex-wrap:wrap;align-items:center;" }, .{
+                h.raw("<button class='" ++ InteractiveButton.classes ++ "'>Hover & Click Me</button>"),
+                h.raw("<button class='" ++ DangerButton.classes ++ "'>Delete</button>"),
+                h.raw("<button class='" ++ GhostButton.classes ++ "'>Cancel</button>"),
+            }),
+        }),
+
+        // NEW FEATURE GRID - State Variants
+        h.div(.{ .class = "demo-section" }, .{
+            h.h2(.{ .class = "section-title" }, "What's New: State Variants"),
+            h.div(.{ .class = "grid grid-3" }, .{
+                h.div(.{ .class = FeatureCard.classes }, .{
+                    h.div(.{ .class = "feature-icon", .style = "background:" ++ design.primary.c100 ++ ";color:" ++ design.primary.c600 }, "🖱️"),
+                    h.h3(.{ .class = "feature-title" }, "hover:"),
+                    h.p(.{ .class = "feature-desc" }, "Apply styles when user hovers. Perfect for buttons, links, and cards."),
+                }),
+
+                h.div(.{ .class = FeatureCard.classes }, .{
+                    h.div(.{ .class = "feature-icon", .style = "background:" ++ design.success.c100 ++ ";color:" ++ design.success.c600 }, "⌨️"),
+                    h.h3(.{ .class = "feature-title" }, "focus:"),
+                    h.p(.{ .class = "feature-desc" }, "Keyboard accessible focus rings. Auto-applies on tab navigation."),
+                }),
+
+                h.div(.{ .class = FeatureCard.classes }, .{
+                    h.div(.{ .class = "feature-icon", .style = "background:" ++ design.warning.c100 ++ ";color:" ++ design.warning.c600 }, "👆"),
+                    h.h3(.{ .class = "feature-title" }, "active:"),
+                    h.p(.{ .class = "feature-desc" }, "Styles while button is being pressed. Scale transform, darker color."),
+                }),
+
+                h.div(.{ .class = FeatureCard.classes }, .{
+                    h.div(.{ .class = "feature-icon", .style = "background:" ++ design.info.c100 ++ ";color:" ++ design.info.c600 }, "📱"),
+                    h.h3(.{ .class = "feature-title" }, "Responsive States"),
+                    h.p(.{ .class = "feature-desc" }, "Combine breakpoints with states: hover:md:, focus:lg:, active:sm:."),
+                }),
+
+                h.div(.{ .class = FeatureCard.classes }, .{
+                    h.div(.{ .class = "feature-icon", .style = "background:" ++ design.pink.c100 ++ ";color:" ++ design.pink.c600 }, "⚡"),
+                    h.h3(.{ .class = "feature-title" }, "Zero Runtime"),
+                    h.p(.{ .class = "feature-desc" }, "All CSS generated at compile-time. No JS needed, no hydration."),
+                }),
+
+                h.div(.{ .class = FeatureCard.classes }, .{
+                    h.div(.{ .class = "feature-icon", .style = "background:" ++ design.purple.c100 ++ ";color:" ++ design.purple.c600 }, "🔒"),
+                    h.h3(.{ .class = "feature-title" }, "Type-Safe"),
+                    h.p(.{ .class = "feature-desc" }, "Invalid states cause compile errors. Catch issues before deployment."),
+                }),
             }),
         }),
     });

@@ -250,6 +250,334 @@ pub fn ResponsiveComponent(comptime config: anytype) type {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// STATE VARIANTS - Hover, Focus, Active
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// State pseudo-classes for interactive components
+pub const State = enum {
+    hover,
+    focus,
+    active,
+};
+
+/// Generate CSS for state variants (hover:, focus:, active:)
+fn generateStateCss(comptime prefix: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        var css: []const u8 = "";
+
+        const T = @TypeOf(styles);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.fields) |field| {
+                    const value = @field(styles, field.name);
+                    const value_str = switch (@typeInfo(@TypeOf(value))) {
+                        .@"enum" => @tagName(value),
+                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
+                        else => value,
+                    };
+
+                    const css_property = toKebabCase(field.name);
+
+                    // Generate :hover, :focus, or :active pseudo-class rule
+                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}:{s}{{{s}:{s};}}", .{ prefix, field.name, prefix, css_property, value_str });
+                    css = css ++ rule;
+                }
+            },
+            else => {},
+        }
+
+        return css;
+    }
+}
+
+/// Get class names for state variants
+fn getStateClassNames(comptime prefix: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        var names: []const u8 = "";
+
+        const T = @TypeOf(styles);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.fields) |field| {
+                    const name = std.fmt.comptimePrint("mcss-{s}-{s} ", .{ prefix, field.name });
+                    names = names ++ name;
+                }
+            },
+            else => {},
+        }
+
+        // Remove trailing space
+        return if (names.len > 0) names[0 .. names.len - 1] else "";
+    }
+}
+
+/// Generate responsive + state combined CSS (e.g., hover:md:)
+fn generateResponsiveStateCss(comptime bp: []const u8, comptime state: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        var css: []const u8 = "";
+
+        const T = @TypeOf(styles);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.fields) |field| {
+                    const value = @field(styles, field.name);
+                    const value_str = switch (@typeInfo(@TypeOf(value))) {
+                        .@"enum" => @tagName(value),
+                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
+                        else => value,
+                    };
+
+                    const css_property = toKebabCase(field.name);
+
+                    // Media query with pseudo-class: @media (min-width: Xpx) { .mcss-hover-md-foo:hover {...} }
+                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}-{s}:{s}{{{s}:{s};}}", .{ state, bp, field.name, state, css_property, value_str });
+                    css = css ++ rule;
+                }
+            },
+            else => {},
+        }
+
+        return css;
+    }
+}
+
+/// Generate CSS for an interactive component with states
+fn generateInteractiveCss(comptime config: anytype) []const u8 {
+    comptime {
+        @setEvalBranchQuota(10000);
+        var css: []const u8 = "";
+
+        // Base styles
+        if (@hasField(@TypeOf(config), "base")) {
+            css = css ++ generateCss(config.base);
+        }
+
+        // Hover styles
+        if (@hasField(@TypeOf(config), "hover")) {
+            css = css ++ generateStateCss("hover", config.hover);
+        }
+
+        // Focus styles
+        if (@hasField(@TypeOf(config), "focus")) {
+            css = css ++ generateStateCss("focus", config.focus);
+        }
+
+        // Active styles
+        if (@hasField(@TypeOf(config), "active")) {
+            css = css ++ generateStateCss("active", config.active);
+        }
+
+        // Responsive breakpoints with states
+        // Format: hover:sm:property = .mcss-hover-sm-property:hover inside @media
+
+        // sm breakpoint (640px+) with states
+        if (@hasField(@TypeOf(config), "sm")) {
+            const sm_config = config.sm;
+            var sm_css: []const u8 = "";
+
+            if (@hasField(@TypeOf(sm_config), "base")) {
+                sm_css = sm_css ++ generateBreakpointCss("sm", sm_config.base);
+            }
+            if (@hasField(@TypeOf(sm_config), "hover")) {
+                sm_css = sm_css ++ generateResponsiveStateCss("sm", "hover", sm_config.hover);
+            }
+            if (@hasField(@TypeOf(sm_config), "focus")) {
+                sm_css = sm_css ++ generateResponsiveStateCss("sm", "focus", sm_config.focus);
+            }
+            if (@hasField(@TypeOf(sm_config), "active")) {
+                sm_css = sm_css ++ generateResponsiveStateCss("sm", "active", sm_config.active);
+            }
+
+            if (sm_css.len > 0) {
+                css = css ++ "@media (min-width: 640px){" ++ sm_css ++ "}";
+            }
+        }
+
+        // md breakpoint (768px+) with states
+        if (@hasField(@TypeOf(config), "md")) {
+            const md_config = config.md;
+            var md_css: []const u8 = "";
+
+            if (@hasField(@TypeOf(md_config), "base")) {
+                md_css = md_css ++ generateBreakpointCss("md", md_config.base);
+            }
+            if (@hasField(@TypeOf(md_config), "hover")) {
+                md_css = md_css ++ generateResponsiveStateCss("md", "hover", md_config.hover);
+            }
+            if (@hasField(@TypeOf(md_config), "focus")) {
+                md_css = md_css ++ generateResponsiveStateCss("md", "focus", md_config.focus);
+            }
+            if (@hasField(@TypeOf(md_config), "active")) {
+                md_css = md_css ++ generateResponsiveStateCss("md", "active", md_config.active);
+            }
+
+            if (md_css.len > 0) {
+                css = css ++ "@media (min-width: 768px){" ++ md_css ++ "}";
+            }
+        }
+
+        // lg breakpoint (1024px+) with states
+        if (@hasField(@TypeOf(config), "lg")) {
+            const lg_config = config.lg;
+            var lg_css: []const u8 = "";
+
+            if (@hasField(@TypeOf(lg_config), "base")) {
+                lg_css = lg_css ++ generateBreakpointCss("lg", lg_config.base);
+            }
+            if (@hasField(@TypeOf(lg_config), "hover")) {
+                lg_css = lg_css ++ generateResponsiveStateCss("lg", "hover", lg_config.hover);
+            }
+            if (@hasField(@TypeOf(lg_config), "focus")) {
+                lg_css = lg_css ++ generateResponsiveStateCss("lg", "focus", lg_config.focus);
+            }
+            if (@hasField(@TypeOf(lg_config), "active")) {
+                lg_css = lg_css ++ generateResponsiveStateCss("lg", "active", lg_config.active);
+            }
+
+            if (lg_css.len > 0) {
+                css = css ++ "@media (min-width: 1024px){" ++ lg_css ++ "}";
+            }
+        }
+
+        return css;
+    }
+}
+
+/// Get class names for interactive component
+fn getInteractiveClassNames(comptime config: anytype) []const u8 {
+    comptime {
+        @setEvalBranchQuota(5000);
+        var names: []const u8 = "";
+
+        // Base classes
+        if (@hasField(@TypeOf(config), "base")) {
+            const base_names = getClassNames(config.base);
+            if (base_names.len > 0) {
+                names = names ++ base_names ++ " ";
+            }
+        }
+
+        // Hover classes
+        if (@hasField(@TypeOf(config), "hover")) {
+            const hover_names = getStateClassNames("hover", config.hover);
+            if (hover_names.len > 0) {
+                names = names ++ hover_names ++ " ";
+            }
+        }
+
+        // Focus classes
+        if (@hasField(@TypeOf(config), "focus")) {
+            const focus_names = getStateClassNames("focus", config.focus);
+            if (focus_names.len > 0) {
+                names = names ++ focus_names ++ " ";
+            }
+        }
+
+        // Active classes
+        if (@hasField(@TypeOf(config), "active")) {
+            const active_names = getStateClassNames("active", config.active);
+            if (active_names.len > 0) {
+                names = names ++ active_names ++ " ";
+            }
+        }
+
+        // Responsive breakpoints with states
+        if (@hasField(@TypeOf(config), "sm")) {
+            const sm_config = config.sm;
+            if (@hasField(@TypeOf(sm_config), "base")) {
+                names = names ++ getBreakpointClassNames("sm", sm_config.base) ++ " ";
+            }
+            if (@hasField(@TypeOf(sm_config), "hover")) {
+                names = names ++ getResponsiveStateClassNames("sm", "hover", sm_config.hover) ++ " ";
+            }
+            if (@hasField(@TypeOf(sm_config), "focus")) {
+                names = names ++ getResponsiveStateClassNames("sm", "focus", sm_config.focus) ++ " ";
+            }
+            if (@hasField(@TypeOf(sm_config), "active")) {
+                names = names ++ getResponsiveStateClassNames("sm", "active", sm_config.active) ++ " ";
+            }
+        }
+
+        if (@hasField(@TypeOf(config), "md")) {
+            const md_config = config.md;
+            if (@hasField(@TypeOf(md_config), "base")) {
+                names = names ++ getBreakpointClassNames("md", md_config.base) ++ " ";
+            }
+            if (@hasField(@TypeOf(md_config), "hover")) {
+                names = names ++ getResponsiveStateClassNames("md", "hover", md_config.hover) ++ " ";
+            }
+            if (@hasField(@TypeOf(md_config), "focus")) {
+                names = names ++ getResponsiveStateClassNames("md", "focus", md_config.focus) ++ " ";
+            }
+            if (@hasField(@TypeOf(md_config), "active")) {
+                names = names ++ getResponsiveStateClassNames("md", "active", md_config.active) ++ " ";
+            }
+        }
+
+        if (@hasField(@TypeOf(config), "lg")) {
+            const lg_config = config.lg;
+            if (@hasField(@TypeOf(lg_config), "base")) {
+                names = names ++ getBreakpointClassNames("lg", lg_config.base) ++ " ";
+            }
+            if (@hasField(@TypeOf(lg_config), "hover")) {
+                names = names ++ getResponsiveStateClassNames("lg", "hover", lg_config.hover) ++ " ";
+            }
+            if (@hasField(@TypeOf(lg_config), "focus")) {
+                names = names ++ getResponsiveStateClassNames("lg", "focus", lg_config.focus) ++ " ";
+            }
+            if (@hasField(@TypeOf(lg_config), "active")) {
+                names = names ++ getResponsiveStateClassNames("lg", "active", lg_config.active) ++ " ";
+            }
+        }
+
+        // Remove trailing space
+        return if (names.len > 0) names[0 .. names.len - 1] else "";
+    }
+}
+
+/// Get class names for responsive state variants
+fn getResponsiveStateClassNames(comptime bp: []const u8, comptime state: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        var names: []const u8 = "";
+
+        const T = @TypeOf(styles);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.fields) |field| {
+                    const name = std.fmt.comptimePrint("mcss-{s}-{s}-{s} ", .{ state, bp, field.name });
+                    names = names ++ name;
+                }
+            },
+            else => {},
+        }
+
+        return if (names.len > 0) names[0 .. names.len - 1] else "";
+    }
+}
+
+/// Create an interactive component with hover:, focus:, active: variants
+///
+/// Usage:
+/// ```zig
+/// const Button = mercss.InteractiveComponent(.{
+///     .base = .{ .background = "#3b82f6" },
+///     .hover = .{ .background = "#2563eb" },
+///     .focus = .{ .box_shadow = "0 0 0 3px rgba(59,130,246,0.3)" },
+///     .active = .{ .transform = "scale(0.98)" },
+///     .sm = .{
+///         .base = .{ .padding = "12px 24px" },
+///         .hover = .{ .background = "#1d4ed8" },
+///     },
+/// });
+/// ```
+pub fn InteractiveComponent(comptime config: anytype) type {
+    return struct {
+        pub const css = generateInteractiveCss(config);
+        pub const classes = getInteractiveClassNames(config);
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // DEMO: Design System & Components
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -428,6 +756,119 @@ test "Responsive breakpoints structure" {
         try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media (min-width: 768px)") != null);
         try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-md-padding{padding:32px;}") != null);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTERACTIVE COMPONENT TESTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Demo: Interactive button with hover, focus, and active states
+pub const InteractiveButton = InteractiveComponent(.{
+    .base = .{
+        .padding = "12px 24px",
+        .background = "#3b82f6",
+        .color = "white",
+        .border_radius = "6px",
+        .cursor = "pointer",
+        .transition = "all 0.2s",
+    },
+    .hover = .{
+        .background = "#2563eb",
+        .transform = "translateY(-1px)",
+    },
+    .focus = .{
+        .box_shadow = "0 0 0 3px rgba(59,130,246,0.3)",
+        .outline = "none",
+    },
+    .active = .{
+        .transform = "scale(0.98)",
+        .background = "#1d4ed8",
+    },
+});
+
+test "Interactive component CSS generation" {
+    comptime {
+        @setEvalBranchQuota(5000);
+
+        // Base styles
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-padding{padding:12px 24px;}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-background{background:#3b82f6;}") != null);
+
+        // Hover pseudo-class
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-hover-background:hover{background:#2563eb;}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-hover-transform:hover{transform:translateY(-1px);}") != null);
+
+        // Focus pseudo-class
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-focus-box_shadow:focus{box-shadow:") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-focus-outline:focus{outline:none;}") != null);
+
+        // Active pseudo-class
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-active-transform:active{transform:scale(0.98);}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-active-background:active{background:#1d4ed8;}") != null);
+    }
+}
+
+test "Interactive component class names" {
+    // Should contain base classes
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-padding") != null);
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-background") != null);
+
+    // Should contain hover classes
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-hover-background") != null);
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-hover-transform") != null);
+
+    // Should contain focus classes
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-focus-box_shadow") != null);
+
+    // Should contain active classes
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-active-transform") != null);
+}
+
+/// Demo: Interactive component with responsive state variants
+pub const ResponsiveInteractiveButton = InteractiveComponent(.{
+    .base = .{
+        .padding = "8px 16px",
+        .background = "#3b82f6",
+    },
+    .hover = .{
+        .background = "#2563eb",
+    },
+    .sm = .{
+        .base = .{ .padding = "12px 24px" },
+        .hover = .{ .background = "#1d4ed8" },
+    },
+    .md = .{
+        .base = .{ .padding = "16px 32px" },
+        .hover = .{ .background = "#1e40af" },
+    },
+});
+
+test "Responsive interactive component" {
+    comptime {
+        @setEvalBranchQuota(10000);
+
+        // Base styles
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-padding{padding:8px 16px;}") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-hover-background:hover{background:#2563eb;}") != null);
+
+        // sm breakpoint with hover
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, "@media (min-width: 640px)") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-hover-sm-background:hover{background:#1d4ed8;}") != null);
+
+        // md breakpoint with hover
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, "@media (min-width: 768px)") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-hover-md-background:hover{background:#1e40af;}") != null);
+    }
+}
+
+test "Responsive interactive class names" {
+    // Base classes
+    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-padding") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-hover-background") != null);
+
+    // Responsive hover classes
+    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-hover-sm-background") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-hover-md-background") != null);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
