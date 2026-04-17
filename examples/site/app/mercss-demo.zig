@@ -1,7 +1,6 @@
 const mer = @import("mer");
 const h = mer.h;
 const design = mer.design;
-const mercss = @import("mercss");
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // mercss DESIGN SYSTEM DEMO - Interactive Components with State Variants
@@ -31,7 +30,7 @@ const PrimaryButton = design.ResponsiveComponent(.{
 });
 
 // Interactive button with hover:, focus:, active: states
-const InteractiveButton = mercss.InteractiveComponent(.{
+const InteractiveButton = design.InteractiveComponent(.{
     .base = .{
         .display = "inline-flex",
         .align_items = "center",
@@ -68,7 +67,7 @@ const InteractiveButton = mercss.InteractiveComponent(.{
 });
 
 // Interactive danger button (red)
-const DangerButton = mercss.InteractiveComponent(.{
+const DangerButton = design.InteractiveComponent(.{
     .base = .{
         .display = "inline-flex",
         .align_items = "center",
@@ -99,7 +98,7 @@ const DangerButton = mercss.InteractiveComponent(.{
 });
 
 // Interactive ghost button (subtle)
-const GhostButton = mercss.InteractiveComponent(.{
+const GhostButton = design.InteractiveComponent(.{
     .base = .{
         .display = "inline-flex",
         .align_items = "center",
