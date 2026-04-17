@@ -9,12 +9,11 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const runtime = @import("runtime.zig");
 
 pub const version = "0.2.5";
 
 const print = std.debug.print;
-
-var g_io: std.Io = undefined;
 
 /// Resolve an executable name to full path using PATH environment variable.
 /// Caller owns the returned memory.
@@ -31,8 +30,8 @@ fn resolveInPath(alloc: std.mem.Allocator, name: []const u8) ![]const u8 {
         if (dir.len == 0) continue;
         const full_path = try std.fs.path.join(alloc, &.{ dir, name });
 
-        // Check if file exists using Io.Dir
-        std.Io.Dir.cwd().access(g_io, full_path, .{}) catch {
+        // Check if file exists using Io.Dir via runtime
+        std.Io.Dir.cwd().access(runtime.io, full_path, .{}) catch {
             alloc.free(full_path);
             continue;
         };
@@ -53,9 +52,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    var threaded: std.Io.Threaded = .init(alloc, .{});
-    defer threaded.deinit();
-    g_io = threaded.io();
+    // Initialize std.Io runtime
+    runtime.init(alloc);
+    defer runtime.deinit();
 
     var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer arena_state.deinit();
@@ -323,11 +322,11 @@ const generated_routes_placeholder =
 
 fn writeScaffoldFile(dir: std.Io.Dir, path: []const u8, content: []const u8) !void {
     if (std.fs.path.dirname(path)) |parent| {
-        dir.createDirPath(g_io, parent) catch {};
+        dir.createDirPath(runtime.io, parent) catch {};
     }
-    const file = try dir.createFile(g_io, path, .{});
-    defer file.close(g_io);
-    try file.writeStreamingAll(g_io, content);
+    const file = try dir.createFile(runtime.io, path, .{});
+    defer file.close(runtime.io);
+    try file.writeStreamingAll(runtime.io, content);
 }
 
 fn writeTemplateFiles(dir: std.Io.Dir) !void {
@@ -375,26 +374,26 @@ fn writeBuildZigZon(dir: std.Io.Dir, alloc: std.mem.Allocator, name: []const u8)
     const zig_name = try projectNameForZon(alloc, name);
     defer alloc.free(zig_name);
 
-    const file = try dir.createFile(g_io, "build.zig.zon", .{});
-    defer file.close(g_io);
-    try file.writeStreamingAll(g_io, ".{\n    .name = .");
-    try file.writeStreamingAll(g_io, zig_name);
-    try file.writeStreamingAll(g_io, ",\n    .version = \"0.1.0\",\n");
-    try file.writeStreamingAll(g_io, "    .minimum_zig_version = \"0.16.0\",\n");
-    try file.writeStreamingAll(g_io, "    .dependencies = .{\n");
-    try file.writeStreamingAll(g_io, "        .merjs = .{\n");
-    try file.writeStreamingAll(g_io, "            .url = \"git+https://github.com/justrach/merjs.git\",\n");
-    try file.writeStreamingAll(g_io, "        },\n");
-    try file.writeStreamingAll(g_io, "    },\n");
-    try file.writeStreamingAll(g_io, "    .paths = .{\n");
-    try file.writeStreamingAll(g_io, "        \"build.zig\",\n");
-    try file.writeStreamingAll(g_io, "        \"build.zig.zon\",\n");
-    try file.writeStreamingAll(g_io, "        \"src\",\n");
-    try file.writeStreamingAll(g_io, "        \"app\",\n");
-    try file.writeStreamingAll(g_io, "        \"api\",\n");
-    try file.writeStreamingAll(g_io, "        \"public\",\n");
-    try file.writeStreamingAll(g_io, "    },\n");
-    try file.writeStreamingAll(g_io, "}\n");
+    const file = try dir.createFile(runtime.io, "build.zig.zon", .{});
+    defer file.close(runtime.io);
+    try file.writeStreamingAll(runtime.io, ".{\n    .name = .");
+    try file.writeStreamingAll(runtime.io, zig_name);
+    try file.writeStreamingAll(runtime.io, ",\n    .version = \"0.1.0\",\n");
+    try file.writeStreamingAll(runtime.io, "    .minimum_zig_version = \"0.16.0\",\n");
+    try file.writeStreamingAll(runtime.io, "    .dependencies = .{\n");
+    try file.writeStreamingAll(runtime.io, "        .merjs = .{\n");
+    try file.writeStreamingAll(runtime.io, "            .url = \"git+https://github.com/justrach/merjs.git\",\n");
+    try file.writeStreamingAll(runtime.io, "        },\n");
+    try file.writeStreamingAll(runtime.io, "    },\n");
+    try file.writeStreamingAll(runtime.io, "    .paths = .{\n");
+    try file.writeStreamingAll(runtime.io, "        \"build.zig\",\n");
+    try file.writeStreamingAll(runtime.io, "        \"build.zig.zon\",\n");
+    try file.writeStreamingAll(runtime.io, "        \"src\",\n");
+    try file.writeStreamingAll(runtime.io, "        \"app\",\n");
+    try file.writeStreamingAll(runtime.io, "        \"api\",\n");
+    try file.writeStreamingAll(runtime.io, "        \"public\",\n");
+    try file.writeStreamingAll(runtime.io, "    },\n");
+    try file.writeStreamingAll(runtime.io, "}\n");
 }
 
 fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
@@ -406,7 +405,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
 
     const use_cwd = std.mem.eql(u8, name, ".");
     if (!use_cwd) {
-        std.Io.Dir.cwd().createDir(g_io, name, .default_dir) catch |err| {
+        std.Io.Dir.cwd().createDir(runtime.io, name, .default_dir) catch |err| {
             if (err == error.PathAlreadyExists) {
                 print("❌ Directory '{s}' already exists\n", .{name});
                 std.process.exit(1);
@@ -418,7 +417,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
     var dir = if (use_cwd)
         std.Io.Dir.cwd()
     else
-        try std.Io.Dir.cwd().openDir(g_io, name, .{});
+        try std.Io.Dir.cwd().openDir(runtime.io, name, .{});
 
     print("📁 Creating project structure...\n", .{});
 
@@ -428,9 +427,9 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
 
     // Write build.zig.
     {
-        const file = try dir.createFile(g_io, "build.zig", .{});
-        defer file.close(g_io);
-        try file.writeStreamingAll(g_io, build_zig_template);
+        const file = try dir.createFile(runtime.io, "build.zig", .{});
+        defer file.close(runtime.io);
+        try file.writeStreamingAll(runtime.io, build_zig_template);
         file_count += 1;
     }
 
@@ -445,7 +444,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
         const cwd_path = if (use_cwd) "." else name;
         const zig_exe = try resolveInPath(alloc, "zig");
         defer alloc.free(zig_exe);
-        const result = try std.process.run(alloc, g_io, .{
+        const result = try std.process.run(alloc, runtime.io, .{
             .argv = &.{ zig_exe, "build" },
             .cwd = .{ .path = cwd_path },
         });
@@ -457,7 +456,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
             const end = std.mem.indexOfPos(u8, result.stderr, start, "\n") orelse result.stderr.len;
             const fp_value = result.stderr[start..end];
             // Read the zon, insert fingerprint after the name line.
-            const zon_content = try dir.readFileAlloc(g_io, "build.zig.zon", alloc, .limited(4096));
+            const zon_content = try dir.readFileAlloc(runtime.io, "build.zig.zon", alloc, .limited(4096));
             defer alloc.free(zon_content);
             // Insert ".fingerprint = 0x...,\n" after first ",\n"
             if (std.mem.indexOf(u8, zon_content, ",\n")) |comma_pos| {
@@ -470,9 +469,9 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
                     zon_content[insert_pos..],
                 });
                 defer alloc.free(new_content);
-                const out_file = try dir.createFile(g_io, "build.zig.zon", .{});
-                defer out_file.close(g_io);
-                try out_file.writeStreamingAll(g_io, new_content);
+                const out_file = try dir.createFile(runtime.io, "build.zig.zon", .{});
+                defer out_file.close(runtime.io);
+                try out_file.writeStreamingAll(runtime.io, new_content);
             }
         }
     }
@@ -486,7 +485,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
         defer alloc.free(zig_exe);
 
         // Get the package hash (printed to stdout by zig fetch without --save).
-        const hash_result = try std.process.run(alloc, g_io, .{
+        const hash_result = try std.process.run(alloc, runtime.io, .{
             .argv = &.{ zig_exe, "fetch", "git+https://github.com/justrach/merjs.git" },
             .cwd = .{ .path = cwd_path },
         });
@@ -500,7 +499,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
             const pkg_hash = std.mem.trimEnd(u8, hash_result.stdout, "\n\r ");
 
             // Pin the commit URL into build.zig.zon.
-            const save_result = try std.process.run(alloc, g_io, .{
+            const save_result = try std.process.run(alloc, runtime.io, .{
                 .argv = &.{ zig_exe, "fetch", "--save=merjs", "git+https://github.com/justrach/merjs.git" },
                 .cwd = .{ .path = cwd_path },
             });
@@ -510,7 +509,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
             if (pkg_hash.len > 0) {
                 const zon_path_str = if (use_cwd) "build.zig.zon" else try std.fmt.allocPrint(alloc, "{s}/build.zig.zon", .{name});
                 defer if (!use_cwd) alloc.free(zon_path_str);
-                const zon_content = try std.Io.Dir.cwd().readFileAlloc(g_io, zon_path_str, alloc, .limited(8192));
+                const zon_content = try std.Io.Dir.cwd().readFileAlloc(runtime.io, zon_path_str, alloc, .limited(8192));
                 defer alloc.free(zon_content);
                 if (std.mem.indexOf(u8, zon_content, ".url = \"git+https://github.com/justrach/merjs.git")) |url_start| {
                     if (std.mem.indexOfPos(u8, zon_content, url_start, "\n")) |eol| {
@@ -523,36 +522,36 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
                             zon_content[insert_pos..],
                         });
                         defer alloc.free(new_content);
-                        const out_file = try std.Io.Dir.cwd().createFile(g_io, zon_path_str, .{});
-                        defer out_file.close(g_io);
-                        try out_file.writeStreamingAll(g_io, new_content);
+                        const out_file = try std.Io.Dir.cwd().createFile(runtime.io, zon_path_str, .{});
+                        defer out_file.close(runtime.io);
+                        try out_file.writeStreamingAll(runtime.io, new_content);
                     }
                 }
             }
         }
     }
 
-    dir.createDirPath(g_io, "src/generated") catch {};
+    dir.createDirPath(runtime.io, "src/generated") catch {};
     {
-        const file = try dir.createFile(g_io, "src/generated/.gitkeep", .{});
-        file.close(g_io);
+        const file = try dir.createFile(runtime.io, "src/generated/.gitkeep", .{});
+        file.close(runtime.io);
     }
     {
-        const file = try dir.createFile(g_io, "src/generated/routes.zig", .{});
-        defer file.close(g_io);
-        try file.writeStreamingAll(g_io, generated_routes_placeholder);
+        const file = try dir.createFile(runtime.io, "src/generated/routes.zig", .{});
+        defer file.close(runtime.io);
+        try file.writeStreamingAll(runtime.io, generated_routes_placeholder);
     }
     {
-        const file = try dir.createFile(g_io, "src/main.zig", .{});
-        defer file.close(g_io);
-        try file.writeStreamingAll(g_io, main_zig_template);
+        const file = try dir.createFile(runtime.io, "src/main.zig", .{});
+        defer file.close(runtime.io);
+        try file.writeStreamingAll(runtime.io, main_zig_template);
     }
 
     // Write .gitignore.
     {
-        const file = try dir.createFile(g_io, ".gitignore", .{});
-        defer file.close(g_io);
-        try file.writeStreamingAll(g_io,
+        const file = try dir.createFile(runtime.io, ".gitignore", .{});
+        defer file.close(runtime.io);
+        try file.writeStreamingAll(runtime.io,
             \\zig-out/
             \\.zig-cache/
             \\src/generated/*
@@ -564,7 +563,7 @@ fn cmdInit(alloc: std.mem.Allocator, name: []const u8) !void {
         );
     }
 
-    if (!use_cwd) dir.close(g_io);
+    if (!use_cwd) dir.close(runtime.io);
 
     // Calculate vanity metrics
     const total_ms = currentMs() - start_ms;
@@ -635,14 +634,14 @@ test "build_zig_template uses local codegen entrypoint" {
 // The functionality is tested via integration tests in build.zig.
 
 test "writeBuildZigZon uses sanitized basename for absolute paths" {
-    // Skip when running inline tests (g_io not initialized)
+    // Skip when running inline tests (runtime.io not initialized)
     if (@import("builtin").is_test) return error.SkipZigTest;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
     try writeBuildZigZon(tmp.dir, std.testing.allocator, "/tmp/nested/my-app");
-    const content = try tmp.dir.readFileAlloc(g_io, "build.zig.zon", std.testing.allocator, .limited(4096));
+    const content = try tmp.dir.readFileAlloc(runtime.io, "build.zig.zon", std.testing.allocator, .limited(4096));
     defer std.testing.allocator.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, ".name = .my_app") != null);
@@ -650,7 +649,7 @@ test "writeBuildZigZon uses sanitized basename for absolute paths" {
 }
 
 test "writeTemplateFiles emits starter scaffold files" {
-    // Skip when running inline tests (g_io not initialized)
+    // Skip when running inline tests (runtime.io not initialized)
     if (@import("builtin").is_test) return error.SkipZigTest;
 
     var tmp = std.testing.tmpDir(.{});
@@ -658,13 +657,13 @@ test "writeTemplateFiles emits starter scaffold files" {
 
     try writeTemplateFiles(tmp.dir);
 
-    try tmp.dir.access(g_io, "app/index.zig", .{});
-    try tmp.dir.access(g_io, "app/about.zig", .{});
-    try tmp.dir.access(g_io, "app/layout.zig", .{});
-    try tmp.dir.access(g_io, "app/404.zig", .{});
-    try tmp.dir.access(g_io, "api/hello.zig", .{});
-    try tmp.dir.access(g_io, "public/.gitkeep", .{});
-    try tmp.dir.access(g_io, "tools/codegen.zig", .{});
+    try tmp.dir.access(runtime.io, "app/index.zig", .{});
+    try tmp.dir.access(runtime.io, "app/about.zig", .{});
+    try tmp.dir.access(runtime.io, "app/layout.zig", .{});
+    try tmp.dir.access(runtime.io, "app/404.zig", .{});
+    try tmp.dir.access(runtime.io, "api/hello.zig", .{});
+    try tmp.dir.access(runtime.io, "public/.gitkeep", .{});
+    try tmp.dir.access(runtime.io, "tools/codegen.zig", .{});
 }
 
 test "generated routes placeholder is valid scaffold output" {
@@ -675,14 +674,14 @@ test "generated routes placeholder is valid scaffold output" {
 // ── dev ─────────────────────────────────────────────────────────────────────
 
 fn cmdDev(alloc: std.mem.Allocator, extra_args: []const []const u8) !void {
-    std.Io.Dir.cwd().access(g_io, "build.zig", .{}) catch {
+    std.Io.Dir.cwd().access(runtime.io, "build.zig", .{}) catch {
         print("mer: no build.zig found -- are you in a merjs project?\n", .{});
         std.process.exit(1);
     };
 
     print("mer: running codegen...\n", .{});
     {
-        const result = try std.process.run(alloc, g_io, .{
+        const result = try std.process.run(alloc, runtime.io, .{
             .argv = &.{ "zig", "build", "codegen" },
         });
         defer alloc.free(result.stdout);
@@ -703,28 +702,28 @@ fn cmdDev(alloc: std.mem.Allocator, extra_args: []const []const u8) !void {
         for (extra_args) |arg| try argv.append(alloc, arg);
     }
 
-    var child = try std.process.spawn(g_io, .{
+    var child = try std.process.spawn(runtime.io, .{
         .argv = argv.items,
         .stdout = .inherit,
         .stderr = .inherit,
     });
-    _ = try child.wait(g_io);
+    _ = try child.wait(runtime.io);
 }
 
 // -- build -------------------------------------------------------------------
 fn cmdBuild(_: std.mem.Allocator) !void {
-    std.Io.Dir.cwd().access(g_io, "build.zig", .{}) catch {
+    std.Io.Dir.cwd().access(runtime.io, "build.zig", .{}) catch {
         print("mer: no build.zig found — are you in a merjs project?\n", .{});
         std.process.exit(1);
     };
 
     print("mer: production build...\n", .{});
-    var child = try std.process.spawn(g_io, .{
+    var child = try std.process.spawn(runtime.io, .{
         .argv = &.{ "zig", "build", "-Doptimize=ReleaseSmall", "prod" },
         .stdout = .inherit,
         .stderr = .inherit,
     });
-    const term = try child.wait(g_io);
+    const term = try child.wait(runtime.io);
     const exited = term == .exited;
     if (!exited or term.exited != 0) {
         print("mer: build failed\n", .{});
@@ -736,18 +735,18 @@ fn cmdBuild(_: std.mem.Allocator) !void {
 // ── update ──────────────────────────────────────────────────────────────────
 
 fn cmdUpdate(_: std.mem.Allocator) !void {
-    std.Io.Dir.cwd().access(g_io, "build.zig.zon", .{}) catch {
+    std.Io.Dir.cwd().access(runtime.io, "build.zig.zon", .{}) catch {
         print("mer: no build.zig.zon found -- are you in a merjs project?\n", .{});
         std.process.exit(1);
     };
 
     print("mer: updating merjs to latest...\n", .{});
-    var child = try std.process.spawn(g_io, .{
+    var child = try std.process.spawn(runtime.io, .{
         .argv = &.{ "zig", "fetch", "--save=merjs", "git+https://github.com/justrach/merjs.git" },
         .stdout = .inherit,
         .stderr = .inherit,
     });
-    const term = try child.wait(g_io);
+    const term = try child.wait(runtime.io);
     const exited = term == .exited;
     if (!exited or term.exited != 0) {
         print("mer: update failed\n", .{});
@@ -790,18 +789,18 @@ fn cmdAdd(alloc: std.mem.Allocator, feature: []const u8, args: []const []const u
 }
 
 fn cmdAddCss(_: std.mem.Allocator) !void {
-    const exists = if (std.Io.Dir.cwd().access(g_io, "tools/tailwindcss", .{})) true else |_| false;
+    const exists = if (std.Io.Dir.cwd().access(runtime.io, "tools/tailwindcss", .{})) true else |_| false;
     if (exists) {
         print("  tools/tailwindcss already exists\n", .{});
     } else {
         print("  downloading Tailwind CSS standalone CLI...\n", .{});
-        _ = std.Io.Dir.cwd().createDirPathOpen(g_io, "tools", .{}) catch {};
-        var child = try std.process.spawn(g_io, .{
+        _ = std.Io.Dir.cwd().createDirPathOpen(runtime.io, "tools", .{}) catch {};
+        var child = try std.process.spawn(runtime.io, .{
             .argv = &.{ "sh", "-c", "curl -sLo tools/tailwindcss " ++ tailwind_url ++ " && chmod +x tools/tailwindcss" },
             .stdout = .inherit,
             .stderr = .inherit,
         });
-        const term = try child.wait(g_io);
+        const term = try child.wait(runtime.io);
         const exited = term == .exited;
         if (!exited or term.exited != 0) {
             print("  failed to download Tailwind CLI\n", .{});
@@ -810,12 +809,12 @@ fn cmdAddCss(_: std.mem.Allocator) !void {
         print("  saved to tools/tailwindcss\n", .{});
     }
 
-    const input_exists = if (std.Io.Dir.cwd().access(g_io, "public/input.css", .{})) true else |_| false;
+    const input_exists = if (std.Io.Dir.cwd().access(runtime.io, "public/input.css", .{})) true else |_| false;
     if (!input_exists) {
-        _ = std.Io.Dir.cwd().createDirPathOpen(g_io, "public", .{}) catch {};
-        const file = try std.Io.Dir.cwd().createFile(g_io, "public/input.css", .{});
-        defer file.close(g_io);
-        try file.writeStreamingAll(g_io, "@import \"tailwindcss\";\n");
+        _ = std.Io.Dir.cwd().createDirPathOpen(runtime.io, "public", .{}) catch {};
+        const file = try std.Io.Dir.cwd().createFile(runtime.io, "public/input.css", .{});
+        defer file.close(runtime.io);
+        try file.writeStreamingAll(runtime.io, "@import \"tailwindcss\";\n");
         print("  created public/input.css\n", .{});
     }
 
@@ -823,14 +822,14 @@ fn cmdAddCss(_: std.mem.Allocator) !void {
 }
 
 fn cmdAddWasm() !void {
-    _ = std.Io.Dir.cwd().createDirPathOpen(g_io, "wasm", .{}) catch {};
-    const exists = if (std.Io.Dir.cwd().access(g_io, "wasm/counter.zig", .{})) true else |_| false;
+    _ = std.Io.Dir.cwd().createDirPathOpen(runtime.io, "wasm", .{}) catch {};
+    const exists = if (std.Io.Dir.cwd().access(runtime.io, "wasm/counter.zig", .{})) true else |_| false;
     if (exists) {
         print("  wasm/counter.zig already exists\n", .{});
     } else {
-        const file = try std.Io.Dir.cwd().createFile(g_io, "wasm/counter.zig", .{});
-        defer file.close(g_io);
-        try file.writeStreamingAll(g_io,
+        const file = try std.Io.Dir.cwd().createFile(runtime.io, "wasm/counter.zig", .{});
+        defer file.close(runtime.io);
+        try file.writeStreamingAll(runtime.io,
             \\export fn increment(n: i32) i32 {
             \\    return n + 1;
             \\}
@@ -842,15 +841,15 @@ fn cmdAddWasm() !void {
 }
 
 fn cmdAddWorker() !void {
-    _ = std.Io.Dir.cwd().createDirPathOpen(g_io, "worker", .{}) catch {};
-    const exists = if (std.Io.Dir.cwd().access(g_io, "worker/wrangler.toml", .{})) true else |_| false;
+    _ = std.Io.Dir.cwd().createDirPathOpen(runtime.io, "worker", .{}) catch {};
+    const exists = if (std.Io.Dir.cwd().access(runtime.io, "worker/wrangler.toml", .{})) true else |_| false;
     if (exists) {
         print("  worker/wrangler.toml already exists\n", .{});
     } else {
         {
-            const file = try std.Io.Dir.cwd().createFile(g_io, "worker/wrangler.toml", .{});
-            defer file.close(g_io);
-            try file.writeStreamingAll(g_io,
+            const file = try std.Io.Dir.cwd().createFile(runtime.io, "worker/wrangler.toml", .{});
+            defer file.close(runtime.io);
+            try file.writeStreamingAll(runtime.io,
                 \\name = "my-app"
                 \\main = "worker.js"
                 \\compatibility_date = "2024-12-01"
@@ -869,9 +868,9 @@ fn cmdAddWorker() !void {
             print("  created worker/wrangler.toml\n", .{});
         }
         {
-            const file = try std.Io.Dir.cwd().createFile(g_io, "worker/worker.js", .{});
-            defer file.close(g_io);
-            try file.writeStreamingAll(g_io,
+            const file = try std.Io.Dir.cwd().createFile(runtime.io, "worker/worker.js", .{});
+            defer file.close(runtime.io);
+            try file.writeStreamingAll(runtime.io,
                 \\import wasm from "./merjs.wasm";
                 \\
                 \\export default {
@@ -907,7 +906,7 @@ const component_badge = @embedFile("packages/merlion-ui/templates/badge.zig");
 const component_alert = @embedFile("packages/merlion-ui/templates/alert.zig");
 
 fn cmdAddUiComponent(name: []const u8) !void {
-    _ = std.Io.Dir.cwd().createDirPathOpen(g_io, "app/components", .{}) catch {};
+    _ = std.Io.Dir.cwd().createDirPathOpen(runtime.io, "app/components", .{}) catch {};
 
     const content = if (std.mem.eql(u8, name, "button"))
         component_button
@@ -934,15 +933,15 @@ fn cmdAddUiComponent(name: []const u8) !void {
         return;
     };
 
-    const exists = if (std.Io.Dir.cwd().access(g_io, path, .{})) true else |_| false;
+    const exists = if (std.Io.Dir.cwd().access(runtime.io, path, .{})) true else |_| false;
     if (exists) {
         print("  {s} already exists (use --force to overwrite)\n", .{path});
         return;
     }
 
-    const file = try std.Io.Dir.cwd().createFile(g_io, path, .{});
-    defer file.close(g_io);
-    try file.writeStreamingAll(g_io, content);
+    const file = try std.Io.Dir.cwd().createFile(runtime.io, path, .{});
+    defer file.close(runtime.io);
+    try file.writeStreamingAll(runtime.io, content);
 
     print("  created {s}\n", .{path});
     print("\n  usage: const {s} = @import(\"components/{s}.zig\");\n\n", .{ name, name });

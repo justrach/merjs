@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const mer = @import("mer");
+const runtime = @import("runtime.zig");
 
 const log = std.log.scoped(.main);
 
@@ -13,6 +14,10 @@ pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
+
+    // Initialize std.Io runtime (Threaded for now; Evented for io_uring later)
+    runtime.init(alloc);
+    defer runtime.deinit();
 
     // 0.16: args come through init parameter.
     var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);

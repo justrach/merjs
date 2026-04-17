@@ -2,17 +2,16 @@
 // Run via: zig build codegen
 
 const std = @import("std");
-
-var g_io: std.Io = undefined;
+const runtime = @import("runtime.zig");
 
 pub fn main() !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
-    // 0.16: all Dir methods need an Io instance.
-    var threaded: std.Io.Threaded = .init(alloc, .{});
-    defer threaded.deinit();
-    g_io = threaded.io();
+
+    // Initialize std.Io runtime
+    runtime.init(alloc);
+    defer runtime.deinit();
 
     // Each entry stores the full relative path from the project root.
     // e.g. "app/about.zig", "api/hello.zig"
@@ -93,21 +92,21 @@ pub fn main() !void {
         try buf.appendSlice(alloc, "pub const notFound = app_404.render;\n");
     }
 
-    _ = try std.Io.Dir.cwd().createDirPathOpen(g_io, "src/generated", .{});
-    const out = try std.Io.Dir.cwd().createFile(g_io, "src/generated/routes.zig", .{});
-    defer out.close(g_io);
-    try out.writePositionalAll(g_io, buf.items, 0);
+    _ = try std.Io.Dir.cwd().createDirPathOpen(runtime.io, "src/generated", .{});
+    const out = try std.Io.Dir.cwd().createFile(runtime.io, "src/generated/routes.zig", .{});
+    defer out.close(runtime.io);
+    try out.writePositionalAll(runtime.io, buf.items, 0);
 
     std.debug.print("codegen: wrote {d} route(s) to src/generated/routes.zig\n", .{entries.items.len});
 }
 
 /// Scan dir/ for *.zig files, appending "dir/file.zig" to entries.
 fn scanDir(alloc: std.mem.Allocator, entries: *std.ArrayList([]u8), dir: []const u8) !void {
-    var d = std.Io.Dir.cwd().openDir(g_io, dir, .{ .iterate = true }) catch return;
-    defer d.close(g_io);
+    var d = std.Io.Dir.cwd().openDir(runtime.io, dir, .{ .iterate = true }) catch return;
+    defer d.close(runtime.io);
     var walker = try d.walk(alloc);
     defer walker.deinit();
-    while (try walker.next(g_io)) |entry| {
+    while (try walker.next(runtime.io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
         // Skip layout.zig — it's a shared layout module, not a route.
@@ -208,7 +207,7 @@ fn toUrl(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
 }
 
 fn fileExists(path: []const u8) bool {
-    std.Io.Dir.cwd().access(g_io, path, .{}) catch return false;
+    std.Io.Dir.cwd().access(runtime.io, path, .{}) catch return false;
     return true;
 }
 
