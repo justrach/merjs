@@ -33,6 +33,7 @@ const Alert = mercss.Component(.{
     .padding = "16px",
     .color = "#dc2626",
     .border_radius = "6px",
+    .max_width = "400px",
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
