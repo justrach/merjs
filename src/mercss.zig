@@ -8,6 +8,9 @@
 
 const std = @import("std");
 
+const safe_class = "mcss-safe";
+const safe_css = ".mcss-safe{box-sizing:border-box;min-width:0;max-width:100%;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;}";
+
 /// Convert snake_case to kebab-case at comptime
 fn toKebabCase(comptime str: []const u8) []const u8 {
     comptime {
@@ -28,29 +31,55 @@ fn toKebabCase(comptime str: []const u8) []const u8 {
     }
 }
 
+fn valueToString(comptime value: anytype) []const u8 {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .@"enum" => @tagName(value),
+        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
+        else => value,
+    };
+}
+
+fn classHash(comptime field_name: []const u8, comptime value_str: []const u8) []const u8 {
+    comptime {
+        @setEvalBranchQuota(100000);
+        const key = field_name ++ ":" ++ value_str;
+        return std.fmt.comptimePrint("{x}", .{std.hash.Wyhash.hash(0, key)});
+    }
+}
+
+fn atomicClassName(comptime variant: []const u8, comptime field_name: []const u8, comptime value_str: []const u8) []const u8 {
+    comptime {
+        @setEvalBranchQuota(100000);
+        const hash = classHash(field_name, value_str);
+        if (variant.len == 0) {
+            return std.fmt.comptimePrint("mcss-{s}-{s}", .{ field_name, hash });
+        }
+
+        return std.fmt.comptimePrint("mcss-{s}-{s}-{s}", .{ variant, field_name, hash });
+    }
+}
+
+fn withSafeClassNames(comptime names: []const u8) []const u8 {
+    comptime {
+        if (names.len == 0) return safe_class;
+        return safe_class ++ " " ++ names;
+    }
+}
+
 /// Helper to generate CSS from style struct at comptime
 fn generateCss(comptime styles: anytype) []const u8 {
     comptime {
-        // Start with empty string
         var css: []const u8 = "";
 
-        // Iterate over struct fields
         const T = @TypeOf(styles);
         switch (@typeInfo(T)) {
             .@"struct" => |info| {
                 for (info.fields) |field| {
                     const value = @field(styles, field.name);
-                    const value_str = switch (@typeInfo(@TypeOf(value))) {
-                        .@"enum" => @tagName(value),
-                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
-                        else => value,
-                    };
-
-                    // Convert property name to kebab-case for CSS
+                    const value_str = valueToString(value);
                     const css_property = toKebabCase(field.name);
-
-                    // Append CSS rule
-                    const rule = std.fmt.comptimePrint(".mcss-{s}{{{s}:{s};}}", .{ field.name, css_property, value_str });
+                    const class_name = atomicClassName("", field.name, value_str);
+                    const rule = std.fmt.comptimePrint(".{s}{{{s}:{s};}}", .{ class_name, css_property, value_str });
                     css = css ++ rule;
                 }
             },
@@ -70,14 +99,15 @@ fn getClassNames(comptime styles: anytype) []const u8 {
         switch (@typeInfo(T)) {
             .@"struct" => |info| {
                 for (info.fields) |field| {
-                    const name = std.fmt.comptimePrint("mcss-{s} ", .{field.name});
+                    const value = @field(styles, field.name);
+                    const value_str = valueToString(value);
+                    const name = std.fmt.comptimePrint("{s} ", .{atomicClassName("", field.name, value_str)});
                     names = names ++ name;
                 }
             },
             else => {},
         }
 
-        // Remove trailing space
         return if (names.len > 0) names[0 .. names.len - 1] else "";
     }
 }
@@ -85,8 +115,8 @@ fn getClassNames(comptime styles: anytype) []const u8 {
 /// Create a component with compile-time CSS
 pub fn Component(comptime styles: anytype) type {
     return struct {
-        pub const css = generateCss(styles);
-        pub const classes = getClassNames(styles);
+        pub const css = safe_css ++ generateCss(styles);
+        pub const classes = withSafeClassNames(getClassNames(styles));
     };
 }
 
@@ -151,16 +181,10 @@ fn generateBreakpointCss(comptime prefix: []const u8, comptime styles: anytype) 
             .@"struct" => |info| {
                 for (info.fields) |field| {
                     const value = @field(styles, field.name);
-                    const value_str = switch (@typeInfo(@TypeOf(value))) {
-                        .@"enum" => @tagName(value),
-                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
-                        else => value,
-                    };
-
+                    const value_str = valueToString(value);
                     const css_property = toKebabCase(field.name);
-
-                    // Prefix class name with breakpoint
-                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}{{{s}:{s};}}", .{ prefix, field.name, css_property, value_str });
+                    const class_name = atomicClassName(prefix, field.name, value_str);
+                    const rule = std.fmt.comptimePrint(".{s}{{{s}:{s};}}", .{ class_name, css_property, value_str });
                     css = css ++ rule;
                 }
             },
@@ -220,14 +244,15 @@ fn getBreakpointClassNames(comptime prefix: []const u8, comptime styles: anytype
         switch (@typeInfo(T)) {
             .@"struct" => |info| {
                 for (info.fields) |field| {
-                    const name = std.fmt.comptimePrint("mcss-{s}-{s} ", .{ prefix, field.name });
+                    const value = @field(styles, field.name);
+                    const value_str = valueToString(value);
+                    const name = std.fmt.comptimePrint("{s} ", .{atomicClassName(prefix, field.name, value_str)});
                     names = names ++ name;
                 }
             },
             else => {},
         }
 
-        // Remove trailing space
         return if (names.len > 0) names[0 .. names.len - 1] else "";
     }
 }
@@ -244,8 +269,8 @@ fn getBreakpointClassNames(comptime prefix: []const u8, comptime styles: anytype
 /// ```
 pub fn ResponsiveComponent(comptime config: anytype) type {
     return struct {
-        pub const css = generateResponsiveCss(config);
-        pub const classes = getResponsiveClassNames(config);
+        pub const css = safe_css ++ generateResponsiveCss(config);
+        pub const classes = withSafeClassNames(getResponsiveClassNames(config));
     };
 }
 
@@ -270,16 +295,10 @@ fn generateStateCss(comptime prefix: []const u8, comptime styles: anytype) []con
             .@"struct" => |info| {
                 for (info.fields) |field| {
                     const value = @field(styles, field.name);
-                    const value_str = switch (@typeInfo(@TypeOf(value))) {
-                        .@"enum" => @tagName(value),
-                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
-                        else => value,
-                    };
-
+                    const value_str = valueToString(value);
                     const css_property = toKebabCase(field.name);
-
-                    // Generate :hover, :focus, or :active pseudo-class rule
-                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}:{s}{{{s}:{s};}}", .{ prefix, field.name, prefix, css_property, value_str });
+                    const class_name = atomicClassName(prefix, field.name, value_str);
+                    const rule = std.fmt.comptimePrint(".{s}:{s}{{{s}:{s};}}", .{ class_name, prefix, css_property, value_str });
                     css = css ++ rule;
                 }
             },
@@ -299,14 +318,15 @@ fn getStateClassNames(comptime prefix: []const u8, comptime styles: anytype) []c
         switch (@typeInfo(T)) {
             .@"struct" => |info| {
                 for (info.fields) |field| {
-                    const name = std.fmt.comptimePrint("mcss-{s}-{s} ", .{ prefix, field.name });
+                    const value = @field(styles, field.name);
+                    const value_str = valueToString(value);
+                    const name = std.fmt.comptimePrint("{s} ", .{atomicClassName(prefix, field.name, value_str)});
                     names = names ++ name;
                 }
             },
             else => {},
         }
 
-        // Remove trailing space
         return if (names.len > 0) names[0 .. names.len - 1] else "";
     }
 }
@@ -321,16 +341,11 @@ fn generateResponsiveStateCss(comptime bp: []const u8, comptime state: []const u
             .@"struct" => |info| {
                 for (info.fields) |field| {
                     const value = @field(styles, field.name);
-                    const value_str = switch (@typeInfo(@TypeOf(value))) {
-                        .@"enum" => @tagName(value),
-                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
-                        else => value,
-                    };
-
+                    const value_str = valueToString(value);
                     const css_property = toKebabCase(field.name);
-
-                    // Media query with pseudo-class: @media (min-width: Xpx) { .mcss-hover-md-foo:hover {...} }
-                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}-{s}:{s}{{{s}:{s};}}", .{ state, bp, field.name, state, css_property, value_str });
+                    const variant = std.fmt.comptimePrint("{s}-{s}", .{ state, bp });
+                    const class_name = atomicClassName(variant, field.name, value_str);
+                    const rule = std.fmt.comptimePrint(".{s}:{s}{{{s}:{s};}}", .{ class_name, state, css_property, value_str });
                     css = css ++ rule;
                 }
             },
@@ -544,7 +559,10 @@ fn getResponsiveStateClassNames(comptime bp: []const u8, comptime state: []const
         switch (@typeInfo(T)) {
             .@"struct" => |info| {
                 for (info.fields) |field| {
-                    const name = std.fmt.comptimePrint("mcss-{s}-{s}-{s} ", .{ state, bp, field.name });
+                    const value = @field(styles, field.name);
+                    const value_str = valueToString(value);
+                    const variant = std.fmt.comptimePrint("{s}-{s}", .{ state, bp });
+                    const name = std.fmt.comptimePrint("{s} ", .{atomicClassName(variant, field.name, value_str)});
                     names = names ++ name;
                 }
             },
@@ -572,8 +590,8 @@ fn getResponsiveStateClassNames(comptime bp: []const u8, comptime state: []const
 /// ```
 pub fn InteractiveComponent(comptime config: anytype) type {
     return struct {
-        pub const css = generateInteractiveCss(config);
-        pub const classes = getInteractiveClassNames(config);
+        pub const css = safe_css ++ generateInteractiveCss(config);
+        pub const classes = withSafeClassNames(getInteractiveClassNames(config));
     };
 }
 
@@ -679,7 +697,21 @@ test "Button class names" {
     // Should have mcss- prefix
     try testing.expect(std.mem.indexOf(u8, Button.classes, "mcss-") != null);
     // Should contain padding class
-    try testing.expect(std.mem.indexOf(u8, Button.classes, "mcss-padding") != null);
+    try testing.expect(std.mem.indexOf(u8, Button.classes, "mcss-padding-") != null);
+}
+
+test "components include safe boundary class" {
+    try testing.expect(std.mem.indexOf(u8, Button.classes, safe_class) != null);
+    try testing.expect(std.mem.indexOf(u8, Button.css, safe_css) != null);
+}
+
+test "different values generate different classes" {
+    const rounded = Component(.{ .border_radius = "4px" });
+    const pill = Component(.{ .border_radius = "9999px" });
+
+    try testing.expect(!std.mem.eql(u8, rounded.classes, pill.classes));
+    try testing.expect(std.mem.indexOf(u8, rounded.css, "border-radius:4px;") != null);
+    try testing.expect(std.mem.indexOf(u8, pill.css, "border-radius:9999px;") != null);
 }
 
 test "Complete HTML generation" {
@@ -722,6 +754,10 @@ pub const ResponsiveContainer = ResponsiveComponent(.{
 });
 
 test "Responsive component CSS generation" {
+    comptime {
+        @setEvalBranchQuota(50000);
+    }
+
     // Should contain media queries
     try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media") != null);
     try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "min-width") != null);
@@ -732,12 +768,16 @@ test "Responsive component CSS generation" {
 }
 
 test "Responsive component class names" {
+    comptime {
+        @setEvalBranchQuota(50000);
+    }
+
     // Should contain base class
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-padding") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-padding-") != null);
 
     // Should contain breakpoint classes
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-sm-padding") != null);
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-md-padding") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-sm-padding-") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-md-padding-") != null);
 }
 
 test "Responsive breakpoints structure" {
@@ -746,15 +786,18 @@ test "Responsive breakpoints structure" {
         @setEvalBranchQuota(5000);
 
         // Base style should exist
-        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-padding{padding:16px;}") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-padding-") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "padding:16px;}") != null);
 
         // sm breakpoint (640px+)
         try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media (min-width: 640px)") != null);
-        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-sm-padding{padding:24px;}") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-sm-padding-") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "padding:24px;}") != null);
 
         // md breakpoint (768px+)
         try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media (min-width: 768px)") != null);
-        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-md-padding{padding:32px;}") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-md-padding-") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "padding:32px;}") != null);
     }
 }
 
@@ -788,40 +831,52 @@ pub const InteractiveButton = InteractiveComponent(.{
 
 test "Interactive component CSS generation" {
     comptime {
-        @setEvalBranchQuota(5000);
+        @setEvalBranchQuota(100000);
 
         // Base styles
-        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-padding{padding:12px 24px;}") != null);
-        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-background{background:#3b82f6;}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-padding-") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, "padding:12px 24px;}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-background-") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, "background:#3b82f6;}") != null);
 
         // Hover pseudo-class
-        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-hover-background:hover{background:#2563eb;}") != null);
-        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-hover-transform:hover{transform:translateY(-1px);}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-hover-background-") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ":hover{background:#2563eb;}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-hover-transform-") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ":hover{transform:translateY(-1px);}") != null);
 
         // Focus pseudo-class
-        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-focus-box_shadow:focus{box-shadow:") != null);
-        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-focus-outline:focus{outline:none;}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-focus-box_shadow-") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ":focus{box-shadow:") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-focus-outline-") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ":focus{outline:none;}") != null);
 
         // Active pseudo-class
-        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-active-transform:active{transform:scale(0.98);}") != null);
-        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-active-background:active{background:#1d4ed8;}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-active-transform-") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ":active{transform:scale(0.98);}") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ".mcss-active-background-") != null);
+        try testing.expect(std.mem.indexOf(u8, InteractiveButton.css, ":active{background:#1d4ed8;}") != null);
     }
 }
 
 test "Interactive component class names" {
+    comptime {
+        @setEvalBranchQuota(50000);
+    }
+
     // Should contain base classes
-    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-padding") != null);
-    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-background") != null);
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-padding-") != null);
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-background-") != null);
 
     // Should contain hover classes
-    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-hover-background") != null);
-    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-hover-transform") != null);
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-hover-background-") != null);
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-hover-transform-") != null);
 
     // Should contain focus classes
-    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-focus-box_shadow") != null);
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-focus-box_shadow-") != null);
 
     // Should contain active classes
-    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-active-transform") != null);
+    try testing.expect(std.mem.indexOf(u8, InteractiveButton.classes, "mcss-active-transform-") != null);
 }
 
 /// Demo: Interactive component with responsive state variants
@@ -845,30 +900,38 @@ pub const ResponsiveInteractiveButton = InteractiveComponent(.{
 
 test "Responsive interactive component" {
     comptime {
-        @setEvalBranchQuota(10000);
+        @setEvalBranchQuota(100000);
 
         // Base styles
-        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-padding{padding:8px 16px;}") != null);
-        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-hover-background:hover{background:#2563eb;}") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-padding-") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, "padding:8px 16px;}") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-hover-background-") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ":hover{background:#2563eb;}") != null);
 
         // sm breakpoint with hover
         try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, "@media (min-width: 640px)") != null);
-        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-hover-sm-background:hover{background:#1d4ed8;}") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-hover-sm-background-") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ":hover{background:#1d4ed8;}") != null);
 
         // md breakpoint with hover
         try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, "@media (min-width: 768px)") != null);
-        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-hover-md-background:hover{background:#1e40af;}") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ".mcss-hover-md-background-") != null);
+        try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.css, ":hover{background:#1e40af;}") != null);
     }
 }
 
 test "Responsive interactive class names" {
+    comptime {
+        @setEvalBranchQuota(50000);
+    }
+
     // Base classes
-    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-padding") != null);
-    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-hover-background") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-padding-") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-hover-background-") != null);
 
     // Responsive hover classes
-    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-hover-sm-background") != null);
-    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-hover-md-background") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-hover-sm-background-") != null);
+    try testing.expect(std.mem.indexOf(u8, ResponsiveInteractiveButton.classes, "mcss-hover-md-background-") != null);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

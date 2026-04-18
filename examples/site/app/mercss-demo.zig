@@ -184,6 +184,47 @@ const Badge = design.Component(.{
     .letter_spacing = "0.05em",
 });
 
+// Graph-like primitives for dashboards and release pages
+const GraphCard = design.Component(.{
+    .background = "white",
+    .border = "1px solid " ++ design.slate.c200,
+    .border_radius = design.radius.md,
+    .padding = design.space.xl,
+    .box_shadow = design.shadow.sm,
+});
+
+const MetricTile = design.Component(.{
+    .background = design.slate.c50,
+    .border = "1px solid " ++ design.slate.c200,
+    .border_radius = design.radius.md,
+    .padding = design.space.base,
+});
+
+const GraphTrack = design.Component(.{
+    .width = "100%",
+    .height = "12px",
+    .background = design.slate.c100,
+    .border_radius = design.radius.full,
+});
+
+const GraphFillPrimary = design.Component(.{
+    .height = "100%",
+    .background = design.violet.c600,
+    .border_radius = design.radius.full,
+});
+
+const GraphFillMuted = design.Component(.{
+    .height = "100%",
+    .background = design.slate.c300,
+    .border_radius = design.radius.full,
+});
+
+const GraphFillSuccess = design.Component(.{
+    .height = "100%",
+    .background = design.emerald.c500,
+    .border_radius = design.radius.full,
+});
+
 // Page CSS
 const page_css =
     PrimaryButton.css ++
@@ -191,6 +232,12 @@ const page_css =
     DangerButton.css ++
     FeatureCard.css ++
     CodeBlock.css ++
+    GraphCard.css ++
+    MetricTile.css ++
+    GraphTrack.css ++
+    GraphFillPrimary.css ++
+    GraphFillMuted.css ++
+    GraphFillSuccess.css ++
     SuccessAlert.css ++
     InfoAlert.css ++
     Input.css ++
@@ -257,6 +304,22 @@ const page_css =
     ".interactive-title{font-size:" ++ design.font.size.xl ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.base ++ ";}" ++
     ".interactive-desc{font-size:" ++ design.font.size.base ++ ";color:" ++ design.slate.c600 ++ ";margin:0 0 " ++ design.space.xl2 ++ ";}" ++
     ".button-row{display:flex;gap:" ++ design.space.md ++ ";flex-wrap:wrap;align-items:center;}" ++
+
+    // Graph-like UI section
+    ".graph-demo{display:grid;gap:" ++ design.space.xl3 ++ ";grid-template-columns:1fr;align-items:start;}" ++
+    "@media (min-width: 1024px){.graph-demo{grid-template-columns:1.15fr 0.85fr;}}" ++
+    ".metric-grid{display:grid;gap:" ++ design.space.base ++ ";grid-template-columns:repeat(3,1fr);margin-bottom:" ++ design.space.xl ++ ";}" ++
+    "@media (max-width: 720px){.metric-grid{grid-template-columns:1fr;}}" ++
+    ".metric-kicker{font-size:" ++ design.font.size.xs ++ ";font-weight:" ++ design.font.weight.semibold ++ ";text-transform:uppercase;letter-spacing:0.08em;color:" ++ design.violet.c600 ++ ";margin:0 0 " ++ design.space.xs ++ ";}" ++
+    ".metric-number{font-size:" ++ design.font.size.xl2 ++ ";font-weight:" ++ design.font.weight.bold ++ ";color:" ++ design.slate.c900 ++ ";margin:0 0 " ++ design.space.xs ++ ";line-height:1;}" ++
+    ".metric-copy{font-size:" ++ design.font.size.sm ++ ";line-height:1.5;color:" ++ design.slate.c600 ++ ";margin:0;}" ++
+    ".graph-stack{display:grid;gap:" ++ design.space.lg ++ ";}" ++
+    ".graph-row{display:grid;grid-template-columns:132px 1fr auto;gap:" ++ design.space.base ++ ";align-items:center;}" ++
+    "@media (max-width: 720px){.graph-row{grid-template-columns:1fr;}}" ++
+    ".graph-meta strong{display:block;font-size:" ++ design.font.size.sm ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c900 ++ ";margin-bottom:2px;}" ++
+    ".graph-meta span{display:block;font-size:" ++ design.font.size.xs ++ ";color:" ++ design.slate.c500 ++ ";}" ++
+    ".graph-value{font-size:" ++ design.font.size.sm ++ ";font-weight:" ++ design.font.weight.semibold ++ ";color:" ++ design.slate.c700 ++ ";white-space:nowrap;}" ++
+    ".graph-note{margin-top:" ++ design.space.lg ++ ";font-size:" ++ design.font.size.sm ++ ";line-height:1.6;color:" ++ design.slate.c600 ++ ";}" ++
 
     // Alert styling
     ".alert-title{font-weight:" ++ design.font.weight.semibold ++ ";margin-bottom:" ++ design.space.xs ++ ";font-size:" ++ design.font.size.base ++ ";}" ++
@@ -422,6 +485,95 @@ pub fn render(req: mer.Request) mer.Response {
                     h.div(.{ .class = "button-row" }, .{
                         h.raw("<button class='" ++ SecondaryButton.classes ++ "'>Secondary</button>"),
                     }),
+                }),
+            }),
+        }),
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // GRAPH-LIKE UI SECTION
+        // ═══════════════════════════════════════════════════════════════════════════════
+        h.div(.{ .class = "section" }, .{
+            h.div(.{ .class = "section-header" }, .{
+                h.div(.{ .class = "section-label" }, "Charts"),
+                h.h2(.{ .class = "section-title" }, "Graph-Like UI Primitives"),
+                h.p(.{ .class = "section-desc" }, "mercss can build dashboards and release charts too. These blocks stay inside their boundaries by default and only overflow when you explicitly opt in."),
+            }),
+            h.div(.{ .class = "graph-demo" }, .{
+                h.div(.{ .class = GraphCard.classes }, .{
+                    h.div(.{ .class = "interactive-title" }, "Benchmark Dashboard"),
+                    h.p(.{ .class = "interactive-desc" }, "Same design system, but now used for metrics, bars, and comparison panels."),
+                    h.div(.{ .class = "metric-grid" }, .{
+                        h.div(.{ .class = MetricTile.classes }, .{
+                            h.p(.{ .class = "metric-kicker" }, "throughput"),
+                            h.p(.{ .class = "metric-number" }, "115k"),
+                            h.p(.{ .class = "metric-copy" }, "req/s on the homepage benchmark"),
+                        }),
+                        h.div(.{ .class = MetricTile.classes }, .{
+                            h.p(.{ .class = "metric-kicker" }, "latency"),
+                            h.p(.{ .class = "metric-number" }, "0.39 ms"),
+                            h.p(.{ .class = "metric-copy" }, "average latency in the local run"),
+                        }),
+                        h.div(.{ .class = MetricTile.classes }, .{
+                            h.p(.{ .class = "metric-kicker" }, "memory"),
+                            h.p(.{ .class = "metric-number" }, "4.8 MB"),
+                            h.p(.{ .class = "metric-copy" }, "RAM under CI load vs 71.7 MB"),
+                        }),
+                    }),
+                    h.div(.{ .class = "graph-stack" }, .{
+                        h.div(.{ .class = "graph-row" }, .{
+                            h.div(.{ .class = "graph-meta" }, .{
+                                h.strong(.{}, "Throughput"),
+                                h.span(.{}, "merjs vs Next.js"),
+                            }),
+                            h.div(.{ .class = GraphTrack.classes }, .{
+                                h.div(.{ .class = GraphFillPrimary.classes, .style = "width:95%;" }, .{}),
+                            }),
+                            h.div(.{ .class = "graph-value" }, "115,093 req/s"),
+                        }),
+                        h.div(.{ .class = "graph-row" }, .{
+                            h.div(.{ .class = "graph-meta" }, .{
+                                h.strong(.{}, "RAM"),
+                                h.span(.{}, "under load"),
+                            }),
+                            h.div(.{ .class = GraphTrack.classes }, .{
+                                h.div(.{ .class = GraphFillSuccess.classes, .style = "width:12%;" }, .{}),
+                            }),
+                            h.div(.{ .class = "graph-value" }, "4.8 MB"),
+                        }),
+                        h.div(.{ .class = "graph-row" }, .{
+                            h.div(.{ .class = "graph-meta" }, .{
+                                h.strong(.{}, "Next.js RAM"),
+                                h.span(.{}, "same CI run"),
+                            }),
+                            h.div(.{ .class = GraphTrack.classes }, .{
+                                h.div(.{ .class = GraphFillMuted.classes, .style = "width:82%;" }, .{}),
+                            }),
+                            h.div(.{ .class = "graph-value" }, "71.7 MB"),
+                        }),
+                    }),
+                    h.p(.{ .class = "graph-note" }, "These primitives are intentionally simple: one surface card, one metric tile, one track, and colored fills. Enough to build release dashboards, benchmark callouts, and ops summaries without a separate charting library."),
+                }),
+                h.div(.{ .class = "code-section" }, .{
+                    h.div(.{ .class = "code-header" }, .{
+                        h.div(.{ .class = "code-dot code-dot-red" }, .{}),
+                        h.div(.{ .class = "code-dot code-dot-yellow" }, .{}),
+                        h.div(.{ .class = "code-dot code-dot-green" }, .{}),
+                        h.span(.{ .class = "code-title" }, "graph.zig"),
+                    }),
+                    h.pre(.{ .class = CodeBlock.classes }, "const GraphTrack = design.Component(.{\n" ++
+                        "    .width = \"100%\",\n" ++
+                        "    .height = \"12px\",\n" ++
+                        "    .background = design.slate.c100,\n" ++
+                        "    .border_radius = design.radius.full,\n" ++
+                        "});\n\n" ++
+                        "const GraphFillPrimary = design.Component(.{\n" ++
+                        "    .height = \"100%\",\n" ++
+                        "    .background = design.violet.c600,\n" ++
+                        "    .border_radius = design.radius.full,\n" ++
+                        "});\n\n" ++
+                        "h.div(.{ .class = GraphTrack.classes }, .{\n" ++
+                        "    h.div(.{ .class = GraphFillPrimary.classes, .style = \"width:95%;\" }, .{}),\n" ++
+                        "})"),
                 }),
             }),
         }),

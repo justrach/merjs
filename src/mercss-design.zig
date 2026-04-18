@@ -104,6 +104,10 @@ pub const font = struct {
         pub const sans = "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
         pub const serif = "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif";
         pub const mono = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
+
+        // Brand-aligned families used by merjs site layouts
+        pub const body = "'DM Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        pub const display = "'DM Serif Display', ui-serif, Georgia, Cambria, 'Times New Roman', serif";
     };
 
     /// Font sizes with perfect line-height ratios
@@ -218,6 +222,35 @@ pub const fuchsia = ColorScale("#fdf4ff", "#fae8ff", "#f5d0fe", "#f0abfc", "#e87
 pub const pink = ColorScale("#fdf2f8", "#fce7f3", "#fbcfe8", "#f9a8d4", "#f472b6", "#ec4899", "#db2777", "#be185d", "#9d174d", "#831843", "#500724");
 pub const rose = ColorScale("#fff1f2", "#ffe4e6", "#fecdd3", "#fda4af", "#fb7185", "#f43f5e", "#e11d48", "#be123c", "#9f1239", "#881337", "#4c0519");
 
+/// merjs brand colors
+pub const brand = ColorScale("#fff5f5", "#ffe5e4", "#ffd2d0", "#ffb8b4", "#ff8c86", "#e8251f", "#ca1f1a", "#aa1915", "#891411", "#63100d", "#350707");
+pub const paper = ColorScale("#fffdfa", "#fbf5ee", "#f4eadf", "#ebdccd", "#d9c1aa", "#bea285", "#9f8265", "#83664c", "#684f3b", "#4d3929", "#2d1f14");
+
+/// merjs chart and benchmark palette
+pub const chart = struct {
+    pub const track = paper.c200;
+    pub const baseline = paper.c300;
+    pub const primary = brand.c500;
+    pub const secondary = rose.c500;
+    pub const tertiary = orange.c500;
+    pub const quaternary = amber.c500;
+    pub const positive = emerald.c500;
+    pub const neutral = slate.c400;
+};
+
+/// Surface tokens for premium white/red layouts
+pub const surface = struct {
+    pub const page = paper.c50;
+    pub const canvas = paper.c100;
+    pub const elevated = "#ffffff";
+    pub const muted = paper.c100;
+    pub const border = brand.c200;
+    pub const border_soft = paper.c200;
+    pub const accent_soft = brand.c50;
+    pub const accent_muted = brand.c100;
+    pub const inverse = brand.c900;
+};
+
 /// Semantic color aliases
 pub const primary = blue;
 pub const secondary = slate;
@@ -225,6 +258,8 @@ pub const success = emerald;
 pub const warning = amber;
 pub const danger = red;
 pub const info = sky;
+pub const accent = brand;
+pub const paper_scale = paper;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHADOWS & EFFECTS
@@ -239,6 +274,13 @@ pub const shadow = struct {
     pub const xl = "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)";
     pub const xl2 = "0 25px 50px -12px rgb(0 0 0 / 0.25)";
     pub const inner = "inset 0 2px 4px 0 rgb(0 0 0 / 0.05)";
+
+    // Diffused and tinted shadows for premium surfaces
+    pub const diffuse = "0 20px 50px rgba(111, 19, 18, 0.06)";
+    pub const brand_sm = "0 8px 24px rgba(111, 19, 18, 0.08)";
+    pub const brand_md = "0 20px 50px rgba(111, 19, 18, 0.10)";
+    pub const brand_lg = "0 28px 72px rgba(111, 19, 18, 0.18)";
+    pub const inner_light = "inset 0 1px 0 rgba(255,255,255,0.12)";
 };
 
 pub const blur = struct {
@@ -257,6 +299,7 @@ pub const transition = struct {
     pub const base = "all 150ms cubic-bezier(0.4, 0, 0.2, 1)";
     pub const slow = "all 300ms cubic-bezier(0.4, 0, 0.2, 1)";
     pub const slower = "all 500ms cubic-bezier(0.4, 0, 0.2, 1)";
+    pub const expressive = "all 700ms cubic-bezier(0.32, 0.72, 0, 1)";
 
     pub const colors = "color, background-color, border-color, text-decoration-color, fill, stroke 150ms cubic-bezier(0.4, 0, 0.2, 1)";
     pub const transform = "transform 150ms cubic-bezier(0.4, 0, 0.2, 1)";

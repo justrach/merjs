@@ -1,5 +1,28 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const mer = @import("mer");
+
+fn isWideLayoutPath(path: []const u8) bool {
+    return std.mem.eql(u8, path, "/") or
+        std.mem.eql(u8, path, "/mercss-demo") or
+        std.mem.startsWith(u8, path, "/v");
+}
+
+fn layoutClass(path: []const u8) []const u8 {
+    return if (isWideLayoutPath(path)) "layout layout-wide" else "layout";
+}
+
+const footer_tail = std.fmt.comptimePrint(
+    \\
+    \\  <footer class="layout-footer">
+    \\    Built with <a href="https://github.com/justrach/merjs">merjs</a> &middot; Zig {s} &middot; zero node_modules
+    \\  </footer>
+    \\</div>
+    \\</body>
+    \\</html>
+,
+    .{builtin.zig_version_string},
+);
 
 /// Framework primitive — automatically wraps all HTML page responses.
 /// Pages return content fragments; the framework calls wrap() to produce
@@ -70,6 +93,7 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\    body { background:var(--bg); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; min-height:100vh; line-height:1.6; }
         \\    a { color:inherit; text-decoration:none; }
         \\    .layout { max-width:780px; margin:0 auto; padding:48px 32px 96px; }
+        \\    .layout.layout-wide { max-width:1440px; }
         \\    .layout-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:48px; }
         \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; display:flex; align-items:center; gap:6px; }
         \\    .wordmark span { color:var(--red); }
@@ -95,10 +119,10 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
     }
 
     // Body
-    w.writeAll(
+    w.print(
         \\</head>
         \\<body>
-        \\<div class="layout">
+        \\<div class="{s}">
         \\  <header class="layout-header">
         \\    <a href="/" class="wordmark"><img src="/merlion.png" alt="merjs logo" class="logo" width="24" height="24" fetchpriority="high">mer<span>js</span></a>
         \\    <nav class="nav">
@@ -112,19 +136,11 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\    </nav>
         \\  </header>
         \\
-    ) catch return body;
+    , .{layoutClass(path)}) catch return body;
 
     w.writeAll(body) catch return body;
 
-    w.writeAll(
-        \\
-        \\  <footer class="layout-footer">
-        \\    Built with <a href="https://github.com/justrach/merjs">merjs</a> &middot; Zig 0.16 &middot; zero node_modules
-        \\  </footer>
-        \\</div>
-        \\</body>
-        \\</html>
-    ) catch return body;
+    w.writeAll(footer_tail) catch return body;
 
     return buf.written();
 }
@@ -178,6 +194,7 @@ pub fn streamWrap(allocator: std.mem.Allocator, path: []const u8, meta: mer.Meta
         \\    body { background:var(--bg); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; min-height:100vh; line-height:1.6; }
         \\    a { color:inherit; text-decoration:none; }
         \\    .layout { max-width:780px; margin:0 auto; padding:48px 32px 96px; }
+        \\    .layout.layout-wide { max-width:1440px; }
         \\    .layout-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:48px; }
         \\    .wordmark { font-family:'DM Serif Display',Georgia,serif; font-size:18px; letter-spacing:-0.02em; display:flex; align-items:center; gap:6px; }
         \\    .wordmark span { color:var(--red); }
@@ -202,10 +219,10 @@ pub fn streamWrap(allocator: std.mem.Allocator, path: []const u8, meta: mer.Meta
         hw.writeAll("\n") catch {};
     }
 
-    hw.writeAll(
+    hw.print(
         \\</head>
         \\<body>
-        \\<div class="layout">
+        \\<div class="{s}">
         \\  <header class="layout-header">
         \\    <a href="/" class="wordmark"><img src="/merlion.png" alt="merjs logo" class="logo" width="24" height="24" fetchpriority="high">mer<span>js</span></a>
         \\    <nav class="nav">
@@ -219,17 +236,9 @@ pub fn streamWrap(allocator: std.mem.Allocator, path: []const u8, meta: mer.Meta
         \\    </nav>
         \\  </header>
         \\
-    ) catch {};
+    , .{layoutClass(path)}) catch {};
 
-    const tail =
-        \\
-        \\  <footer class="layout-footer">
-        \\    Built with <a href="https://github.com/justrach/merjs">merjs</a> &middot; Zig 0.15 &middot; zero node_modules
-        \\  </footer>
-        \\</div>
-        \\</body>
-        \\</html>
-    ;
+    const tail = footer_tail;
 
     return .{ .head = head_buf.written(), .tail = tail };
 }
