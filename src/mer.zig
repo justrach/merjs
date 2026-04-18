@@ -158,6 +158,11 @@ pub const lint = @import("html_lint.zig");
 
 pub const css = @import("css.zig");
 
+// --- mercss: compile-time atomic CSS system (Tailwind-compatible) ------------
+
+pub const mercss = @import("mercss.zig");
+pub const design = @import("design.zig");
+
 pub fn render(allocator: std.mem.Allocator, node: h.Node) Response {
     const body = h.render(allocator, node) catch return internalError("html render failed");
     return Response.init(.ok, .html, body);

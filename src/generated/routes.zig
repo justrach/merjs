@@ -13,6 +13,7 @@ const app_dashboard = @import("app/dashboard");
 const app_docs = @import("app/docs");
 const app_index = @import("app/index");
 const app_map_demo = @import("app/map-demo");
+const app_mercss_demo = @import("app/mercss-demo");
 const app_sandbox = @import("app/sandbox");
 const app_stream_demo = @import("app/stream-demo");
 const app_synth = @import("app/synth");
@@ -30,6 +31,7 @@ pub const routes: []const Route = &.{
     .{ .path = "/docs", .render = app_docs.render, .render_stream = if (@hasDecl(app_docs, "renderStream")) app_docs.renderStream else null, .meta = if (@hasDecl(app_docs, "meta")) app_docs.meta else .{}, .prerender = if (@hasDecl(app_docs, "prerender")) app_docs.prerender else false },
     .{ .path = "/", .render = app_index.render, .render_stream = if (@hasDecl(app_index, "renderStream")) app_index.renderStream else null, .meta = if (@hasDecl(app_index, "meta")) app_index.meta else .{}, .prerender = if (@hasDecl(app_index, "prerender")) app_index.prerender else false },
     .{ .path = "/map-demo", .render = app_map_demo.render, .render_stream = if (@hasDecl(app_map_demo, "renderStream")) app_map_demo.renderStream else null, .meta = if (@hasDecl(app_map_demo, "meta")) app_map_demo.meta else .{}, .prerender = if (@hasDecl(app_map_demo, "prerender")) app_map_demo.prerender else false },
+    .{ .path = "/mercss-demo", .render = app_mercss_demo.render, .render_stream = if (@hasDecl(app_mercss_demo, "renderStream")) app_mercss_demo.renderStream else null, .meta = if (@hasDecl(app_mercss_demo, "meta")) app_mercss_demo.meta else .{}, .prerender = if (@hasDecl(app_mercss_demo, "prerender")) app_mercss_demo.prerender else false },
     .{ .path = "/sandbox", .render = app_sandbox.render, .render_stream = if (@hasDecl(app_sandbox, "renderStream")) app_sandbox.renderStream else null, .meta = if (@hasDecl(app_sandbox, "meta")) app_sandbox.meta else .{}, .prerender = if (@hasDecl(app_sandbox, "prerender")) app_sandbox.prerender else false },
     .{ .path = "/stream-demo", .render = app_stream_demo.render, .render_stream = if (@hasDecl(app_stream_demo, "renderStream")) app_stream_demo.renderStream else null, .meta = if (@hasDecl(app_stream_demo, "meta")) app_stream_demo.meta else .{}, .prerender = if (@hasDecl(app_stream_demo, "prerender")) app_stream_demo.prerender else false },
     .{ .path = "/synth", .render = app_synth.render, .render_stream = if (@hasDecl(app_synth, "renderStream")) app_synth.renderStream else null, .meta = if (@hasDecl(app_synth, "meta")) app_synth.meta else .{}, .prerender = if (@hasDecl(app_synth, "prerender")) app_synth.prerender else false },
