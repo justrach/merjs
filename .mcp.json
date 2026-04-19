@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "devswarm": {
+      "command": "/Users/limyuxi/devswarm/zig-out/bin/devswarm",
+      "args": ["--mcp"],
+      "env": {
+        "REPO_PATH": "/Users/limyuxi/merjs"
+      }
+    }
+  }
+}

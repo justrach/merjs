@@ -1,184 +1,299 @@
-# mercss - Compile-time Atomic CSS for merjs
+# mercss — Compile-Time Atomic CSS for merjs
 
-mercss generates type-safe, atomic CSS at **compile time** using Zig's `comptime`. Unlike Tailwind CSS which needs a build pipeline (PostCSS → JIT → Purge), mercss generates CSS during Zig compilation with **zero runtime cost**.
+mercss is a zero-runtime, compile-time atomic CSS system built into merjs. It provides Tailwind-inspired utilities with full Zig comptime safety.
+
+## Features
+
+- **Hash-based short class names** — FNV-1a 32-bit hashing produces 6-character class names
+- **Responsive breakpoints** — `sm:`, `md:`, `lg:`, `xl:`, `xl2:` with standard Tailwind widths
+- **State variants** — `hover:`, `focus:`, `active:` pseudo-class support
+- **Dark mode** — `dark:` prefix with `prefers-color-scheme` media query
+- **Type-safe design tokens** — spacing, typography, colors, shadows, transitions
+- **Zero runtime cost** — all CSS generated at compile time
 
 ## Quick Start
 
 ```zig
 const mer = @import("mer");
 const mercss = mer.mercss;
+const design = mer.design;
 
-// Define component styles at compile time
+// Define a component with compile-time styles
 const Button = mercss.Component(.{
-    .background = "#3b82f6",
-    .color = "white",
-    .padding = "12px 24px",
-    .border_radius = "8px",
-    .font_weight = "600",
+    .base = .{
+        .padding = design.space.base,
+        .background_color = design.primary.DEFAULT,
+        .color = "#ffffff",
+        .border_radius = design.radius.md,
+    },
+    .hover = .{
+        .background_color = design.primary.dark,
+    },
 });
 
 // Use in your page
-pub const meta: mer.Meta = .{
-    .extra_head = "<style>" ++ Button.css ++ "</style>",
-};
-
 pub fn render(req: mer.Request) mer.Response {
-    return mer.render(req.allocator, 
-        h.button(.{ .class = Button.classes }, "Click Me")
-    );
+    const html =
+        \\<button class="
+    ++ Button.classes ++
+        \\">Click Me</button>
+    ;
+    return mer.html(html);
 }
 ```
 
-## How It Works
+## Component API
 
-1. **Define styles** as Zig structs with design tokens
-2. **Compile time**: Zig analyzes the struct fields
-3. **CSS generation**: One atomic rule per property (`.mcss-padding{padding:12px}`)
-4. **Class generation**: Component gets all classes (`.mcss-padding .mcss-background`)
-5. **Zero runtime**: All strings are comptime constants
+### `mercss.Component(comptime config: anytype)`
 
-## Comparison with Tailwind CSS
+Creates a type with two compile-time constants:
 
-| Feature | Tailwind CSS | mercss (merjs) |
-|---------|--------------|----------------|
-| **Build step** | PostCSS → JIT → PurgeCSS | ❌ None (Zig comptime) |
-| **File scanning** | Scans all source files | ❌ Not needed (comptime knows all) |
-| **Type safety** | Runtime errors for wrong classes | ✅ Compile-time errors |
-| **Config** | `tailwind.config.js` | ✅ Zig structs (type-safe) |
-| **Unused styles** | Need PurgeCSS | ❌ Never generated |
-| **Bundle size** | ~10KB (purged) | ~500 bytes (actual used) |
-| **Arbitrary values** | `w-[123px]` (runtime) | ✅ `width = 123` (comptime) |
-| **JIT mode** | Required for arbitrary values | ❌ Not needed (all comptime) |
-| **Plugins** | JavaScript-based | ✅ Zig functions |
-| **IDE support** | Tailwind IntelliSense | 🚧 Coming soon |
+- `.css` — The generated CSS rules as a string
+- `.classes` — The space-separated class names as a string
 
-## Current mercss Features
+### Configuration Fields
 
-### ✅ Implemented
-- [x] Atomic CSS generation from structs
-- [x] Compile-time class name generation
-- [x] Type-safe design tokens
-- [x] Component-level style scoping
-- [x] CSS string concatenation at comptime
-- [x] Integration with merjs page rendering
+| Field | Purpose |
+|-------|---------|
+| `.base` | Base styles applied at all breakpoints |
+| `.sm` | Styles for `min-width: 640px` |
+| `.md` | Styles for `min-width: 768px` |
+| `.lg` | Styles for `min-width: 1024px` |
+| `.xl` | Styles for `min-width: 1280px` |
+| `.xl2` | Styles for `min-width: 1536px` |
+| `.dark` | Styles for `prefers-color-scheme: dark` |
+| `.hover` | Styles for `:hover` pseudo-class |
+| `.focus` | Styles for `:focus` pseudo-class |
+| `.active` | Styles for `:active` pseudo-class |
 
-### 🚧 Not Yet Implemented (vs Tailwind)
-- [ ] Responsive variants (`md:`, `lg:`)
-- [ ] State variants (`hover:`, `focus:`, `active:`)
-- [ ] Arbitrary value syntax (`[123px]`)
-- [ ] Plugin system
-- [ ] `@apply` directive equivalent
-- [ ] Dark mode support
-- [ ] Container queries
-- [ ] CSS grid helpers
-- [ ] Typography plugin
-- [ ] Form elements reset
-- [ ] Animation utilities
-- [ ] Transform/transition utilities
+All fields are optional. Only fields you specify will generate CSS.
 
-### 🎯 Different Approach from Tailwind
+### Property Naming
 
-**Tailwind:** Utility-first, thousands of pre-generated classes, purge unused ones
-```html
-<button class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+Use `snake_case` for CSS properties — they are automatically converted to `kebab-case`:
+
+```zig
+.base = .{
+    .background_color = "#ffffff",  // → background-color
+    .border_radius = "6px",         // → border-radius
+    .font_size = "16px",            // → font-size
+}
 ```
 
-**mercss:** Generate only what you use, type-safe, compile-time
+### Value Types
+
+- **Strings**: Used directly as CSS values (`"16px"`, `"#3b82f6"`, `"none"`)
+- **Integers**: Automatically get `px` suffix (`16` → `"16px"`)
+- **Floats**: Automatically get `px` suffix (`1.5` → `"1.5px"`)
+- **Booleans**: Convert to `1` or `0`
+
+## Design System
+
+The `mer.design` module provides Tailwind-inspired design tokens:
+
+### Spacing (4px grid)
+
 ```zig
-const Button = mercss.Component(.{
-    .padding = "8px 16px",
-    .background = "#3b82f6",
-    .color = "white",
-    .border_radius = "6px",
+design.space.px    // "1px"
+design.space.xs    // "4px"
+design.space.sm    // "8px"
+design.space.base  // "16px"
+design.space.lg    // "24px"
+design.space.xl    // "32px"
+// ... up to xl6
+```
+
+### Typography
+
+```zig
+design.font.family.sans    // System font stack
+design.font.family.serif   // Serif font stack
+design.font.family.mono    // Monospace font stack
+
+design.font.size.xs        // "12px"
+design.font.size.base      // "16px"
+design.font.size.xl3       // "30px"
+// ... up to xl8
+
+design.font.weight.normal  // "400"
+design.font.weight.bold    // "700"
+// ... etc
+
+design.font.leading.base   // "1.5"
+design.font.tracking.tight // "-0.025em"
+```
+
+### Colors
+
+17 color scales with 11 shades each:
+
+```zig
+design.slight.c500         // Default shade
+design.slight.lightest     // c50
+design.slight.darkest      // c900
+
+// Available: slate, gray, zinc, neutral, stone,
+// red, orange, amber, yellow, lime, green, emerald, teal,
+// cyan, sky, blue, indigo, violet, purple, fuchsia, pink, rose
+
+// Semantic aliases
+design.primary.DEFAULT     // blue
+design.success.DEFAULT     // emerald
+design.danger.DEFAULT      // red
+design.warning.DEFAULT     // amber
+design.info.DEFAULT        // sky
+```
+
+### Shadows & Effects
+
+```zig
+design.shadow.xs           // Subtle shadow
+design.shadow.md           // Medium shadow
+design.shadow.xl2          // Large shadow
+design.shadow.inner        // Inset shadow
+
+design.blur.sm             // "4px"
+design.blur.lg             // "12px"
+```
+
+### Transitions
+
+```zig
+design.transition.fast     // 100ms
+design.transition.base     // 150ms
+design.transition.slow     // 300ms
+
+design.ease.in_out         // cubic-bezier(0.4, 0, 0.2, 1)
+
+design.duration.xs         // "75ms"
+design.duration.lg         // "300ms"
+```
+
+### Other Tokens
+
+```zig
+design.radius.md           // "6px"
+design.radius.full         // "9999px"
+
+design.z.dropdown          // "10"
+design.z.modal             // "50"
+
+design.opacity.base        // "0.5"
+
+design.size.full           // "100%"
+design.size.screen         // "100vh"
+```
+
+## Utility Functions
+
+### `mercss.generateStylesheet(comptime components)`
+
+Combines multiple components into a complete stylesheet:
+
+```zig
+const sheet = mercss.generateStylesheet(.{
+    .button = Button,
+    .card = Card,
 });
-// Generates: .mcss-padding{padding:8px 16px} .mcss-background{background:#3b82f6} ...
+// Returns: "/* mercss generated stylesheet */\n/* button */\n..."
 ```
 
-## Design System / Theme
+### `mercss.getAllClasses(comptime components)`
+
+Collects all class names from multiple components:
 
 ```zig
-const Theme = struct {
-    pub const colors = .{
-        .primary = "#3b82f6",
-        .secondary = "#64748b",
-        .danger = "#ef4444",
-        .success = "#22c55e",
-    };
-    
-    pub const spacing = .{
-        .xs = 4,
-        .sm = 8,
-        .md = 16,
-        .lg = 24,
-        .xl = 32,
-    };
+const classes = mercss.getAllClasses(.{
+    .button = Button,
+    .card = Card,
+});
+// Returns: "mAbc123 mDef456 mGhi789 ..."
+```
+
+## Injecting CSS into Pages
+
+### Via `extra_head` in meta
+
+```zig
+pub const meta: mer.Meta = .{
+    .title = "My Page",
+    .extra_head = "<style>" ++ Button.css ++ Card.css ++ "</style>",
+};
+```
+
+### Via a separate stylesheet
+
+Generate the stylesheet at compile time and serve it as a static file, or inline it directly.
+
+## Complete Example
+
+```zig
+const mer = @import("mer");
+const mercss = mer.mercss;
+const design = mer.design;
+
+const Card = mercss.Component(.{
+    .base = .{
+        .padding = design.space.xl,
+        .background_color = "#ffffff",
+        .border_radius = design.radius.lg,
+        .box_shadow = design.shadow.md,
+    },
+    .md = .{
+        .padding = design.space.xl2,
+    },
+    .dark = .{
+        .background_color = design.slate.c800,
+        .color = design.slate.c100,
+    },
+});
+
+const Button = mercss.Component(.{
+    .base = .{
+        .padding = design.space.base,
+        .background_color = design.primary.DEFAULT,
+        .color = "#ffffff",
+        .border_radius = design.radius.md,
+    },
+    .hover = .{
+        .background_color = design.primary.dark,
+    },
+    .focus = .{
+        .outline = "2px solid " ++ design.primary.light,
+    },
+});
+
+const all_css = Card.css ++ Button.css;
+
+pub const meta: mer.Meta = .{
+    .title = "mercss Example",
+    .extra_head = "<style>" ++ all_css ++ "</style>",
 };
 
-// Type-safe! This will error at compile time:
-const bad = mercss.Component(.{
-    .background = Theme.colors.nonexistent,  // ❌ Compile error!
-});
+pub fn render(req: mer.Request) mer.Response {
+    _ = req;
+    const html =
+        \\<div class="
+    ++ Card.classes ++
+        \\">
+        \\  <h2>Card Title</h2>
+        \\  <p>Card content here.</p>
+        \\  <button class="
+    ++ Button.classes ++
+        \\">Action</button>
+        \\</div>
+    ;
+    return mer.html(html);
+}
 ```
 
-## Server Setup (Important!)
+## Limitations
 
-When running the merjs server for local development, use one of these methods:
+- All styling must be known at compile time — no dynamic runtime values
+- Property names use `snake_case` (not `kebab-case`) due to Zig identifier rules
+- The design system provides common tokens but you can use any string values
+- Responsive breakpoints follow Tailwind defaults but are not configurable at runtime
 
-### Method 1: Direct (foreground)
-```bash
-cd /path/to/your/merjs/project
-zig build
-./zig-out/bin/merjs --port 3000 --no-dev
-```
-Server runs in foreground. Stop with `Ctrl+C`.
+## Demo
 
-### Method 2: Background with nohup (recommended)
-```bash
-zig build
-nohup ./zig-out/bin/merjs --port 3000 --no-dev > merjs.log 2>&1 &
-```
-- Server keeps running even if terminal closes
-- Logs go to `merjs.log`
-- Stop with: `pkill -f "merjs"`
-
-### Method 3: Docker
-```bash
-docker build -t merjs .
-docker run -p 3000:3000 merjs
-```
-
-### Common Issues
-
-**"Connection refused" / Server crashes:**
-- Check if port is already in use: `lsof -i :3000`
-- Use a different port: `--port 3001`
-- Ensure binary exists: `ls zig-out/bin/merjs`
-- Check logs: `cat /tmp/merjs.log`
-
-**Server stops when terminal closes:**
-- Use `nohup` as shown above
-- Or use Docker/containerization
-
-## Roadmap
-
-### v0.3.0 Goals
-- [ ] Responsive breakpoints (`sm:`, `md:`, `lg:`)
-- [ ] State variants (`hover:`, `focus:`)
-- [ ] Property mapping (`border_radius` → `border-radius`)
-- [ ] Shorter hash-based class names
-- [ ] Streaming CSS (CSS arrives with component chunks)
-
-### v0.4.0 Ideas
-- [ ] Container queries
-- [ ] Dark mode (`dark:`)
-- [ ] Animation keyframes
-- [ ] CSS custom properties integration
-
-## Contributing
-
-mercss is experimental! Share ideas:
-- What features from Tailwind do you need most?
-- What should be different?
-- API design feedback welcome
-
-See Issue #90 for discussion on novel streaming CSS approaches.
+See `examples/site/app/mercss-demo.zig` for a live demonstration of all features.

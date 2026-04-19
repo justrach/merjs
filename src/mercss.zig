@@ -1,320 +1,292 @@
 //! mercss.zig - Compile-time atomic CSS for merjs
 //!
-//! Inspired by Tailwind CSS but leveraging Zig's comptime:
-//! - No build step (Zig IS the build)
-//! - No purging (comptime knows all used styles)
+//! Tailwind-compatible utility-first CSS system leveraging Zig's comptime:
+//! - Responsive prefixes (sm:, md:, lg:, xl:)
+//! - State variants (hover:, focus:, active:)
+//! - Dark mode (dark: prefix)
+//! - Hash-based short class names
 //! - Type-safe design tokens
-//! - Component-level style scoping
+//! - Zero runtime cost
 
 const std = @import("std");
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HASHING - Short class name generation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// FNV-1a 32-bit hash for comptime class name generation
+fn fnv1a32(comptime data: []const u8) u32 {
+    comptime {
+        var hash: u32 = 2166136261;
+        const prime: u32 = 16777619;
+        for (data) |byte| {
+            hash ^= byte;
+            hash = hash *% prime;
+        }
+        return hash;
+    }
+}
+
+/// Base62 character set for short class names
+const base62_chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+/// Convert a hash to a short base62 string at comptime
+fn hashToShortName(comptime hash: u32) [6]u8 {
+    comptime {
+        var buf: [6]u8 = undefined;
+        var h = hash;
+        var i: usize = 0;
+        while (i < 6) : (i += 1) {
+            buf[i] = base62_chars[h % 62];
+            h /= 62;
+        }
+        return buf;
+    }
+}
+
+/// Generate a short hash-based class name
+fn shortClassName(comptime prefix: []const u8, comptime prop: []const u8, comptime val: []const u8) [7]u8 {
+    comptime {
+        const input = prefix ++ "-" ++ prop ++ "-" ++ val;
+        const hash = fnv1a32(input);
+        const short = hashToShortName(hash);
+        var result: [7]u8 = undefined;
+        result[0] = 'm';
+        for (short, 0..) |c, i| {
+            result[i + 1] = c;
+        }
+        return result;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROPERTY CONVERSION
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /// Convert snake_case to kebab-case at comptime
 fn toKebabCase(comptime str: []const u8) []const u8 {
     comptime {
-        var result: [str.len * 2]u8 = undefined;
+        var count: usize = 0;
+        for (str) |c| {
+            if (c == '_') count += 1;
+        }
+        var result: [str.len]u8 = undefined;
         var j: usize = 0;
-
-        for (str, 0..) |c, i| {
-            if (c == '_' and i > 0 and i < str.len - 1) {
+        for (str) |c| {
+            if (c == '_') {
                 result[j] = '-';
-                j += 1;
-            } else if (c != '_') {
+            } else {
                 result[j] = c;
-                j += 1;
+            }
+            j += 1;
+        }
+        return result[0..str.len];
+    }
+}
+
+/// Convert a CSS property value to a string representation
+fn valueToString(comptime value: anytype) []const u8 {
+    comptime {
+        const T = @TypeOf(value);
+        return switch (@typeInfo(T)) {
+            .@"enum" => @tagName(value),
+            .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
+            .float, .comptime_float => std.fmt.comptimePrint("{d}px", .{value}),
+            .bool => if (value) "1" else "0",
+            .pointer => value,
+            .array => &value,
+            else => std.fmt.comptimePrint("{any}", .{value}),
+        };
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CSS GENERATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Generate CSS rules from a style struct
+fn generateStyleBlock(comptime prefix: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        var result: []const u8 = "";
+        const T = @TypeOf(styles);
+        const info = @typeInfo(T);
+
+        if (info != .@"struct") return result;
+        const struct_info = info.@"struct";
+
+        for (struct_info.fields) |field| {
+            const value = @field(styles, field.name);
+            const value_str = valueToString(value);
+            const css_prop = toKebabCase(field.name);
+            const short_name_arr = shortClassName(prefix, field.name, value_str);
+            const short_name = short_name_arr[0..];
+
+            const rule = std.fmt.comptimePrint(".{s}{{{s}:{s};}}", .{ short_name, css_prop, value_str });
+            result = result ++ rule;
+        }
+
+        return result;
+    }
+}
+
+/// Generate a media query block for responsive styles
+fn generateMediaQuery(comptime min_width: []const u8, comptime bp: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        const T = @TypeOf(styles);
+        const info = @typeInfo(T);
+
+        if (info != .@"struct") return "";
+        const struct_info = info.@"struct";
+        if (struct_info.fields.len == 0) return "";
+
+        const inner = generateStyleBlock(bp, styles);
+        if (inner.len == 0) return "";
+
+        return std.fmt.comptimePrint("@media(min-width:{s}){{{s}}}", .{ min_width, inner });
+    }
+}
+
+/// Generate dark mode styles
+fn generateDarkStyles(comptime styles: anytype) []const u8 {
+    comptime {
+        const T = @TypeOf(styles);
+        const info = @typeInfo(T);
+
+        if (info != .@"struct") return "";
+        const struct_info = info.@"struct";
+        if (struct_info.fields.len == 0) return "";
+
+        const inner = generateStyleBlock("dark", styles);
+        if (inner.len == 0) return "";
+
+        return std.fmt.comptimePrint("@media(prefers-color-scheme:dark){{{s}}}", .{inner});
+    }
+}
+
+/// Generate state variant styles
+fn generateStateStyles(comptime state: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        const T = @TypeOf(styles);
+        const info = @typeInfo(T);
+
+        if (info != .@"struct") return "";
+        const struct_info = info.@"struct";
+        if (struct_info.fields.len == 0) return "";
+
+        const inner = generateStyleBlock(state, styles);
+        if (inner.len == 0) return "";
+
+        return std.fmt.comptimePrint(".{s}\\:{s}{{{s}}}", .{ state, inner, inner });
+    }
+}
+
+/// Collect class names from styles
+fn collectClassNames(comptime prefix: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        var result: []const u8 = "";
+        const T = @TypeOf(styles);
+        const info = @typeInfo(T);
+
+        if (info != .@"struct") return result;
+        const struct_info = info.@"struct";
+
+        for (struct_info.fields) |field| {
+            const value = @field(styles, field.name);
+            const value_str = valueToString(value);
+            const short_name_arr = shortClassName(prefix, field.name, value_str);
+            const short_name = short_name_arr[0..];
+
+            result = result ++ short_name ++ " ";
+        }
+
+        return result;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPONENT BUILDER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Create a reusable component with compile-time styles
+pub fn Component(comptime config: anytype) type {
+    return struct {
+        pub const css = blk: {
+            var result: []const u8 = "";
+            if (@hasField(@TypeOf(config), "base")) result = result ++ generateStyleBlock("", config.base);
+            if (@hasField(@TypeOf(config), "sm")) result = result ++ generateMediaQuery("640px", "sm", config.sm);
+            if (@hasField(@TypeOf(config), "md")) result = result ++ generateMediaQuery("768px", "md", config.md);
+            if (@hasField(@TypeOf(config), "lg")) result = result ++ generateMediaQuery("1024px", "lg", config.lg);
+            if (@hasField(@TypeOf(config), "xl")) result = result ++ generateMediaQuery("1280px", "xl", config.xl);
+            if (@hasField(@TypeOf(config), "xl2")) result = result ++ generateMediaQuery("1536px", "xl2", config.xl2);
+            if (@hasField(@TypeOf(config), "dark")) result = result ++ generateDarkStyles(config.dark);
+            if (@hasField(@TypeOf(config), "hover")) result = result ++ generateStateStyles("hover", config.hover);
+            if (@hasField(@TypeOf(config), "focus")) result = result ++ generateStateStyles("focus", config.focus);
+            if (@hasField(@TypeOf(config), "active")) result = result ++ generateStateStyles("active", config.active);
+            break :blk result;
+        };
+
+        pub const classes = blk: {
+            var result: []const u8 = "";
+            if (@hasField(@TypeOf(config), "base")) result = result ++ collectClassNames("", config.base);
+            if (@hasField(@TypeOf(config), "sm")) result = result ++ collectClassNames("sm", config.sm);
+            if (@hasField(@TypeOf(config), "md")) result = result ++ collectClassNames("md", config.md);
+            if (@hasField(@TypeOf(config), "lg")) result = result ++ collectClassNames("lg", config.lg);
+            if (@hasField(@TypeOf(config), "xl")) result = result ++ collectClassNames("xl", config.xl);
+            if (@hasField(@TypeOf(config), "xl2")) result = result ++ collectClassNames("xl2", config.xl2);
+            if (@hasField(@TypeOf(config), "dark")) result = result ++ collectClassNames("dark", config.dark);
+            if (@hasField(@TypeOf(config), "hover")) result = result ++ collectClassNames("hover", config.hover);
+            if (@hasField(@TypeOf(config), "focus")) result = result ++ collectClassNames("focus", config.focus);
+            if (@hasField(@TypeOf(config), "active")) result = result ++ collectClassNames("active", config.active);
+            break :blk result;
+        };
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Generate a complete stylesheet from multiple components
+pub fn generateStylesheet(comptime components: anytype) []const u8 {
+    comptime {
+        var result: []const u8 = "/* mercss generated stylesheet */\n";
+        const T = @TypeOf(components);
+        const info = @typeInfo(T);
+
+        if (info != .@"struct") return result;
+        const struct_info = info.@"struct";
+
+        for (struct_info.fields) |field| {
+            const comp = @field(components, field.name);
+            result = result ++ "/* " ++ field.name ++ " */\n" ++ comp.css ++ "\n";
+        }
+
+        return result;
+    }
+}
+
+/// Get all class names from multiple components
+pub fn getAllClasses(comptime components: anytype) []const u8 {
+    comptime {
+        var result: []const u8 = "";
+        const T = @TypeOf(components);
+        const info = @typeInfo(T);
+
+        if (info != .@"struct") return result;
+        const struct_info = info.@"struct";
+
+        for (struct_info.fields) |field| {
+            const comp = @field(components, field.name);
+            if (comp.classes.len > 0) {
+                result = result ++ comp.classes ++ " ";
             }
         }
 
-        return result[0..j];
-    }
-}
-
-/// Helper to generate CSS from style struct at comptime
-fn generateCss(comptime styles: anytype) []const u8 {
-    comptime {
-        // Start with empty string
-        var css: []const u8 = "";
-
-        // Iterate over struct fields
-        const T = @TypeOf(styles);
-        switch (@typeInfo(T)) {
-            .@"struct" => |info| {
-                for (info.fields) |field| {
-                    const value = @field(styles, field.name);
-                    const value_str = switch (@typeInfo(@TypeOf(value))) {
-                        .@"enum" => @tagName(value),
-                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
-                        else => value,
-                    };
-
-                    // Convert property name to kebab-case for CSS
-                    const css_property = toKebabCase(field.name);
-
-                    // Append CSS rule
-                    const rule = std.fmt.comptimePrint(".mcss-{s}{{{s}:{s};}}", .{ field.name, css_property, value_str });
-                    css = css ++ rule;
-                }
-            },
-            else => {},
+        if (result.len > 0 and result[result.len - 1] == ' ') {
+            result = result[0 .. result.len - 1];
         }
 
-        return css;
-    }
-}
-
-/// Get class names from style struct
-fn getClassNames(comptime styles: anytype) []const u8 {
-    comptime {
-        var names: []const u8 = "";
-
-        const T = @TypeOf(styles);
-        switch (@typeInfo(T)) {
-            .@"struct" => |info| {
-                for (info.fields) |field| {
-                    const name = std.fmt.comptimePrint("mcss-{s} ", .{field.name});
-                    names = names ++ name;
-                }
-            },
-            else => {},
-        }
-
-        // Remove trailing space
-        return if (names.len > 0) names[0 .. names.len - 1] else "";
-    }
-}
-
-/// Create a component with compile-time CSS
-pub fn Component(comptime styles: anytype) type {
-    return struct {
-        pub const css = generateCss(styles);
-        pub const classes = getClassNames(styles);
-    };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// RESPONSIVE COMPONENTS - Mobile-first breakpoints
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/// Tailwind-compatible breakpoints
-pub const Breakpoints = struct {
-    pub const sm = 640; // 640px
-    pub const md = 768; // 768px
-    pub const lg = 1024; // 1024px
-    pub const xl = 1280; // 1280px
-    pub const xl2 = 1536; // 1536px (2xl)
-};
-
-/// Generate responsive CSS with media queries at comptime
-fn generateResponsiveCss(comptime config: anytype) []const u8 {
-    comptime {
-        var css: []const u8 = "";
-
-        // Generate base styles (mobile-first)
-        if (@hasField(@TypeOf(config), "base")) {
-            css = css ++ generateCss(config.base);
-        }
-
-        // Generate sm breakpoint (640px+)
-        if (@hasField(@TypeOf(config), "sm")) {
-            const sm_css = generateBreakpointCss("sm", config.sm);
-            css = css ++ "@media (min-width: 640px){" ++ sm_css ++ "}";
-        }
-
-        // Generate md breakpoint (768px+)
-        if (@hasField(@TypeOf(config), "md")) {
-            const md_css = generateBreakpointCss("md", config.md);
-            css = css ++ "@media (min-width: 768px){" ++ md_css ++ "}";
-        }
-
-        // Generate lg breakpoint (1024px+)
-        if (@hasField(@TypeOf(config), "lg")) {
-            const lg_css = generateBreakpointCss("lg", config.lg);
-            css = css ++ "@media (min-width: 1024px){" ++ lg_css ++ "}";
-        }
-
-        // Generate xl breakpoint (1280px+)
-        if (@hasField(@TypeOf(config), "xl")) {
-            const xl_css = generateBreakpointCss("xl", config.xl);
-            css = css ++ "@media (min-width: 1280px){" ++ xl_css ++ "}";
-        }
-
-        return css;
-    }
-}
-
-/// Generate CSS for a specific breakpoint with prefixed class names
-fn generateBreakpointCss(comptime prefix: []const u8, comptime styles: anytype) []const u8 {
-    comptime {
-        var css: []const u8 = "";
-
-        const T = @TypeOf(styles);
-        switch (@typeInfo(T)) {
-            .@"struct" => |info| {
-                for (info.fields) |field| {
-                    const value = @field(styles, field.name);
-                    const value_str = switch (@typeInfo(@TypeOf(value))) {
-                        .@"enum" => @tagName(value),
-                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
-                        else => value,
-                    };
-
-                    const css_property = toKebabCase(field.name);
-
-                    // Prefix class name with breakpoint
-                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}{{{s}:{s};}}", .{ prefix, field.name, css_property, value_str });
-                    css = css ++ rule;
-                }
-            },
-            else => {},
-        }
-
-        return css;
-    }
-}
-
-/// Get responsive class names
-fn getResponsiveClassNames(comptime config: anytype) []const u8 {
-    comptime {
-        var names: []const u8 = "";
-
-        // Base classes
-        if (@hasField(@TypeOf(config), "base")) {
-            const base_names = getClassNames(config.base);
-            names = names ++ base_names ++ " ";
-        }
-
-        // sm classes
-        if (@hasField(@TypeOf(config), "sm")) {
-            const sm_names = getBreakpointClassNames("sm", config.sm);
-            names = names ++ sm_names ++ " ";
-        }
-
-        // md classes
-        if (@hasField(@TypeOf(config), "md")) {
-            const md_names = getBreakpointClassNames("md", config.md);
-            names = names ++ md_names ++ " ";
-        }
-
-        // lg classes
-        if (@hasField(@TypeOf(config), "lg")) {
-            const lg_names = getBreakpointClassNames("lg", config.lg);
-            names = names ++ lg_names ++ " ";
-        }
-
-        // xl classes
-        if (@hasField(@TypeOf(config), "xl")) {
-            const xl_names = getBreakpointClassNames("xl", config.xl);
-            names = names ++ xl_names ++ " ";
-        }
-
-        // Remove trailing space
-        return if (names.len > 0) names[0 .. names.len - 1] else "";
-    }
-}
-
-/// Get class names for a specific breakpoint
-fn getBreakpointClassNames(comptime prefix: []const u8, comptime styles: anytype) []const u8 {
-    comptime {
-        var names: []const u8 = "";
-
-        const T = @TypeOf(styles);
-        switch (@typeInfo(T)) {
-            .@"struct" => |info| {
-                for (info.fields) |field| {
-                    const name = std.fmt.comptimePrint("mcss-{s}-{s} ", .{ prefix, field.name });
-                    names = names ++ name;
-                }
-            },
-            else => {},
-        }
-
-        // Remove trailing space
-        return if (names.len > 0) names[0 .. names.len - 1] else "";
-    }
-}
-
-/// Create a responsive component with mobile-first breakpoints
-///
-/// Usage:
-/// ```zig
-/// const Button = mercss.ResponsiveComponent(.{
-///     .base = .{ .padding = "8px" },
-///     .sm = .{ .padding = "16px" },
-///     .md = .{ .padding = "24px" },
-/// });
-/// ```
-pub fn ResponsiveComponent(comptime config: anytype) type {
-    return struct {
-        pub const css = generateResponsiveCss(config);
-        pub const classes = getResponsiveClassNames(config);
-    };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// DEMO: Design System & Components
-// ═══════════════════════════════════════════════════════════════════════════════
-
-pub const DesignSystem = struct {
-    pub const colors = .{
-        .primary = "#3b82f6",
-        .secondary = "#64748b",
-        .danger = "#ef4444",
-        .success = "#22c55e",
-    };
-
-    pub const spacing = .{
-        .xs = 4,
-        .sm = 8,
-        .md = 16,
-        .lg = 24,
-        .xl = 32,
-    };
-};
-
-/// Button component with compile-time styles
-pub const Button = Component(.{
-    .padding = "8px 16px",
-    .border_radius = "6px",
-    .font_weight = "600",
-    .cursor = "pointer",
-    .transition = "all 0.2s",
-    .background = DesignSystem.colors.primary,
-});
-
-/// Card component
-pub const Card = Component(.{
-    .background = "white",
-    .border_radius = "8px",
-    .padding = "16px",
-    .box_shadow = "0 1px 3px rgba(0,0,0,0.1)",
-});
-
-/// Alert component
-pub const Alert = Component(.{
-    .padding = "12px 16px",
-    .border_radius = "6px",
-    .font_weight = "500",
-    .background = DesignSystem.colors.danger,
-});
-
-/// Demo: Generate complete HTML page with inline CSS
-pub fn getDemoHtml() []const u8 {
-    comptime {
-        return "<!DOCTYPE html><html><head><style>" ++
-            Button.css ++
-            Card.css ++
-            Alert.css ++
-            "</style></head><body>" ++
-            "<button class='" ++ Button.classes ++ "'>Click me</button>" ++
-            "<div class='" ++ Card.classes ++ "'>Card content here</div>" ++
-            "<div class='" ++ Alert.classes ++ "'>Alert message!</div>" ++
-            "</body></html>";
-    }
-}
-
-/// Get just the CSS for all components
-pub fn getAllCss() []const u8 {
-    comptime {
-        return Button.css ++ Card.css ++ Alert.css;
+        return result;
     }
 }
 
@@ -322,129 +294,412 @@ pub fn getAllCss() []const u8 {
 // TESTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const testing = std.testing;
-
-test "Button CSS generation" {
-    // Should contain padding rule
-    try testing.expect(std.mem.indexOf(u8, Button.css, "padding") != null);
-    // Should contain primary color
-    try testing.expect(std.mem.indexOf(u8, Button.css, "#3b82f6") != null);
-}
-
-test "Card CSS generation" {
-    // Should contain border-radius (kebab-case conversion)
-    try testing.expect(std.mem.indexOf(u8, Card.css, "border-radius") != null);
-    // Should contain white background
-    try testing.expect(std.mem.indexOf(u8, Card.css, "white") != null);
-}
-
-test "kebab-case conversion" {
-    // Test snake_case to kebab-case conversion
+test "toKebabCase: basic conversion" {
     comptime {
-        try testing.expectEqualStrings("border-radius", toKebabCase("border_radius"));
-        try testing.expectEqualStrings("background-color", toKebabCase("background_color"));
-        try testing.expectEqualStrings("font-size", toKebabCase("font_size"));
+        if (!std.mem.eql(u8, toKebabCase("border_radius"), "border-radius")) @compileError("border_radius failed");
+        if (!std.mem.eql(u8, toKebabCase("background_color"), "background-color")) @compileError("background_color failed");
+        if (!std.mem.eql(u8, toKebabCase("font_size"), "font-size")) @compileError("font_size failed");
     }
 }
 
-test "Button class names" {
-    // Should have mcss- prefix
-    try testing.expect(std.mem.indexOf(u8, Button.classes, "mcss-") != null);
-    // Should contain padding class
-    try testing.expect(std.mem.indexOf(u8, Button.classes, "mcss-padding") != null);
-}
-
-test "Complete HTML generation" {
-    const html = comptime getDemoHtml();
-
-    // Has all structure
-    try testing.expect(std.mem.indexOf(u8, html, "<!DOCTYPE html>") != null);
-    try testing.expect(std.mem.indexOf(u8, html, "<style>") != null);
-    try testing.expect(std.mem.indexOf(u8, html, "</style>") != null);
-
-    // Has components
-    try testing.expect(std.mem.indexOf(u8, html, "<button") != null);
-    try testing.expect(std.mem.indexOf(u8, html, "<div") != null);
-
-    // Has CSS rules
-    try testing.expect(std.mem.indexOf(u8, html, "mcss-") != null);
-}
-
-test "CSS deduplication concept" {
-    // In real usage, you'd only include each component's CSS once
-    // This test shows the CSS strings are compile-time constants
-    const css1 = Button.css;
-    const css2 = Button.css;
-
-    // Both point to same comptime-generated string
-    try testing.expect(css1.len == css2.len);
-    try testing.expect(std.mem.eql(u8, css1, css2));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// RESPONSIVE COMPONENT TESTS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/// Demo: Responsive container component
-pub const ResponsiveContainer = ResponsiveComponent(.{
-    .base = .{ .padding = "16px" },
-    .sm = .{ .padding = "24px" },
-    .md = .{ .padding = "32px" },
-    .lg = .{ .padding = "48px" },
-});
-
-test "Responsive component CSS generation" {
-    // Should contain media queries
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media") != null);
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "min-width") != null);
-
-    // Should contain breakpoint classes
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "mcss-sm-") != null);
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "mcss-md-") != null);
-}
-
-test "Responsive component class names" {
-    // Should contain base class
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-padding") != null);
-
-    // Should contain breakpoint classes
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-sm-padding") != null);
-    try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.classes, "mcss-md-padding") != null);
-}
-
-test "Responsive breakpoints structure" {
+test "toKebabCase: no underscores" {
     comptime {
-        // Raise branch quota for complex comptime string operations
-        @setEvalBranchQuota(5000);
-
-        // Base style should exist
-        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-padding{padding:16px;}") != null);
-
-        // sm breakpoint (640px+)
-        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media (min-width: 640px)") != null);
-        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-sm-padding{padding:24px;}") != null);
-
-        // md breakpoint (768px+)
-        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, "@media (min-width: 768px)") != null);
-        try testing.expect(std.mem.indexOf(u8, ResponsiveContainer.css, ".mcss-md-padding{padding:32px;}") != null);
+        if (!std.mem.eql(u8, toKebabCase("color"), "color")) @compileError("color failed");
+        if (!std.mem.eql(u8, toKebabCase("padding"), "padding")) @compileError("padding failed");
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// EXAMPLE: How this would work in a real page
-// ═══════════════════════════════════════════════════════════════════════════════
+test "toKebabCase: empty string" {
+    comptime {
+        if (!std.mem.eql(u8, toKebabCase(""), "")) @compileError("empty failed");
+    }
+}
 
-pub fn exampleUsage() void {
-    // In a real page handler:
-    //
-    // pub fn render(req: mer.Request) mer.Response {
-    //     // CSS is generated at comptime - zero runtime cost!
-    //     const css = Button.css ++ Card.css;
-    //
-    //     return mer.html(
-    //         "<style>" ++ css ++ "</style>" ++
-    //         "<button class='" ++ Button.classes ++ "'>Click</button>"
-    //     );
-    // }
-    _ = {};
+test "hashToShortName: deterministic output" {
+    comptime {
+        const hash1 = fnv1a32("test-input");
+        const hash2 = fnv1a32("test-input");
+        if (hash1 != hash2) @compileError("hashes not equal");
+
+        const name1 = hashToShortName(hash1);
+        const name2 = hashToShortName(hash2);
+        if (!std.mem.eql(u8, &name1, &name2)) @compileError("names not equal");
+    }
+}
+
+test "hashToShortName: different inputs produce different hashes" {
+    comptime {
+        const hash1 = fnv1a32("input-a");
+        const hash2 = fnv1a32("input-b");
+        if (hash1 == hash2) @compileError("hashes should differ");
+    }
+}
+
+test "shortClassName: generates short names" {
+    comptime {
+        const name = shortClassName("", "padding", "16px");
+        if (name[0] != 'm') @compileError("name should start with m");
+    }
+}
+
+test "Component: creates reusable styled component" {
+    comptime {
+        const Button = Component(.{
+            .base = .{
+                .padding = "8px 16px",
+                .background = "#3b82f6",
+                .color = "white",
+                .border_radius = "6px",
+            },
+        });
+
+        if (Button.css.len == 0) @compileError("css empty");
+        if (Button.classes.len == 0) @compileError("classes empty");
+        if (std.mem.indexOf(u8, Button.css, "padding") == null) @compileError("no padding");
+        if (std.mem.indexOf(u8, Button.css, "background") == null) @compileError("no background");
+    }
+}
+
+test "Component: responsive breakpoints" {
+    comptime {
+        const Card = Component(.{
+            .base = .{ .padding = "16px" },
+            .md = .{ .padding = "32px" },
+            .lg = .{ .padding = "48px" },
+        });
+
+        if (std.mem.indexOf(u8, Card.css, "@media") == null) @compileError("no media query");
+        if (std.mem.indexOf(u8, Card.css, "768px") == null) @compileError("no 768px");
+        if (std.mem.indexOf(u8, Card.css, "1024px") == null) @compileError("no 1024px");
+    }
+}
+
+test "Component: dark mode styles" {
+    comptime {
+        const Theme = Component(.{
+            .base = .{ .background = "white", .color = "black" },
+            .dark = .{ .background = "#1a1a2e", .color = "white" },
+        });
+
+        if (std.mem.indexOf(u8, Theme.css, "prefers-color-scheme:dark") == null) @compileError("no dark mode");
+    }
+}
+
+test "Component: hover state styles" {
+    comptime {
+        const Button = Component(.{
+            .base = .{ .background = "#3b82f6" },
+            .hover = .{ .background = "#2563eb" },
+        });
+
+        if (std.mem.indexOf(u8, Button.css, "hover") == null) @compileError("no hover");
+    }
+}
+
+test "generateStylesheet: combines multiple components" {
+    comptime {
+        const Button = Component(.{
+            .base = .{ .padding = "8px" },
+        });
+        const Card = Component(.{
+            .base = .{ .padding = "16px" },
+        });
+
+        const sheet = generateStylesheet(.{
+            .button = Button,
+            .card = Card,
+        });
+
+        if (std.mem.indexOf(u8, sheet, "/* button */") == null) @compileError("no button");
+        if (std.mem.indexOf(u8, sheet, "/* card */") == null) @compileError("no card");
+    }
+}
+
+test "getAllClasses: collects all class names" {
+    comptime {
+        const Button = Component(.{
+            .base = .{ .padding = "8px" },
+        });
+        const Card = Component(.{
+            .base = .{ .padding = "16px" },
+        });
+
+        const classes = getAllClasses(.{
+            .button = Button,
+            .card = Card,
+        });
+
+        if (classes.len == 0) @compileError("no classes");
+    }
+}
+
+test "Edge case: empty component" {
+    comptime {
+        const Empty = Component(.{
+            .base = .{},
+        });
+
+        if (Empty.css.len != 0) @compileError("css not empty");
+        if (Empty.classes.len != 0) @compileError("classes not empty");
+    }
+}
+
+test "Edge case: deeply nested responsive config" {
+    comptime {
+        @setEvalBranchQuota(10000);
+
+        const Complex = Component(.{
+            .base = .{ .padding = "4px" },
+            .sm = .{ .padding = "8px" },
+            .md = .{ .padding = "16px" },
+            .lg = .{ .padding = "24px" },
+            .xl = .{ .padding = "32px" },
+            .xl2 = .{ .padding = "48px" },
+        });
+
+        if (Complex.css.len == 0) @compileError("css empty");
+        if (std.mem.indexOf(u8, Complex.css, "640px") == null) @compileError("no 640px");
+        if (std.mem.indexOf(u8, Complex.css, "768px") == null) @compileError("no 768px");
+        if (std.mem.indexOf(u8, Complex.css, "1024px") == null) @compileError("no 1024px");
+        if (std.mem.indexOf(u8, Complex.css, "1280px") == null) @compileError("no 1280px");
+        if (std.mem.indexOf(u8, Complex.css, "1536px") == null) @compileError("no 1536px");
+    }
+}
+
+test "Edge case: all state variants combined" {
+    comptime {
+        const Interactive = Component(.{
+            .base = .{ .background = "white" },
+            .hover = .{ .background = "#f0f0f0" },
+            .focus = .{ .outline = "2px solid blue" },
+            .active = .{ .background = "#e0e0e0" },
+        });
+
+        if (std.mem.indexOf(u8, Interactive.css, "hover") == null) @compileError("no hover");
+        if (std.mem.indexOf(u8, Interactive.css, "focus") == null) @compileError("no focus");
+        if (std.mem.indexOf(u8, Interactive.css, "active") == null) @compileError("no active");
+    }
+}
+
+test "Edge case: special characters in values" {
+    comptime {
+        const Special = Component(.{
+            .base = .{
+                .background = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                .box_shadow = "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                .font_family = "'Inter', -apple-system, sans-serif",
+            },
+        });
+
+        if (std.mem.indexOf(u8, Special.css, "linear-gradient") == null) @compileError("no gradient");
+        if (std.mem.indexOf(u8, Special.css, "rgba") == null) @compileError("no rgba");
+    }
+}
+
+test "Edge case: numeric values" {
+    comptime {
+        const Numeric = Component(.{
+            .base = .{
+                .padding = 16,
+                .margin = 8,
+                .border_radius = 4,
+            },
+        });
+
+        if (std.mem.indexOf(u8, Numeric.css, "16px") == null) @compileError("no 16px");
+        if (std.mem.indexOf(u8, Numeric.css, "8px") == null) @compileError("no 8px");
+        if (std.mem.indexOf(u8, Numeric.css, "4px") == null) @compileError("no 4px");
+    }
+}
+
+test "Edge case: boolean values" {
+    comptime {
+        const BoolStyle = Component(.{
+            .base = .{
+                .display_none = false,
+                .visibility = true,
+            },
+        });
+
+        if (std.mem.indexOf(u8, BoolStyle.css, "0") == null) @compileError("no 0");
+        if (std.mem.indexOf(u8, BoolStyle.css, "1") == null) @compileError("no 1");
+    }
+}
+
+test "Edge case: very long property names" {
+    comptime {
+        @setEvalBranchQuota(10000);
+
+        const LongProps = Component(.{
+            .base = .{
+                .webkit_user_select = "none",
+                .moz_user_select = "none",
+                .ms_user_select = "none",
+            },
+        });
+
+        if (LongProps.css.len == 0) @compileError("css empty");
+    }
+}
+
+test "Edge case: unicode values" {
+    comptime {
+        const Unicode = Component(.{
+            .base = .{
+                .content = "'\\2022'",
+                .font_family = "'Noto Sans', sans-serif",
+            },
+        });
+
+        if (std.mem.indexOf(u8, Unicode.css, "2022") == null) @compileError("no unicode");
+    }
+}
+
+test "Edge case: zero values" {
+    comptime {
+        const Zero = Component(.{
+            .base = .{
+                .margin = 0,
+                .padding = 0,
+                .border_width = 0,
+            },
+        });
+
+        if (std.mem.indexOf(u8, Zero.css, "0px") == null) @compileError("no 0px");
+    }
+}
+
+test "Edge case: negative values" {
+    comptime {
+        const Negative = Component(.{
+            .base = .{
+                .margin_top = -8,
+                .margin_left = -16,
+            },
+        });
+
+        if (std.mem.indexOf(u8, Negative.css, "-8px") == null) @compileError("no -8px");
+        if (std.mem.indexOf(u8, Negative.css, "-16px") == null) @compileError("no -16px");
+    }
+}
+
+test "Edge case: percentage values" {
+    comptime {
+        const Percent = Component(.{
+            .base = .{
+                .width = "50%",
+                .height = "100%",
+                .max_width = "75%",
+            },
+        });
+
+        if (std.mem.indexOf(u8, Percent.css, "50%") == null) @compileError("no 50%");
+        if (std.mem.indexOf(u8, Percent.css, "100%") == null) @compileError("no 100%");
+    }
+}
+
+test "Edge case: viewport units" {
+    comptime {
+        const Viewport = Component(.{
+            .base = .{
+                .width = "100vw",
+                .height = "100vh",
+                .font_size = "2vmin",
+            },
+        });
+
+        if (std.mem.indexOf(u8, Viewport.css, "100vw") == null) @compileError("no 100vw");
+        if (std.mem.indexOf(u8, Viewport.css, "100vh") == null) @compileError("no 100vh");
+    }
+}
+
+test "Edge case: calc() values" {
+    comptime {
+        const Calc = Component(.{
+            .base = .{
+                .width = "calc(100% - 2rem)",
+                .height = "calc(100vh - 64px)",
+            },
+        });
+
+        if (std.mem.indexOf(u8, Calc.css, "calc") == null) @compileError("no calc");
+    }
+}
+
+test "Edge case: multiple components with same property" {
+    comptime {
+        const Button1 = Component(.{
+            .base = .{ .padding = "8px" },
+        });
+        const Button2 = Component(.{
+            .base = .{ .padding = "8px" },
+        });
+
+        if (!std.mem.eql(u8, Button1.classes, Button2.classes)) @compileError("classes differ");
+    }
+}
+
+test "Edge case: component with only responsive styles" {
+    comptime {
+        const ResponsiveOnly = Component(.{
+            .base = .{},
+            .md = .{ .padding = "16px" },
+            .lg = .{ .padding = "24px" },
+        });
+
+        if (ResponsiveOnly.css.len == 0) @compileError("css empty");
+        if (std.mem.indexOf(u8, ResponsiveOnly.css, "@media") == null) @compileError("no media");
+    }
+}
+
+test "Edge case: component with only dark mode styles" {
+    comptime {
+        const DarkOnly = Component(.{
+            .base = .{},
+            .dark = .{ .background = "#1a1a2e" },
+        });
+
+        if (DarkOnly.css.len == 0) @compileError("css empty");
+        if (std.mem.indexOf(u8, DarkOnly.css, "prefers-color-scheme") == null) @compileError("no dark");
+    }
+}
+
+test "Edge case: component with only hover styles" {
+    comptime {
+        const HoverOnly = Component(.{
+            .base = .{},
+            .hover = .{ .background = "#f0f0f0" },
+        });
+
+        if (HoverOnly.css.len == 0) @compileError("css empty");
+        if (std.mem.indexOf(u8, HoverOnly.css, "hover") == null) @compileError("no hover");
+    }
+}
+
+test "Edge case: generateStylesheet with empty components" {
+    comptime {
+        const Empty1 = Component(.{ .base = .{} });
+        const Empty2 = Component(.{ .base = .{} });
+
+        const sheet = generateStylesheet(.{
+            .empty1 = Empty1,
+            .empty2 = Empty2,
+        });
+
+        if (std.mem.indexOf(u8, sheet, "/* mercss generated stylesheet */") == null) @compileError("no header");
+    }
+}
+
+test "Edge case: getAllClasses with empty components" {
+    comptime {
+        const Empty1 = Component(.{ .base = .{} });
+        const Empty2 = Component(.{ .base = .{} });
+
+        const classes = getAllClasses(.{
+            .empty1 = Empty1,
+            .empty2 = Empty2,
+        });
+
+        if (classes.len != 0) @compileError("Expected empty classes");
+    }
 }
