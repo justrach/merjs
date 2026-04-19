@@ -6,6 +6,9 @@ zig-out/
 src/generated/*
 !src/generated/.gitkeep
 
+# mercss-jit generated stylesheet (rebuilt by `zig build codegen`)
+examples/site/app/_mercss.css
+
 # Built assets (recreated by build steps)
 public/styles.css
 public/counter.wasm

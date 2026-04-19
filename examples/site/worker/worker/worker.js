@@ -1,7 +1,7 @@
 // worker.js — Cloudflare Workers fetch handler for merjs (merlionjs.com).
 
-import merWasm from "./merjs.wasm";
-import grepWasm from "./grep.wasm";
+import merWasm from "../merjs.wasm";
+import grepWasm from "../grep.wasm";
 
 let instance = null;
 let grepInstance = null;

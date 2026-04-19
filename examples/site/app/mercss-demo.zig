@@ -170,60 +170,14 @@ const Input = design.InteractiveComponent(.{
     },
 });
 
-// Badge component
-const Badge = design.Component(.{
-    .display = "inline-flex",
-    .align_items = "center",
-    .padding = design.space.xs ++ " " ++ design.space.sm,
-    .background = design.violet.c100,
-    .color = design.violet.c700,
-    .font_size = design.font.size.xs,
-    .font_weight = design.font.weight.semibold,
-    .border_radius = design.radius.full,
-    .text_transform = "uppercase",
-    .letter_spacing = "0.05em",
-});
-
-// Graph-like primitives for dashboards and release pages
-const GraphCard = design.Component(.{
-    .background = "white",
-    .border = "1px solid " ++ design.slate.c200,
-    .border_radius = design.radius.md,
-    .padding = design.space.xl,
-    .box_shadow = design.shadow.sm,
-});
-
-const MetricTile = design.Component(.{
-    .background = design.slate.c50,
-    .border = "1px solid " ++ design.slate.c200,
-    .border_radius = design.radius.md,
-    .padding = design.space.base,
-});
-
-const GraphTrack = design.Component(.{
-    .width = "100%",
-    .height = "12px",
-    .background = design.slate.c100,
-    .border_radius = design.radius.full,
-});
-
-const GraphFillPrimary = design.Component(.{
-    .height = "100%",
-    .background = design.violet.c600,
-    .border_radius = design.radius.full,
-});
-
-const GraphFillMuted = design.Component(.{
-    .height = "100%",
-    .background = design.slate.c300,
-    .border_radius = design.radius.full,
-});
-
-const GraphFillSuccess = design.Component(.{
-    .height = "100%",
-    .background = design.emerald.c500,
-    .border_radius = design.radius.full,
-});
+// Shared design-system primitives
+const Badge = design.Badge(.violet);
+const GraphCard = design.SurfaceCard(.slate);
+const MetricTile = design.MetricTile(.slate);
+const GraphTrack = design.GraphTrack;
+const GraphFillPrimary = design.GraphFill(.violet);
+const GraphFillMuted = design.GraphFill(.slate);
+const GraphFillSuccess = design.GraphFill(.emerald);
 
 // Page CSS
 const page_css =
@@ -560,17 +514,8 @@ pub fn render(req: mer.Request) mer.Response {
                         h.div(.{ .class = "code-dot code-dot-green" }, .{}),
                         h.span(.{ .class = "code-title" }, "graph.zig"),
                     }),
-                    h.pre(.{ .class = CodeBlock.classes }, "const GraphTrack = design.Component(.{\n" ++
-                        "    .width = \"100%\",\n" ++
-                        "    .height = \"12px\",\n" ++
-                        "    .background = design.slate.c100,\n" ++
-                        "    .border_radius = design.radius.full,\n" ++
-                        "});\n\n" ++
-                        "const GraphFillPrimary = design.Component(.{\n" ++
-                        "    .height = \"100%\",\n" ++
-                        "    .background = design.violet.c600,\n" ++
-                        "    .border_radius = design.radius.full,\n" ++
-                        "});\n\n" ++
+                    h.pre(.{ .class = CodeBlock.classes }, "const GraphTrack = design.GraphTrack;\n" ++
+                        "const GraphFillPrimary = design.GraphFill(.violet);\n\n" ++
                         "h.div(.{ .class = GraphTrack.classes }, .{\n" ++
                         "    h.div(.{ .class = GraphFillPrimary.classes, .style = \"width:95%;\" }, .{}),\n" ++
                         "})"),

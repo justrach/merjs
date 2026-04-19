@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const mercss_jit = @import("mercss_jit");
 
 pub fn main() !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
@@ -98,6 +99,36 @@ pub fn main() !void {
     try out.writePositionalAll(runtime.io, buf.items, 0);
 
     std.debug.print("codegen: wrote {d} route(s) to src/generated/routes.zig\n", .{entries.items.len});
+
+    // ── mercss-jit: scan app/ for class candidates → app/_mercss.css ─────────
+    {
+        var ds = mercss_jit.DesignSystem.init(alloc);
+        defer ds.deinit();
+        try ds.loadDefaults();
+
+        // Source bytes outlive the candidate slices (which borrow into them).
+        var sources: std.ArrayList([]u8) = .empty;
+        defer {
+            for (sources.items) |s| alloc.free(s);
+            sources.deinit(alloc);
+        }
+        var candidates: std.ArrayList([]const u8) = .empty;
+        defer candidates.deinit(alloc);
+
+        try scanCssCandidates(alloc, "app", &sources, &candidates);
+
+        const css = try mercss_jit.compile(alloc, &ds, candidates.items);
+        defer alloc.free(css);
+
+        const css_out = try std.Io.Dir.cwd().createFile(runtime.io, "app/_mercss.css", .{});
+        defer css_out.close(runtime.io);
+        try css_out.writePositionalAll(runtime.io, css, 0);
+
+        std.debug.print(
+            "mercss: wrote {d} bytes ({d} candidates, {d} sources) to app/_mercss.css\n",
+            .{ css.len, candidates.items.len, sources.items.len },
+        );
+    }
 }
 
 /// Scan dir/ for *.zig files, appending "dir/file.zig" to entries.
@@ -221,4 +252,36 @@ fn hasDynamicSegment(path: []const u8) bool {
         }
     }
     return false;
+}
+
+/// Recursively walk `dir` looking for .zig and .html files. For each one,
+/// load its bytes (stored in `sources` so they outlive borrowed slices) and
+/// run mercss_jit.scan to append candidate strings to `candidates`.
+fn scanCssCandidates(
+    alloc: std.mem.Allocator,
+    dir_path: []const u8,
+    sources: *std.ArrayList([]u8),
+    candidates: *std.ArrayList([]const u8),
+) !void {
+    var d = std.Io.Dir.cwd().openDir(runtime.io, dir_path, .{ .iterate = true }) catch return;
+    defer d.close(runtime.io);
+    var walker = try d.walk(alloc);
+    defer walker.deinit();
+    while (try walker.next(runtime.io)) |entry| {
+        if (entry.kind != .file) continue;
+        const is_zig = std.mem.endsWith(u8, entry.path, ".zig");
+        const is_html = std.mem.endsWith(u8, entry.path, ".html");
+        if (!is_zig and !is_html) continue;
+        // Skip our own generated output.
+        if (std.mem.eql(u8, entry.basename, "_mercss.css")) continue;
+
+        const f = entry.dir.openFile(runtime.io, entry.basename, .{}) catch continue;
+        defer f.close(runtime.io);
+        // 4 MiB is plenty for any source/template file we'd reasonably scan.
+        var reader_buf: [4096]u8 = undefined;
+        var fr = f.reader(runtime.io, &reader_buf);
+        const content = fr.interface.allocRemaining(alloc, .limited(4 * 1024 * 1024)) catch continue;
+        try sources.append(alloc, content);
+        try mercss_jit.scan(content, alloc, candidates);
+    }
 }

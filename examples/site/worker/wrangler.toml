@@ -2,7 +2,7 @@
 # This is the site-specific config — the root worker/wrangler.toml is generic.
 
 name = "merjs"
-main = "worker.js"
+main = "worker/worker.js"
 compatibility_date = "2024-12-01"
 
 routes = [
@@ -13,7 +13,7 @@ routes = [
 directory = "../public"
 
 [build]
-command = "cd ../.. && /opt/homebrew/bin/zig build worker"
+command = "cd ../../.. && /opt/homebrew/bin/zig build worker"
 
 [[rules]]
 type = "CompiledWasm"

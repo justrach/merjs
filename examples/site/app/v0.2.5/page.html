@@ -4,7 +4,7 @@
       <div class="hero-copy">
         <div class="release-topline">release line</div>
         <h1 class="release-title">v{s}</h1>
-        <p class="release-sub">Zig 0.16 support, edge installer delivery, one-line install, and a much leaner runtime profile. The current benchmark story is concrete: 115,093 req/s locally, 0.39 ms average latency, and 4.8 MB RAM under CI load.</p>
+        <p class="release-sub">Zig 0.16 across the framework, CLI, and examples. One-line install served from the edge. A leaner runtime profile across throughput, latency, RAM, and binary size.</p>
         <div class="release-actions">
           <a class="rel-btn rel-primary" href="https://merjs.trilok.ai/install.sh">Installer</a>
           <a class="rel-btn rel-secondary" href="/docs">Docs</a>
@@ -23,7 +23,7 @@
           <div class="hero-metric"><span>memory</span><strong>4.8</strong><small>MB under load</small></div>
           <div class="hero-metric"><span>binary</span><strong>260</strong><small>KB release</small></div>
         </div>
-        <p class="hero-board-note">This release is not just a version marker. It is the point where the Zig 0.16 line, edge installer, and the current runtime story start reading like one coherent system.</p>
+        <p class="hero-board-note">Numbers from the local benchmark pass on the v0.1.0 → v0.2.5 line. Full deltas in the perf board below.</p>
       </aside>
     </div>
   </section>
@@ -47,11 +47,11 @@
       <h2>Zig 0.16 upgrade surface</h2>
       <p>These were the big breakage zones called out in the migration guide. All four tracks are now fully migrated in the current release line.</p>
     </div>
-    <div class="progress-panel">
-      <div class="progress-row"><div class="progress-meta"><strong>Networking</strong><span>std.net -&gt; std.Io.net</span></div><div class="progress-track"><div class="progress-fill fill-red" style="width: 100%;">100%</div></div></div>
-      <div class="progress-row"><div class="progress-meta"><strong>IO</strong><span>std.io -&gt; std.Io writer paths</span></div><div class="progress-track"><div class="progress-fill fill-rose" style="width: 100%;">100%</div></div></div>
-      <div class="progress-row"><div class="progress-meta"><strong>Time</strong><span>timestamp() -&gt; clock_gettime()</span></div><div class="progress-track"><div class="progress-fill fill-orange" style="width: 100%;">100%</div></div></div>
-      <div class="progress-row"><div class="progress-meta"><strong>Collections</strong><span>ArrayList and empty init updates</span></div><div class="progress-track"><div class="progress-fill fill-amber" style="width: 100%;">100%</div></div></div>
+    <div class="shipped-panel">
+      <div class="shipped-row"><span class="shipped-check">✓</span><div class="shipped-meta"><strong>Networking</strong><span>std.net → std.Io.net</span></div><span class="shipped-tag">shipped</span></div>
+      <div class="shipped-row"><span class="shipped-check">✓</span><div class="shipped-meta"><strong>IO</strong><span>std.io → std.Io writer paths</span></div><span class="shipped-tag">shipped</span></div>
+      <div class="shipped-row"><span class="shipped-check">✓</span><div class="shipped-meta"><strong>Time</strong><span>timestamp() → clock_gettime()</span></div><span class="shipped-tag">shipped</span></div>
+      <div class="shipped-row"><span class="shipped-check">✓</span><div class="shipped-meta"><strong>Collections</strong><span>ArrayList unmanaged + .empty init</span></div><span class="shipped-tag">shipped</span></div>
     </div>
   </section>
 
@@ -59,51 +59,59 @@
     <div class="section-head left-head">
       <div class="eyebrow">Memory and runtime</div>
       <h2>Current line systems work</h2>
-      <p>This section mixes shipped improvements and in-tree runtime work already called out in the changelog. The focus is the underlying engine: memory reuse, caching, shell paint timing, fetch strategy, and how those choices keep RAM pressure down.</p>
+      <p>Engine work this cycle: how requests reuse memory, static assets cache, the shell paints first, and parallel fetches collapse onto a single critical path.</p>
     </div>
     <div class="graph-grid">
       <article class="graph-card graph-memory">
-        <div class="graph-copy">
+        <header class="graph-card-head">
           <span class="graph-kicker">allocator</span>
-          <h3>Request memory reuse</h3>
-          <p>Keep-alive request cycles move from allocator churn on every pass to a single reset path that reuses the same arena memory.</p>
-        </div>
-        <div class="graph-metrics">
-          <div class="delta-row"><span>Before</span><strong>2 ops/cycle</strong><div class="delta-track"><div class="delta-fill before" style="width: 28%;"></div></div><em>free + realloc</em></div>
-          <div class="delta-row"><span>After</span><strong>1 op/cycle</strong><div class="delta-track"><div class="delta-fill after" style="width: 92%;"></div></div><em>arena reset</em></div>
+          <span class="graph-impact-tag">−50% allocator ops</span>
+        </header>
+        <h3>Request memory reuse</h3>
+        <p>Keep-alive cycles drop from allocator churn to a single reset path that reuses the same arena memory.</p>
+        <div class="delta-line">
+          <div class="delta-cell"><span>Before</span><strong>2 ops / cycle</strong></div>
+          <span class="delta-arrow" aria-hidden="true">→</span>
+          <div class="delta-cell after"><span>After</span><strong>1 op / cycle</strong></div>
         </div>
       </article>
       <article class="graph-card graph-static">
-        <div class="graph-copy">
+        <header class="graph-card-head">
           <span class="graph-kicker">cache</span>
-          <h3>Static asset serving</h3>
-          <p>Static files now hit disk once, then serve from memory. Repeated requests stop paying the same filesystem cost over and over.</p>
-        </div>
-        <div class="graph-metrics">
-          <div class="delta-row"><span>Before</span><strong>1x/request</strong><div class="delta-track"><div class="delta-fill before" style="width: 18%;"></div></div><em>disk every request</em></div>
-          <div class="delta-row"><span>After</span><strong>1x then 0x</strong><div class="delta-track"><div class="delta-fill after" style="width: 96%;"></div></div><em>memory after first hit</em></div>
+          <span class="graph-impact-tag">0 disk reads when warm</span>
+        </header>
+        <h3>Static asset serving</h3>
+        <p>Static files hit disk once, then serve from memory. Repeat requests stop paying the same filesystem cost.</p>
+        <div class="delta-line">
+          <div class="delta-cell"><span>Before</span><strong>1 hit / request</strong></div>
+          <span class="delta-arrow" aria-hidden="true">→</span>
+          <div class="delta-cell after"><span>After</span><strong>1 hit, then 0</strong></div>
         </div>
       </article>
       <article class="graph-card graph-shell">
-        <div class="graph-copy">
+        <header class="graph-card-head">
           <span class="graph-kicker">streaming</span>
-          <h3>Shell-first paint</h3>
-          <p>The layout can flush its head chunk immediately so the browser starts rendering chrome before page content finishes building.</p>
-        </div>
-        <div class="graph-metrics">
-          <div class="delta-row"><span>Before</span><strong>0 early chunks</strong><div class="delta-track"><div class="delta-fill before" style="width: 22%;"></div></div><em>wait for full body</em></div>
-          <div class="delta-row"><span>After</span><strong>1 early chunk</strong><div class="delta-track"><div class="delta-fill after" style="width: 82%;"></div></div><em>head flush first</em></div>
+          <span class="graph-impact-tag">+1 early shell chunk</span>
+        </header>
+        <h3>Shell-first paint</h3>
+        <p>The layout flushes its head chunk immediately so the browser starts rendering chrome before the body finishes building.</p>
+        <div class="delta-line">
+          <div class="delta-cell"><span>Before</span><strong>0 early chunks</strong></div>
+          <span class="delta-arrow" aria-hidden="true">→</span>
+          <div class="delta-cell after"><span>After</span><strong>1 early chunk</strong></div>
         </div>
       </article>
       <article class="graph-card graph-fetch">
-        <div class="graph-copy">
+        <header class="graph-card-head">
           <span class="graph-kicker">fetch</span>
-          <h3>Parallel fetch strategy</h3>
-          <p><code>mer.fetchAll()</code> makes total latency trend toward the slowest request instead of the sum of all requests.</p>
-        </div>
-        <div class="graph-metrics">
-          <div class="delta-row"><span>Before</span><strong>n waits</strong><div class="delta-track"><div class="delta-fill before" style="width: 34%;"></div></div><em>sum of requests</em></div>
-          <div class="delta-row"><span>After</span><strong>1 path</strong><div class="delta-track"><div class="delta-fill after" style="width: 88%;"></div></div><em>slowest request wins</em></div>
+          <span class="graph-impact-tag">1-step critical path</span>
+        </header>
+        <h3>Parallel fetch strategy</h3>
+        <p><code>mer.fetchAll()</code> bounds total latency to the slowest request instead of the sum of all of them.</p>
+        <div class="delta-line">
+          <div class="delta-cell"><span>Before</span><strong>N-step path</strong></div>
+          <span class="delta-arrow" aria-hidden="true">→</span>
+          <div class="delta-cell after"><span>After</span><strong>1-step path</strong></div>
         </div>
       </article>
     </div>
@@ -126,29 +134,29 @@
       </div>
     </div>
     <div class="perf-panel">
-      <div class="perf-row metric-throughput"><div class="perf-meta"><strong>Homepage throughput</strong><span>v0.1.0 performance pass</span><em class="perf-chip chip-up">higher is better</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 16%;">2,400 req/s</div><div class="perf-bar after" style="width: 95%;">115,093 req/s</div></div></div>
-      <div class="perf-row metric-latency"><div class="perf-meta"><strong>Average latency</strong><span>same benchmark pass</span><em class="perf-chip chip-down">lower is better</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 80%;">41 ms</div><div class="perf-bar after" style="width: 16%;">0.39 ms</div></div></div>
-      <div class="perf-row metric-ram"><div class="perf-meta"><strong>RAM under load</strong><span>CI benchmark</span><em class="perf-chip chip-down">lower is better</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 82%;">71.7 MB</div><div class="perf-bar after" style="width: 12%;">4.8 MB</div></div></div>
-      <div class="perf-row metric-binary"><div class="perf-meta"><strong>Binary size</strong><span>release small + strip</span><em class="perf-chip chip-down">smaller is better</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 82%;">1.9 MB</div><div class="perf-bar after" style="width: 18%;">260 KB</div></div></div>
-      <div class="perf-row metric-lcp"><div class="perf-meta"><strong>LCP on sgdata</strong><span>recent preload fixes</span><em class="perf-chip chip-down">lower is better</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 84%;">5.4 s</div><div class="perf-bar after" style="width: 24%;">0.8 s</div></div></div>
+      <div class="perf-row metric-throughput"><div class="perf-meta"><strong>Homepage throughput</strong><span>v0.1.0 performance pass</span><em class="perf-chip chip-up">higher is better · 48× faster</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 4%;">2,400 req/s</div><div class="perf-bar after" style="width: 100%;">115,093 req/s</div></div></div>
+      <div class="perf-row metric-latency"><div class="perf-meta"><strong>Average latency</strong><span>same benchmark pass</span><em class="perf-chip chip-down">lower is better · 105× faster</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 100%;">41 ms</div><div class="perf-bar after" style="width: 4%;">0.39 ms</div></div></div>
+      <div class="perf-row metric-ram"><div class="perf-meta"><strong>RAM under load</strong><span>CI benchmark</span><em class="perf-chip chip-down">lower is better · 15× leaner</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 100%;">71.7 MB</div><div class="perf-bar after" style="width: 7%;">4.8 MB</div></div></div>
+      <div class="perf-row metric-binary"><div class="perf-meta"><strong>Binary size</strong><span>release small + strip</span><em class="perf-chip chip-down">smaller is better · 7× smaller</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 100%;">1.9 MB</div><div class="perf-bar after" style="width: 14%;">260 KB</div></div></div>
+      <div class="perf-row metric-lcp"><div class="perf-meta"><strong>LCP on sgdata</strong><span>recent preload fixes</span><em class="perf-chip chip-down">lower is better · 6.8× faster</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 100%;">5.4 s</div><div class="perf-bar after" style="width: 15%;">0.8 s</div></div></div>
     </div>
   </section>
 
   <section class="release-section release-note-grid">
     <article class="note-card">
       <div class="eyebrow">Added</div>
-      <h3>Zig 0.16 support</h3>
-      <p>The framework, CLI, and examples all now target Zig 0.16.0. The migration guide documents the breakage classes and the exact replacements.</p>
+      <h3>Zig 0.16 across the surface</h3>
+      <p>Framework, CLI, and examples all on 0.16.0. See the migration guide for the four breakage classes and their exact replacements.</p>
     </article>
     <article class="note-card">
       <div class="eyebrow">Added</div>
       <h3>Edge-served installer</h3>
-      <p>The install script now serves from Cloudflare Workers so the first contact point with merjs is also running on the edge stack it supports.</p>
+      <p>Install script ships from Cloudflare Workers — the first touch with merjs runs on the same edge stack it targets.</p>
     </article>
     <article class="note-card">
       <div class="eyebrow">Changed</div>
       <h3>Modernized core APIs</h3>
-      <p>Networking, IO, time, and collection setup all moved to the new Zig 0.16 idioms, reducing drift from upstream language evolution.</p>
+      <p>Networking, IO, time, and collections all moved to 0.16 idioms. Reduces drift from upstream so future bumps stay small.</p>
     </article>
   </section>
 </div>

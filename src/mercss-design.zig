@@ -327,6 +327,129 @@ pub const duration = struct {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SEMANTIC PRIMITIVES - Reusable premium building blocks
+// ═══════════════════════════════════════════════════════════════════════════════
+
+pub const Tone = enum {
+    brand,
+    violet,
+    rose,
+    orange,
+    amber,
+    emerald,
+    slate,
+};
+
+fn toneBg(comptime tone: Tone) []const u8 {
+    return switch (tone) {
+        .brand => brand.c100,
+        .violet => violet.c100,
+        .rose => rose.c100,
+        .orange => orange.c100,
+        .amber => amber.c100,
+        .emerald => emerald.c100,
+        .slate => slate.c100,
+    };
+}
+
+fn toneStrong(comptime tone: Tone) []const u8 {
+    return switch (tone) {
+        .brand => brand.c700,
+        .violet => violet.c700,
+        .rose => rose.c700,
+        .orange => orange.c700,
+        .amber => amber.c700,
+        .emerald => emerald.c700,
+        .slate => slate.c700,
+    };
+}
+
+fn toneBorder(comptime tone: Tone) []const u8 {
+    return switch (tone) {
+        .brand => brand.c200,
+        .violet => violet.c200,
+        .rose => rose.c200,
+        .orange => orange.c200,
+        .amber => amber.c200,
+        .emerald => emerald.c200,
+        .slate => slate.c200,
+    };
+}
+
+fn toneFill(comptime tone: Tone) []const u8 {
+    return switch (tone) {
+        .brand => chart.primary,
+        .violet => violet.c600,
+        .rose => rose.c600,
+        .orange => orange.c600,
+        .amber => amber.c600,
+        .emerald => emerald.c500,
+        .slate => chart.neutral,
+    };
+}
+
+pub fn Badge(comptime tone: Tone) type {
+    return Component(.{
+        .display = "inline-flex",
+        .align_items = "center",
+        .padding = space.xs ++ " " ++ space.sm,
+        .background = toneBg(tone),
+        .color = toneStrong(tone),
+        .font_size = font.size.xs,
+        .font_weight = font.weight.semibold,
+        .border_radius = radius.full,
+        .text_transform = "uppercase",
+        .letter_spacing = "0.05em",
+    });
+}
+
+pub fn SurfaceCard(comptime tone: Tone) type {
+    return Component(.{
+        .background = elevatedSurface(tone),
+        .border = "1px solid " ++ toneBorder(tone),
+        .border_radius = radius.md,
+        .padding = space.xl,
+        .box_shadow = shadow.diffuse,
+    });
+}
+
+fn elevatedSurface(comptime tone: Tone) []const u8 {
+    return switch (tone) {
+        .brand => surface.accent_soft,
+        .violet => violet.c50,
+        .rose => rose.c50,
+        .orange => orange.c50,
+        .amber => amber.c50,
+        .emerald => emerald.c50,
+        .slate => "white",
+    };
+}
+
+pub fn MetricTile(comptime tone: Tone) type {
+    return Component(.{
+        .background = toneBg(tone),
+        .border = "1px solid " ++ toneBorder(tone),
+        .border_radius = radius.md,
+        .padding = space.base,
+    });
+}
+
+pub const GraphTrack = Component(.{
+    .width = "100%",
+    .height = "12px",
+    .background = chart.track,
+    .border_radius = radius.full,
+});
+
+pub fn GraphFill(comptime tone: Tone) type {
+    return Component(.{
+        .height = "100%",
+        .background = toneFill(tone),
+        .border_radius = radius.full,
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // RE-EXPORTS FOR CONVENIENCE
 // ═══════════════════════════════════════════════════════════════════════════════
 

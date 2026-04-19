@@ -104,7 +104,7 @@ pub const Server = struct {
         const io = runtime.io;
         self.io = io;
         const addr = try std.Io.net.IpAddress.parse(self.config.host, self.config.port);
-        var net_server = try addr.listen(io, .{});
+        var net_server = try addr.listen(io, .{ .reuse_address = true });
         defer net_server.deinit(io);
 
         // Signal readiness with actual bound port (supports port=0 for desktop/testing).

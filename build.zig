@@ -53,6 +53,16 @@ pub fn build(b: *std.Build) void {
     const prerender_mod = b.addModule("prerender", .{ .root_source_file = b.path("src/prerender.zig") });
     prerender_mod.addImport("mer", mer_mod);
 
+    // Worker-safe API surface — strips native-only pieces (server, session, env,
+    // watcher) so the wasm32-freestanding target doesn't pull in libc deps.
+    const mer_worker_mod = b.addModule("mer_worker", .{
+        .root_source_file = b.path("src/mer-worker.zig"),
+    });
+    mer_worker_mod.addImport("mer_worker", mer_worker_mod);
+    mer_worker_mod.addImport("dhi_model", dhi_model_mod);
+    mer_worker_mod.addImport("dhi_validator", dhi_validator_mod);
+    mer_worker_mod.addImport("turboapi-core", core_mod);
+
     // ── Demo site (examples/site) ───────────────────────────────────────────
     const counter_config_mod = b.addModule("counter_config", .{
         .root_source_file = b.path("examples/site/wasm/counter_config.zig"),
@@ -89,6 +99,15 @@ pub fn build(b: *std.Build) void {
     });
     // Wire up runtime for tools/codegen.zig
     codegen_mod.addImport("runtime", runtime_mod);
+
+    // mercss JIT compiler — codegen scans app/ for class candidates,
+    // compiles them, and writes app/_mercss.css before the exe builds.
+    const mercss_jit_mod = b.createModule(.{
+        .root_source_file = b.path("src/mercss-jit.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    codegen_mod.addImport("mercss_jit", mercss_jit_mod);
     const codegen_exe = b.addExecutable(.{ .name = "codegen", .root_module = codegen_mod });
     const run_codegen = b.addRunArtifact(codegen_exe);
     run_codegen.setCwd(b.path("."));
@@ -146,11 +165,11 @@ pub fn build(b: *std.Build) void {
         .target = wasm_target,
         .optimize = .ReleaseSmall,
     });
-    worker_mod.addImport("mer", mer_mod);
+    worker_mod.addImport("mer", mer_worker_mod);
     worker_mod.addImport("counter_config", counter_config_mod);
-    helpers.addDirModules(b, worker_mod, mer_mod, "examples/site/app", "app", site_extras);
-    helpers.addDirModules(b, worker_mod, mer_mod, "examples/site/api", "api", &.{});
-    helpers.addRoutesModule(b, worker_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
+    helpers.addDirModules(b, worker_mod, mer_worker_mod, "examples/site/app", "app", site_extras);
+    helpers.addDirModules(b, worker_mod, mer_worker_mod, "examples/site/api", "api", &.{});
+    helpers.addRoutesModule(b, worker_mod, mer_worker_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
     const worker_wasm = b.addExecutable(.{ .name = "merjs", .root_module = worker_mod });
     worker_wasm.rdynamic = true;
     worker_wasm.entry = .disabled;
@@ -196,7 +215,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
     // Run inline tests in individual framework source files.
-    for ([_][]const u8{ "src/css.zig", "src/session.zig", "src/telemetry.zig" }) |src_path| {
+    for ([_][]const u8{ "src/css.zig", "src/session.zig", "src/telemetry.zig", "src/mercss-jit.zig" }) |src_path| {
         const file_test_mod = b.createModule(.{
             .root_source_file = b.path(src_path),
             .target = target,
