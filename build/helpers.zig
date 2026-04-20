@@ -67,6 +67,87 @@ pub fn addRoutesModule(
     mod.addImport("routes", routes_mod);
 }
 
+/// Scan a public directory and generate a static_assets module for the Fastly target.
+/// Each file is embedded via a WriteFile step, avoiding @embedFile path-escape issues.
+pub fn addStaticAssets(
+    b: *std.Build,
+    mod: *std.Build.Module,
+    public_dir: []const u8,
+) void {
+    const wf = b.addWriteFiles();
+    var buf: std.ArrayList(u8) = .empty;
+
+    buf.appendSlice(b.allocator,
+        \\pub const Asset = struct { data: []const u8, content_type: []const u8 };
+        \\pub fn get(path: []const u8) ?Asset {
+        \\    for (assets) |a| {
+        \\        if (eql(path, a.path)) return .{ .data = a.data, .content_type = a.ct };
+        \\    }
+        \\    return null;
+        \\}
+        \\fn eql(a: []const u8, c: []const u8) bool {
+        \\    return a.len == c.len and for (a, c) |x, y| { if (x != y) break false; } else true;
+        \\}
+        \\const E = struct { path: []const u8, data: []const u8, ct: []const u8 };
+        \\const assets = [_]E{
+        \\
+    ) catch @panic("OOM");
+
+    var d = std.Io.Dir.cwd().openDir(b.graph.io, public_dir, .{ .iterate = true }) catch return;
+    defer d.close(b.graph.io);
+    var walker = d.walk(b.allocator) catch return;
+    defer walker.deinit();
+    var count: usize = 0;
+    while (walker.next(b.graph.io) catch null) |entry| {
+        if (entry.kind != .file) continue;
+        if (entry.path[0] == '.') continue;
+        const rel = entry.path;
+        const file_path = b.fmt("{s}/{s}", .{ public_dir, rel });
+        const copy_name = b.fmt("__asset_{d}", .{count});
+        const ct = mimeForExt(rel);
+
+        _ = wf.addCopyFile(b.path(file_path), copy_name);
+
+        buf.print(b.allocator, "    .{{ .path = \"/{s}\", .data = @embedFile(\"{s}\"), .ct = \"{s}\" }},\n", .{ rel, copy_name, ct }) catch @panic("OOM");
+        count += 1;
+    }
+
+    buf.appendSlice(b.allocator, "};\n") catch @panic("OOM");
+
+    const source = wf.add("static_assets.zig", buf.items);
+
+    const assets_mod = b.createModule(.{
+        .root_source_file = source,
+    });
+    mod.addImport("static_assets", assets_mod);
+}
+
+fn mimeForExt(path: []const u8) []const u8 {
+    const table = [_]struct { []const u8, []const u8 }{
+        .{ ".html", "text/html; charset=utf-8" },
+        .{ ".css", "text/css; charset=utf-8" },
+        .{ ".js", "application/javascript" },
+        .{ ".json", "application/json" },
+        .{ ".wasm", "application/wasm" },
+        .{ ".png", "image/png" },
+        .{ ".jpg", "image/jpeg" },
+        .{ ".jpeg", "image/jpeg" },
+        .{ ".gif", "image/gif" },
+        .{ ".svg", "image/svg+xml" },
+        .{ ".ico", "image/x-icon" },
+        .{ ".webp", "image/webp" },
+        .{ ".txt", "text/plain; charset=utf-8" },
+        .{ ".woff", "font/woff" },
+        .{ ".woff2", "font/woff2" },
+        .{ ".ttf", "font/ttf" },
+        .{ ".map", "application/json" },
+    };
+    for (table) |entry| {
+        if (std.mem.endsWith(u8, path, entry[0])) return entry[1];
+    }
+    return "application/octet-stream";
+}
+
 /// Create a WASM executable target with standard settings.
 pub fn addWasmExe(b: *std.Build, name: []const u8, source: []const u8, wasm_target: std.Build.ResolvedTarget) *std.Build.Step.Compile {
     const exe = b.addExecutable(.{

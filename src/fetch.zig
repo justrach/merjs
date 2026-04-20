@@ -4,6 +4,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 const runtime = @import("runtime");
 
+/// Hook for WASI targets (Fastly Compute). Set by the entry point before dispatch.
+pub const WasiFetchFn = *const fn (std.mem.Allocator, FetchRequest) anyerror!FetchResponse;
+pub var wasi_fetch_impl: ?WasiFetchFn = null;
+
 /// Options for a single HTTP request made during server-side rendering.
 pub const FetchRequest = struct {
     url: []const u8,
@@ -68,6 +72,11 @@ pub fn wasmClearCache() void {
 /// Make an HTTP request from a server-side page handler.
 pub fn fetch(allocator: std.mem.Allocator, opts: FetchRequest) !FetchResponse {
     if (comptime builtin.os.tag == .freestanding) return error.NotSupported;
+
+    if (comptime builtin.os.tag == .wasi) {
+        const impl = wasi_fetch_impl orelse return error.NotSupported;
+        return impl(allocator, opts);
+    }
     // Use shared runtime.io instead of creating new Threaded instance
     var client = std.http.Client{ .allocator = allocator, .io = runtime.io };
     defer client.deinit();
@@ -109,6 +118,13 @@ pub fn fetchAll(allocator: std.mem.Allocator, requests: []const FetchRequest) []
                     results[i] = .{ .status = .ok, .body = @constCast(body) };
                 }
             }
+        }
+        return results;
+    }
+
+    if (comptime builtin.os.tag == .wasi) {
+        for (requests, 0..) |req_opts, i| {
+            results[i] = fetch(allocator, req_opts) catch null;
         }
         return results;
     }

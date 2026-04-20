@@ -14,6 +14,7 @@ merjs mixes two things in the top level — the **framework** and its own **webs
 | `public/` | **merjs website** static assets |
 | `wasm/` | **merjs website** client-side WASM modules |
 | `worker/` | **merjs website** Cloudflare Workers deploy target |
+| `examples/site/fastly/` | Fastly Compute deploy target (WASI) |
 | `examples/` | Standalone demo apps |
 
 ## Request lifecycle (native dev server)
@@ -35,6 +36,19 @@ Cloudflare edge
       → wasm.handle()    full WASM render with pre-fetched data
   → HTTP Response
 ```
+
+## Request lifecycle (Fastly Compute)
+
+```
+Fastly edge
+  → src/fastly.zig        WASI _start entry point
+      → tryServeStatic()  check embedded static assets (public/*)
+      → buildMerRequest() parse downstream request into mer.Request
+      → dispatch          hash-map route lookup → page fn pointer
+      → sendFastlyResponse()  write status + headers + body to downstream
+```
+
+Unlike the Workers target, Fastly Compute runs native WASI — no JS shim is required. Static assets are embedded at compile time via `@embedFile`, so serving them is a memory lookup with no I/O. Outbound HTTP fetches during SSR are routed through named backends configured in `fastly.toml`.
 
 ## Streaming SSR
 

@@ -17,6 +17,7 @@ worker/merjs.wasm
 worker/grep.wasm
 examples/kanban/worker/merjs.wasm
 examples/singapore-data-dashboard/worker/merjs.wasm
+examples/site/fastly/merjs.wasm
 
 # Toolchain binaries (downloaded on first build)
 tools/tailwindcss
