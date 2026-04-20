@@ -55,18 +55,6 @@ fn sendFastlyResponse(downstream: *zigly.http.Downstream, response: mer.Response
     const status: u16 = @intFromEnum(response.status);
     try resp.setStatus(status);
 
-    if (response.content_type == .redirect) {
-        try resp.headers.set("Location", response.body);
-        try resp.finish();
-        return;
-    }
-
-    try resp.headers.set("Content-Type", response.content_type.mime());
-
-    for (mer.security_headers) |hdr| {
-        try resp.headers.set(hdr.name, hdr.value);
-    }
-
     for (response.cookies) |ck| {
         var buf: [512]u8 = undefined;
         const val = ck.headerValue(&buf);
@@ -74,6 +62,17 @@ fn sendFastlyResponse(downstream: *zigly.http.Downstream, response: mer.Response
         try resp.headers.append(allocator, "Set-Cookie", owned);
     }
 
+    if (response.content_type == .redirect) {
+        try resp.headers.set("Location", response.body);
+        try resp.finish();
+        return;
+    }
+
+    for (mer.security_headers) |hdr| {
+        try resp.headers.set(hdr.name, hdr.value);
+    }
+
+    try resp.headers.set("Content-Type", response.content_type.mime());
     try resp.body.writeAll(response.body);
     try resp.finish();
 }
