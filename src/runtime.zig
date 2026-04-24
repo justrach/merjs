@@ -21,15 +21,15 @@ const use_evented = blk: {
 // Evented storage only exists when supported
 var evented: if (use_evented) std.Io.Evented else void = undefined;
 
-pub fn init(gpa: std.mem.Allocator) !void {
+pub fn init(gpa: std.mem.Allocator, environ: std.process.Environ) !void {
     if (use_evented) {
         // Linux: Use Evented (io_uring)
         evented = undefined;
-        try std.Io.Evented.init(&evented, gpa, .{});
+        try std.Io.Evented.init(&evented, gpa, .{ .environ = environ });
         io = evented.io();
     } else {
         // macOS/Other: Use Threaded (Evented has bugs or isn't available)
-        threaded = std.Io.Threaded.init(gpa, .{});
+        threaded = std.Io.Threaded.init(gpa, .{ .environ = environ });
         io = threaded.io();
     }
 }

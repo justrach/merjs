@@ -16,7 +16,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const alloc = gpa.allocator();
 
     // Initialize std.Io runtime (Auto-selects Evented on Linux, Threaded elsewhere)
-    try runtime.init(alloc);
+    try runtime.init(alloc, init.environ);
     defer runtime.deinit();
 
     // 0.16: args come through init parameter.
