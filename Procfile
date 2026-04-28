@@ -1,0 +1,1 @@
+web: ./merjs --no-dev

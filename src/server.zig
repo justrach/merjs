@@ -242,6 +242,19 @@ fn serveRequest(
     else
         "";
 
+    // Health & readiness endpoints — always available (dev or prod).
+    // For container HEALTHCHECK, k8s liveness/readiness probes, PaaS health checks.
+    if (std.mem.eql(u8, path, "/_mer/health") or std.mem.eql(u8, path, "/_mer/ready")) {
+        const headers = [_]std.http.Header{
+            .{ .name = "content-type", .value = "application/json" },
+            .{ .name = "cache-control", .value = "no-store" },
+        };
+        try std_req.respond("{\"status\":\"ok\",\"service\":\"merjs\",\"version\":\"" ++ mer.version ++ "\"}", .{
+            .extra_headers = &headers,
+        });
+        return;
+    }
+
     // SSE hot-reload endpoint.
     if (dev and std.mem.eql(u8, path, "/_mer/events")) {
         if (watcher) |w| {

@@ -1,0 +1,27 @@
+# docker-compose.yml — one-command run for merjs.
+#
+#   docker compose up --build
+#
+# Set PORT to publish on a different host port:
+#   PORT=8080 docker compose up --build
+
+services:
+  merjs:
+    build: .
+    image: merjs:latest
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      # Forward standard observability env vars if you set them in your shell.
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      DD_AGENT_HOST: "${DD_AGENT_HOST:-}"
+      DD_DOGSTATSD_PORT: "${DD_DOGSTATSD_PORT:-}"
+    ports:
+      - "${PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/_mer/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s

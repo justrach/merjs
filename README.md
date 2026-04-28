@@ -23,7 +23,7 @@
   <a href="#-features">Features</a> ·
   <a href="#-demo">Demo</a> ·
   <a href="#-how-it-works">How It Works</a> ·
-  <a href="#-deploy-to-cloudflare-workers">Deploy</a> ·
+  <a href="#-deploy">Deploy</a> ·
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
@@ -293,9 +293,68 @@ Singapore data dashboard: **[sgdata.merlionjs.com](https://sgdata.merlionjs.com)
 
 ---
 
-## Deploy to Cloudflare Workers
+## Deploy
 
-1. Edit `worker/wrangler.toml` — set your project name, route/domain, and any R2 bindings you need.
+merjs ships ready-to-go configs for every major host. The same Docker image works
+everywhere; PaaS providers inject `PORT` and `main.zig` reads it. Health checks
+hit `/_mer/health` (always available, no extra setup).
+
+### Docker (any host, any machine)
+
+```bash
+docker build -t merjs .
+docker run --rm -p 3000:3000 merjs
+# or:  docker compose up --build
+```
+
+The image:
+- Pins Zig 0.16.0 (matches `build.zig.zon`)
+- Runs as a non-root user (`uid 10001`)
+- Uses `tini` as PID 1 so `Ctrl-C` and orchestrator stop signals work
+- Has a `HEALTHCHECK` against `/_mer/health`
+- Multi-arch: `linux/amd64` + `linux/arm64`
+
+A multi-arch image is published to GHCR on every tag:
+
+```bash
+docker pull ghcr.io/justrach/merjs:latest
+docker run --rm -p 3000:3000 ghcr.io/justrach/merjs:latest
+```
+
+### Fly.io
+
+```bash
+flyctl launch --copy-config --no-deploy
+flyctl deploy
+```
+
+`fly.toml` is included. Fly injects `PORT` and the health check hits `/_mer/health`.
+
+### Render.com
+
+`render.yaml` is included — push the repo and click **New Blueprint Instance** in
+the Render dashboard.
+
+### Railway
+
+`railway.json` is included — point Railway at the repo and it picks up the
+Dockerfile + healthcheck automatically.
+
+### DigitalOcean App Platform
+
+```bash
+doctl apps create --spec .do/app.yaml
+```
+
+### Heroku-style PaaS (Procfile)
+
+A `Procfile` is included for any platform that respects the
+[Heroku 12-factor process model](https://12factor.net/) — it runs the binary
+directly with `--no-dev`, and the platform's `PORT` env var binds correctly.
+
+### Cloudflare Workers (zero cold start, edge)
+
+1. Edit `worker/wrangler.toml` — set your project name, route/domain, and any R2 bindings.
 2. Build and deploy:
 
 ```bash
@@ -307,6 +366,18 @@ wrangler deploy
 If your routes use secrets (API keys, etc.), set them first: `wrangler secret put MY_API_KEY`
 
 The `worker/worker.js` shim handles the fetch event and passes requests to the WASM binary.
+
+### Runtime selection (io_uring)
+
+On Linux, merjs tries to use **io_uring** (`std.Io.Evented`) for max throughput.
+If io_uring isn't available — old kernel, restricted seccomp, sandboxed runtime —
+the framework **automatically falls back** to a thread-pool backend so the same
+binary boots everywhere. You'll see one of these log lines at startup:
+
+```
+info(runtime): io backend: Evented (io_uring)
+info(runtime): io backend: Threaded (blocking syscalls)
+```
 
 ---
 

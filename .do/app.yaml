@@ -1,0 +1,28 @@
+# DigitalOcean App Platform spec for merjs.
+#
+# `doctl apps create --spec .do/app.yaml`
+# or paste this into the "App Spec" tab in the DO control panel.
+
+name: merjs
+region: nyc
+
+services:
+  - name: web
+    github:
+      repo: justrach/merjs
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 3000
+    health_check:
+      http_path: /_mer/health
+      initial_delay_seconds: 5
+      period_seconds: 15
+      timeout_seconds: 2
+      failure_threshold: 3
+    envs:
+      - key: HOST
+        value: "0.0.0.0"
+        scope: RUN_TIME

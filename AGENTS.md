@@ -70,6 +70,17 @@ zig build prod
 - `http://localhost:3000/_mer/debug?format=json` — same as above, machine-readable JSON
 - `http://localhost:3000/_mer/events` — SSE hot reload stream
 
+### Production endpoints (always available)
+
+- `GET /_mer/health` — liveness probe, returns `{"status":"ok",...}` JSON
+- `GET /_mer/ready` — readiness probe, same payload (separate path for k8s)
+
+### Environment variables for deployment
+
+- `PORT` — listening port (PaaS standard: Fly, Render, Railway, Heroku, Cloud Run inject this)
+- `HOST` — bind interface; defaults to `0.0.0.0` in `--no-dev`, `127.0.0.1` in dev
+- `MERJS_DEV=0` — disable hot reload (equivalent to `--no-dev`)
+
 ### Verbose mode
 
 Run with `--verbose` to log every request with timing:
