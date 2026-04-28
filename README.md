@@ -369,15 +369,24 @@ The `worker/worker.js` shim handles the fetch event and passes requests to the W
 
 ### Runtime selection (io_uring)
 
-On Linux, merjs tries to use **io_uring** (`std.Io.Evented`) for max throughput.
-If io_uring isn't available — old kernel, restricted seccomp, sandboxed runtime —
-the framework **automatically falls back** to a thread-pool backend so the same
-binary boots everywhere. You'll see one of these log lines at startup:
+`src/runtime.zig` exposes a single `runtime.io` instance and a `Backend` enum
+(`evented` / `threaded`). On startup, you'll see:
 
 ```
-info(runtime): io backend: Evented (io_uring)
 info(runtime): io backend: Threaded (blocking syscalls)
 ```
+
+The framework is wired to opportunistically pick **Evented** (Linux io_uring)
+when the toolchain supports it, and gracefully **fall back to Threaded** if
+io_uring init fails (old kernel, restricted seccomp, sandboxed container, …) so
+the same binary boots on every host.
+
+While merjs is pinned to Zig **0.16.0**, the io_uring path is gated off — the
+release tarball's `std/Io/Uring.zig` has a known compile-time bug (missing
+`error.ReadOnlyFileSystem` in `Dir.OpenError`/`Dir.RealPathFileError`) that
+prevents Evented from being analyzed at all. Flip
+`stdlib_evented_works = true` in `src/runtime.zig` once the toolchain pin
+moves past 0.16.0; no other code changes needed.
 
 ---
 
