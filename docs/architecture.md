@@ -50,6 +50,16 @@ Fastly edge
 
 Unlike the Workers target, Fastly Compute runs native WASI — no JS shim is required. Static assets are embedded at compile time via `@embedFile`, so serving them is a memory lookup with no I/O. Outbound HTTP fetches during SSR are routed through named backends configured in `fastly.toml`.
 
+### Outbound fetch security
+
+The `resolveBackend` helper in `src/fastly.zig` walks a `backend_mappings` table to translate the URL passed to `mer.fetch()` into a Fastly backend name, falling back to `default_backend` when nothing matches. With Fastly's dynamic backends feature enabled, the backend selector is independent of the URL: any URL the program hands to the host is fetched verbatim. If user input ever reaches `mer.fetch()`, that becomes a server-side request forgery primitive whose destination is fully attacker-controlled.
+
+Before deploying this adapter to production:
+
+- Disable dynamic backends on the Compute service.
+- Declare every reachable origin as a named backend in `fastly.toml`.
+- Mirror each one in `backend_mappings` as an explicit `(origin, backend)` pair so that `resolveBackend` only ever returns a backend that the service is actually permitted to talk to.
+
 ## Streaming SSR
 
 Pages can opt into streaming by exporting `renderStream` instead of `render`:

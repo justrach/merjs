@@ -69,14 +69,14 @@ fn sendFastlyResponse(downstream: *zigly.http.Downstream, response: mer.Response
         try resp.headers.append(allocator, "Set-Cookie", owned);
     }
 
+    for (mer.security_headers) |hdr| {
+        try resp.headers.set(hdr.name, hdr.value);
+    }
+
     if (response.content_type == .redirect) {
         try resp.headers.set("Location", response.body);
         try resp.finish();
         return;
-    }
-
-    for (mer.security_headers) |hdr| {
-        try resp.headers.set(hdr.name, hdr.value);
     }
 
     try resp.headers.set("Content-Type", response.content_type.mime());
@@ -110,6 +110,13 @@ const BackendMapping = struct {
 const backend_mappings = [_]BackendMapping{};
 const default_backend = "origin";
 
+// SECURITY: this resolver maps an outbound URL onto a Fastly backend name. With
+// dynamic backends enabled, the backend selector is decoupled from the URL, so
+// a `mer.fetch()` call whose URL is influenced by request input would let an
+// attacker steer traffic to an arbitrary host (SSRF). Deployments using this
+// adapter MUST disable dynamic backends and pre-register every reachable
+// origin in fastly.toml, then list each one here as an explicit
+// (origin, backend) pair so unmatched URLs cannot fall through.
 fn resolveBackend(url: []const u8) []const u8 {
     for (&backend_mappings) |m| {
         if (std.mem.startsWith(u8, url, m.origin)) return m.backend;
