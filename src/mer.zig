@@ -11,8 +11,11 @@ const fetch_mod = @import("fetch.zig");
 // Compile-time CSS generation (experimental)
 pub const mercss = @import("mercss.zig");
 
-/// Framework version — kept in sync with build.zig.zon.
-pub const version = "0.2.5";
+/// Framework version. Single source of truth: `build.zig.zon`.
+/// Wired in via the `build_options` module in `build.zig` so this constant
+/// can never drift from the package version. Drift is also asserted by a
+/// test in this file (`test "version matches build.zig.zon"`).
+pub const version = @import("build_options").version;
 
 // --- Streaming SSR ----------------------------------------------------------
 
@@ -204,3 +207,22 @@ pub const Config = @import("server.zig").Config;
 pub const ServerReady = @import("server.zig").ServerReady;
 pub const Watcher = @import("watcher.zig").Watcher;
 pub const runPrerender = @import("prerender.zig").run;
+
+// --- Tests ------------------------------------------------------------------
+
+test "version is sourced from build.zig.zon via build_options" {
+    // Guard against future reverts to a hardcoded literal that drifts from
+    // the package version in build.zig.zon. Both sides resolve to the same
+    // build-time string today; the test fails if anyone breaks that chain.
+    const expected = @import("build_options").version;
+    try std.testing.expectEqualStrings(expected, version);
+
+    // Sanity-check the shape so a typo in build.zig.zon (e.g. "0.2" or "")
+    // surfaces here rather than at runtime in /_mer/health.
+    try std.testing.expect(version.len >= 5);
+    var dots: u32 = 0;
+    for (version) |c| {
+        if (c == '.') dots += 1;
+    }
+    try std.testing.expectEqual(@as(u32, 2), dots);
+}
