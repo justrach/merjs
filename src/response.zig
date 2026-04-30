@@ -115,6 +115,12 @@ pub fn internalError(msg: []const u8) Response {
 ///   return mer.redirect("/login", .found);               // 302
 ///   return mer.redirect("/dashboard", .see_other);       // 303 — after POST
 ///   return mer.redirect("/new-path", .moved_permanently);// 301
+///
+/// `location` is written verbatim into the Location header. If a route
+/// derives this from request input (a `?next=` query parameter, a referer,
+/// a form field), validate it against an allowlist of paths or origins
+/// first. Otherwise the route is an open redirect that an attacker can
+/// use to bounce victims through your domain to a phishing site.
 pub fn redirect(location: []const u8, status: std.http.Status) Response {
     return .{ .status = status, .content_type = .redirect, .body = location };
 }
