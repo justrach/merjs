@@ -48,8 +48,9 @@ fn buildMerRequest(
         break :blk "";
     };
     req.cookies_raw = downstream.request.headers.get(allocator, "Cookie") catch |err| blk: {
-        std.log.warn("fastly: cookie header read failed: {s}", .{@errorName(err)});
-        break :blk "";
+        if (err == error.FastlyNone) break :blk "";
+        std.log.err("fastly: cookie header read failed: {s}", .{@errorName(err)});
+        return err;
     };
 
     return req;
