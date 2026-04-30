@@ -52,7 +52,9 @@ pub const SetCookie = struct {
     same_site: SameSite = .lax,
 
     /// Format the Set-Cookie header value into `buf`. Returns the written slice.
-    /// Silently truncates if `buf` is too small (512 bytes is always enough).
+    /// Silently truncates if `buf` is too small. Long signed/encrypted values
+    /// can push past 1 KiB once the attributes are appended, so callers should
+    /// pass at least a 4 KiB buffer.
     pub fn headerValue(self: SetCookie, buf: []u8) []const u8 {
         // 0.16: fixedBufferStream removed. Manual offset tracking.
         var pos: usize = 0;

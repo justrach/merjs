@@ -416,7 +416,7 @@ const MAX_COOKIES = 8;
 
 fn sendResponse(std_req: *std.http.Server.Request, response: mer.Response) !void {
     // Format Set-Cookie header values on the stack.
-    var cookie_val_bufs: [MAX_COOKIES][512]u8 = undefined;
+    var cookie_val_bufs: [MAX_COOKIES][4096]u8 = undefined;
     var cookie_headers: [MAX_COOKIES]std.http.Header = undefined;
     const n_cookies = @min(response.cookies.len, MAX_COOKIES);
     for (response.cookies[0..n_cookies], 0..) |ck, i| {

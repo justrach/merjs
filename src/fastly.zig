@@ -63,7 +63,7 @@ fn sendFastlyResponse(downstream: *zigly.http.Downstream, response: mer.Response
     try resp.setStatus(status);
 
     for (response.cookies) |ck| {
-        var buf: [512]u8 = undefined;
+        var buf: [4096]u8 = undefined;
         const val = ck.headerValue(&buf);
         const owned = try allocator.dupe(u8, val);
         try resp.headers.append(allocator, "Set-Cookie", owned);
