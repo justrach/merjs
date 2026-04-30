@@ -70,6 +70,11 @@ pub fn wasmClearCache() void {
 }
 
 /// Make an HTTP request from a server-side page handler.
+///
+/// On the Fastly adapter the outbound URL is mapped to a pre-registered
+/// backend by `resolveBackend` in src/fastly.zig. If you pass a URL that is
+/// influenced by request input AND your service has dynamic backends enabled,
+/// see the SECURITY note on that function before deploying.
 pub fn fetch(allocator: std.mem.Allocator, opts: FetchRequest) !FetchResponse {
     if (comptime builtin.os.tag == .freestanding) return error.NotSupported;
 

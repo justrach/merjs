@@ -110,13 +110,17 @@ const BackendMapping = struct {
 const backend_mappings = [_]BackendMapping{};
 const default_backend = "origin";
 
-// SECURITY: this resolver maps an outbound URL onto a Fastly backend name. With
-// dynamic backends enabled, the backend selector is decoupled from the URL, so
-// a `mer.fetch()` call whose URL is influenced by request input would let an
-// attacker steer traffic to an arbitrary host (SSRF). Deployments using this
-// adapter MUST disable dynamic backends and pre-register every reachable
-// origin in fastly.toml, then list each one here as an explicit
-// (origin, backend) pair so unmatched URLs cannot fall through.
+// Maps an outbound URL onto a Fastly backend name. By default, Fastly Compute
+// rejects send() calls to any backend that isn't pre-registered in
+// fastly.toml, so the URL host can't actually steer traffic and a fall-through
+// to default_backend is safe.
+//
+// SECURITY: this changes if a deployment opts into dynamic backends. In that
+// mode Fastly synthesizes a backend from the URL host, so a `mer.fetch()` call
+// whose URL is influenced by request input becomes an SSRF primitive. Anyone
+// enabling dynamic backends must populate backend_mappings with explicit
+// (origin, backend) pairs and treat the fall-through below as unreachable
+// (i.e. reject unmatched URLs at the call site).
 fn resolveBackend(url: []const u8) []const u8 {
     for (&backend_mappings) |m| {
         if (std.mem.startsWith(u8, url, m.origin)) return m.backend;
