@@ -43,8 +43,14 @@ fn buildMerRequest(
 
     var req = mer.Request.init(allocator, method, owned_path);
     req.query_string = owned_qs;
-    req.body = downstream.request.body.readAll(allocator, 4 * 1024 * 1024) catch "";
-    req.cookies_raw = downstream.request.headers.get(allocator, "Cookie") catch "";
+    req.body = downstream.request.body.readAll(allocator, 4 * 1024 * 1024) catch |err| blk: {
+        std.log.warn("fastly: body read failed: {s}", .{@errorName(err)});
+        break :blk "";
+    };
+    req.cookies_raw = downstream.request.headers.get(allocator, "Cookie") catch |err| blk: {
+        std.log.warn("fastly: cookie header read failed: {s}", .{@errorName(err)});
+        break :blk "";
+    };
 
     return req;
 }
