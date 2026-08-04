@@ -26,6 +26,7 @@ export fn init() void {
 }
 
 export fn alloc(len: u32) ?[*]u8 {
+    if (len > 8 * 1024 * 1024) return null;
     const slice = allocator.alloc(u8, len) catch return null;
     return slice.ptr;
 }
@@ -35,7 +36,8 @@ export fn dealloc(ptr: [*]u8, len: u32) void {
 }
 
 var last_response: ?[]u8 = null;
-var last_urls: []const u8 = "";
+var last_requests: []const u8 = "";
+var last_fetch_error: u32 = 0;
 
 export fn collect_fetch_urls(req_ptr: [*]const u8, req_len: u32) [*]const u8 {
     const input = req_ptr[0..req_len];
@@ -45,23 +47,30 @@ export fn collect_fetch_urls(req_ptr: [*]const u8, req_len: u32) [*]const u8 {
     const r = router orelse return "".ptr;
     const req = mer.Request.init(allocator, method, path);
     mer.wasmBeginCollect();
-    _ = dispatch_mod.dispatchBuffered(r, req);
-    last_urls = mer.wasmEndCollect();
-    return last_urls.ptr;
+    const response = dispatch_mod.dispatchBuffered(r, req);
+    response.deinit();
+    const collected = mer.wasmEndCollectV2();
+    last_requests = collected.bytes;
+    last_fetch_error = collected.error_code;
+    return last_requests.ptr;
 }
 
 export fn collect_urls_len() u32 {
-    return @intCast(last_urls.len);
+    return @intCast(last_requests.len);
 }
 
-export fn provide_fetch_result(url_ptr: [*]const u8, url_len: u32, body_ptr: [*]const u8, body_len: u32) void {
-    mer.wasmProvideResult(url_ptr[0..url_len], body_ptr[0..body_len]);
+export fn provide_fetch_result(id: u32, status: u32, body_ptr: [*]const u8, body_len: u32) u32 {
+    return mer.wasmProvideResultV2(id, status, body_ptr[0..body_len]);
+}
+
+export fn fetch_protocol_error() u32 {
+    return last_fetch_error;
 }
 
 export fn handle(req_ptr: [*]const u8, req_len: u32) ?[*]const u8 {
     if (last_response) |prev| allocator.free(prev);
     last_response = null;
-    defer mer.wasmClearCache();
+    defer last_fetch_error = mer.wasmClearCacheV2();
 
     const input = req_ptr[0..req_len];
     const space_idx = std.mem.indexOfScalar(u8, input, ' ') orelse return null;
@@ -71,9 +80,11 @@ export fn handle(req_ptr: [*]const u8, req_len: u32) ?[*]const u8 {
     const r = router orelse return null;
     const req = mer.Request.init(allocator, method, path);
     const response = dispatch_mod.dispatchBuffered(r, req);
+    defer response.deinit();
 
     const ct_str = response.content_type.mime();
-    const total = 4 + ct_str.len + response.body.len;
+    const total = std.math.add(usize, 4 + ct_str.len, response.body.len) catch return null;
+    if (total > 32 * 1024 * 1024) return null;
     const buf = allocator.alloc(u8, total) catch return null;
 
     const status_int: u16 = @intFromEnum(response.status);
@@ -89,6 +100,11 @@ export fn handle(req_ptr: [*]const u8, req_len: u32) ?[*]const u8 {
 
 export fn response_len() u32 {
     return if (last_response) |r| @intCast(r.len) else 0;
+}
+
+export fn response_done() void {
+    if (last_response) |response| allocator.free(response);
+    last_response = null;
 }
 
 fn parseMethod(s: []const u8) mer.Method {
