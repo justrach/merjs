@@ -338,6 +338,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         desktop_mod.addImport("mer", mer_mod);
+        desktop_mod.addImport("runtime", runtime_mod);
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/app", "app", site_extras);
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/api", "api", &.{});
         helpers.addRoutesModule(b, desktop_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);

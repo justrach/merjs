@@ -4,6 +4,7 @@
 /// background thread for the lifetime of the desktop process.
 const std = @import("std");
 const mer = @import("mer");
+const runtime = @import("runtime");
 
 const ServerCtx = struct {
     ready: mer.ServerReady = .{},
@@ -28,6 +29,7 @@ fn runServer(ctx: *ServerCtx) void {
 pub fn main() !void {
     var gpa: std.heap.DebugAllocator(.{}) = .init;
     const allocator = gpa.allocator();
+    try runtime.init(allocator);
 
     const ctx = try allocator.create(ServerCtx);
     ctx.* = .{ .allocator = allocator };
