@@ -7,11 +7,13 @@
 const std = @import("std");
 const db = @import("root.zig");
 
-/// Get current Unix timestamp in seconds (Zig 0.16 compatible).
-fn currentUnixSeconds() i64 {
-    var ts: std.c.time.timespec = undefined;
-    _ = std.c.clock_gettime(std.c.time.CLOCK.REALTIME, &ts);
-    return ts.sec;
+/// Get current Unix timestamp in seconds, reporting clock errors.
+fn currentUnixSeconds() !i64 {
+    var ts: std.c.timespec = undefined;
+    if (std.c.clock_gettime(.REALTIME, &ts) != 0) return error.ClockFailed;
+    const seconds = std.math.cast(i64, ts.sec) orelse return error.ClockFailed;
+    if (seconds < 0) return error.ClockFailed;
+    return seconds;
 }
 
 // ── Internal typed row types ───────────────────────────────────────────────
@@ -59,6 +61,12 @@ const RateLimitRow = struct {
 // ── Query classification ────────────────────────────────────────────────────
 
 const QueryClass = enum {
+    // Atomic signup and token consumption + protected durable side effect
+    signup_user_and_account,
+    consume_reset_password,
+    consume_verify_email,
+    consume_magic_link,
+
     // mauth_users
     users_select_id_by_email,
     users_insert,
@@ -93,6 +101,18 @@ const QueryClass = enum {
 
 fn classify(sql: []const u8) QueryClass {
     const has = std.mem.indexOf;
+
+    // Data-modifying CTEs must be classified before their component tables.
+    if (has(u8, sql, "WITH inserted_user AS") != null and
+        has(u8, sql, "INSERT INTO mauth_oauth_accounts") != null)
+    {
+        return .signup_user_and_account;
+    }
+    if (has(u8, sql, "WITH consumed AS") != null) {
+        if (has(u8, sql, "UPDATE mauth_oauth_accounts") != null) return .consume_reset_password;
+        if (has(u8, sql, "INSERT INTO mauth_sessions") != null) return .consume_magic_link;
+        if (has(u8, sql, "UPDATE mauth_users") != null) return .consume_verify_email;
+    }
 
     // Rate limits — check first (fast path for high-frequency calls)
     if (has(u8, sql, "mauth_rate_limits") != null) return .rate_limits_any;
@@ -158,24 +178,35 @@ fn paramInt(params: []const db.Value, idx: usize) i64 {
     };
 }
 
+fn tokenPurpose(sql: []const u8) []const u8 {
+    if (std.mem.indexOf(u8, sql, "email_verify") != null) return "email_verify";
+    if (std.mem.indexOf(u8, sql, "password_reset") != null) return "password_reset";
+    if (std.mem.indexOf(u8, sql, "magic_link") != null) return "magic_link";
+    return "";
+}
+
 // ── MemAdapter ─────────────────────────────────────────────────────────────
 
 pub const MemAdapter = struct {
     alloc: std.mem.Allocator,
+    mutex: std.atomic.Mutex,
     users: std.ArrayList(UserRow),
     accounts: std.ArrayList(AccountRow),
     sessions: std.ArrayList(SessionRow),
     tokens: std.ArrayList(TokenRow),
     rate_limits: std.ArrayList(RateLimitRow),
+    fail_next_atomic: bool,
 
     pub fn init(alloc: std.mem.Allocator) MemAdapter {
         return .{
             .alloc = alloc,
-            .users = .{},
-            .accounts = .{},
-            .sessions = .{},
-            .tokens = .{},
-            .rate_limits = .{},
+            .mutex = .unlocked,
+            .users = .empty,
+            .accounts = .empty,
+            .sessions = .empty,
+            .tokens = .empty,
+            .rate_limits = .empty,
+            .fail_next_atomic = false,
         };
     }
 
@@ -245,6 +276,13 @@ pub const MemAdapter = struct {
         return self.tokens.items.len;
     }
 
+    /// Inject a transient failure into the next atomic operation.
+    pub fn failNextAtomic(self: *MemAdapter) void {
+        while (!self.mutex.tryLock()) std.Thread.yield() catch std.atomic.spinLoopHint();
+        defer self.mutex.unlock();
+        self.fail_next_atomic = true;
+    }
+
     // ── query dispatch ─────────────────────────────────────────────────────────
 
     fn queryImpl(
@@ -256,13 +294,154 @@ pub const MemAdapter = struct {
         const class = classify(sql);
 
         var arena = std.heap.ArenaAllocator.init(alloc);
+        errdefer arena.deinit();
         const aa = arena.allocator();
 
         switch (class) {
+            // ── Atomic reset token + password update + session revocation ────
+            .consume_reset_password => {
+                if (self.fail_next_atomic) {
+                    self.fail_next_atomic = false;
+                    return error.InjectedFailure;
+                }
+                const token_hash = paramText(params, 0);
+                const purpose = paramText(params, 1);
+                const new_hash = paramText(params, 2);
+                const now_unix = try currentUnixSeconds();
+                var token: ?*TokenRow = null;
+                for (self.tokens.items) |*t| {
+                    if (std.mem.eql(u8, t.token_hash, token_hash) and
+                        std.mem.eql(u8, t.purpose, purpose) and t.used_at == null and t.expires_at > now_unix)
+                    {
+                        token = t;
+                        break;
+                    }
+                }
+                const claimed = token orelse return db.QueryResult{ .rows = &.{}, ._arena = arena };
+                var account: ?*AccountRow = null;
+                for (self.accounts.items) |*a| {
+                    if (std.mem.eql(u8, a.user_id, claimed.user_id) and std.mem.eql(u8, a.provider_id, "email")) {
+                        account = a;
+                        break;
+                    }
+                }
+                const updated = account orelse return db.QueryResult{ .rows = &.{}, ._arena = arena };
+
+                const stored_hash = try self.alloc.dupe(u8, new_hash);
+                errdefer self.alloc.free(stored_hash);
+                const fields = try aa.alloc(db.Field, 1);
+                fields[0] = .{ .name = "user_id", .value = .{ .text = try aa.dupe(u8, claimed.user_id) } };
+                const rows = try aa.alloc(db.Row, 1);
+                rows[0] = fields;
+
+                if (updated.password_hash) |old_hash| self.alloc.free(old_hash);
+                updated.password_hash = stored_hash;
+                claimed.used_at = now_unix;
+                var i: usize = 0;
+                while (i < self.sessions.items.len) {
+                    const s = self.sessions.items[i];
+                    if (std.mem.eql(u8, s.user_id, claimed.user_id)) {
+                        self.alloc.free(s.id);
+                        self.alloc.free(s.user_id);
+                        self.alloc.free(s.token);
+                        _ = self.sessions.swapRemove(i);
+                    } else i += 1;
+                }
+                return db.QueryResult{ .rows = rows, ._arena = arena };
+            },
+
+            // ── Atomic verification token + user update ──────────────────────
+            .consume_verify_email => {
+                if (self.fail_next_atomic) {
+                    self.fail_next_atomic = false;
+                    return error.InjectedFailure;
+                }
+                const token_hash = paramText(params, 0);
+                const purpose = paramText(params, 1);
+                const now_unix = try currentUnixSeconds();
+                var token: ?*TokenRow = null;
+                for (self.tokens.items) |*t| {
+                    if (std.mem.eql(u8, t.token_hash, token_hash) and
+                        std.mem.eql(u8, t.purpose, purpose) and t.used_at == null and t.expires_at > now_unix)
+                    {
+                        token = t;
+                        break;
+                    }
+                }
+                const claimed = token orelse return db.QueryResult{ .rows = &.{}, ._arena = arena };
+                var user: ?*UserRow = null;
+                for (self.users.items) |*u| {
+                    if (std.mem.eql(u8, u.id, claimed.user_id)) {
+                        user = u;
+                        break;
+                    }
+                }
+                const verified = user orelse return db.QueryResult{ .rows = &.{}, ._arena = arena };
+                const fields = try aa.alloc(db.Field, 1);
+                fields[0] = .{ .name = "user_id", .value = .{ .text = try aa.dupe(u8, claimed.user_id) } };
+                const rows = try aa.alloc(db.Row, 1);
+                rows[0] = fields;
+
+                claimed.used_at = now_unix;
+                verified.email_verified = true;
+                return db.QueryResult{ .rows = rows, ._arena = arena };
+            },
+
+            // ── Atomic magic-link token + verification + session insert ──────
+            .consume_magic_link => {
+                if (self.fail_next_atomic) {
+                    self.fail_next_atomic = false;
+                    return error.InjectedFailure;
+                }
+                const token_hash = paramText(params, 0);
+                const purpose = paramText(params, 1);
+                const now_unix = try currentUnixSeconds();
+                var token: ?*TokenRow = null;
+                for (self.tokens.items) |*t| {
+                    if (std.mem.eql(u8, t.token_hash, token_hash) and
+                        std.mem.eql(u8, t.purpose, purpose) and t.used_at == null and t.expires_at > now_unix)
+                    {
+                        token = t;
+                        break;
+                    }
+                }
+                const claimed = token orelse return db.QueryResult{ .rows = &.{}, ._arena = arena };
+                var user: ?*UserRow = null;
+                for (self.users.items) |*u| {
+                    if (std.mem.eql(u8, u.id, claimed.user_id)) {
+                        user = u;
+                        break;
+                    }
+                }
+                const verified = user orelse return db.QueryResult{ .rows = &.{}, ._arena = arena };
+
+                const session_id = try self.alloc.dupe(u8, paramText(params, 2));
+                errdefer self.alloc.free(session_id);
+                const session_user_id = try self.alloc.dupe(u8, claimed.user_id);
+                errdefer self.alloc.free(session_user_id);
+                const session_token = try self.alloc.dupe(u8, paramText(params, 3));
+                errdefer self.alloc.free(session_token);
+                const fields = try aa.alloc(db.Field, 1);
+                fields[0] = .{ .name = "user_id", .value = .{ .text = try aa.dupe(u8, claimed.user_id) } };
+                const rows = try aa.alloc(db.Row, 1);
+                rows[0] = fields;
+                try self.sessions.ensureUnusedCapacity(self.alloc, 1);
+
+                self.sessions.appendAssumeCapacity(.{
+                    .id = session_id,
+                    .user_id = session_user_id,
+                    .token = session_token,
+                    .expires_at = paramInt(params, 4),
+                });
+                claimed.used_at = now_unix;
+                verified.email_verified = true;
+                return db.QueryResult{ .rows = rows, ._arena = arena };
+            },
+
             // ── SELECT id FROM mauth_users WHERE email = $1 ──────────────────
             .users_select_id_by_email => {
                 const email = paramText(params, 0);
-                var rows: std.ArrayList(db.Row) = .{};
+                var rows: std.ArrayList(db.Row) = .empty;
                 for (self.users.items) |u| {
                     if (std.mem.eql(u8, u.email, email)) {
                         const fields = try aa.alloc(db.Field, 1);
@@ -279,7 +458,7 @@ pub const MemAdapter = struct {
             // ── SELECT u.id, u.name, u.email, u.email_verified, a.password_hash (JOIN sign-in) ──
             .accounts_join_select_by_email => {
                 const email = paramText(params, 0);
-                var rows: std.ArrayList(db.Row) = .{};
+                var rows: std.ArrayList(db.Row) = .empty;
                 // Find user by email
                 for (self.users.items) |u| {
                     if (!std.mem.eql(u8, u.email, email)) continue;
@@ -311,7 +490,7 @@ pub const MemAdapter = struct {
             // ── SELECT a.password_hash FROM mauth_oauth_accounts ─────────────
             .accounts_select_password_hash => {
                 const user_id = paramText(params, 0);
-                var rows: std.ArrayList(db.Row) = .{};
+                var rows: std.ArrayList(db.Row) = .empty;
                 for (self.accounts.items) |a| {
                     if (!std.mem.eql(u8, a.user_id, user_id)) continue;
                     if (!std.mem.eql(u8, a.provider_id, "email")) continue;
@@ -334,7 +513,7 @@ pub const MemAdapter = struct {
             .sessions_join_select_by_id => {
                 const session_id = paramText(params, 0);
                 const now_unix = paramInt(params, 1);
-                var rows: std.ArrayList(db.Row) = .{};
+                var rows: std.ArrayList(db.Row) = .empty;
                 for (self.sessions.items) |s| {
                     if (!std.mem.eql(u8, s.id, session_id)) continue;
                     if (s.expires_at <= now_unix) break;
@@ -364,12 +543,34 @@ pub const MemAdapter = struct {
                 };
             },
 
+            // ── Atomically consume a token with UPDATE ... RETURNING ──────────
+            .tokens_mark_used => {
+                const token_hash = paramText(params, 0);
+                const purpose = paramText(params, 1);
+                const now_unix = try currentUnixSeconds();
+                var rows: std.ArrayList(db.Row) = .empty;
+                for (self.tokens.items) |*t| {
+                    if (!std.mem.eql(u8, t.token_hash, token_hash)) continue;
+                    if (!std.mem.eql(u8, t.purpose, purpose)) continue;
+                    if (t.used_at != null or t.expires_at <= now_unix) continue;
+                    t.used_at = now_unix;
+                    const fields = try aa.alloc(db.Field, 1);
+                    fields[0] = .{ .name = "user_id", .value = .{ .text = try aa.dupe(u8, t.user_id) } };
+                    try rows.append(aa, fields);
+                    break;
+                }
+                return db.QueryResult{
+                    .rows = try rows.toOwnedSlice(aa),
+                    ._arena = arena,
+                };
+            },
+
             // ── SELECT from mauth_tokens ───────────────────────────────────────
             .tokens_select_by_hash => {
                 const token_hash = paramText(params, 0);
                 const purpose = paramText(params, 1);
                 const now_unix = paramInt(params, 2);
-                var rows: std.ArrayList(db.Row) = .{};
+                var rows: std.ArrayList(db.Row) = .empty;
                 for (self.tokens.items) |t| {
                     if (!std.mem.eql(u8, t.token_hash, token_hash)) continue;
                     if (!std.mem.eql(u8, t.purpose, purpose)) continue;
@@ -422,6 +623,64 @@ pub const MemAdapter = struct {
         const class = classify(sql);
 
         switch (class) {
+            // ── Atomic signup user + email account insert ────────────────────
+            .signup_user_and_account => {
+                if (self.fail_next_atomic) {
+                    self.fail_next_atomic = false;
+                    return error.InjectedFailure;
+                }
+
+                const user_id = paramText(params, 0);
+                const name = paramText(params, 1);
+                const email = paramText(params, 2);
+                const account_id = paramText(params, 3);
+                const pw_hash = paramText(params, 4);
+                for (self.users.items) |user| {
+                    if (std.mem.eql(u8, user.id, user_id) or std.mem.eql(u8, user.email, email))
+                        return error.UniqueConstraint;
+                }
+                for (self.accounts.items) |account| {
+                    if (std.mem.eql(u8, account.id, account_id) or
+                        (std.mem.eql(u8, account.provider_id, "email") and std.mem.eql(u8, account.account_id, email)))
+                    {
+                        return error.UniqueConstraint;
+                    }
+                }
+
+                const stored_user_id = try self.alloc.dupe(u8, user_id);
+                errdefer self.alloc.free(stored_user_id);
+                const stored_name = try self.alloc.dupe(u8, name);
+                errdefer self.alloc.free(stored_name);
+                const stored_email = try self.alloc.dupe(u8, email);
+                errdefer self.alloc.free(stored_email);
+                const stored_account_id = try self.alloc.dupe(u8, account_id);
+                errdefer self.alloc.free(stored_account_id);
+                const account_user_id = try self.alloc.dupe(u8, user_id);
+                errdefer self.alloc.free(account_user_id);
+                const provider_id = try self.alloc.dupe(u8, "email");
+                errdefer self.alloc.free(provider_id);
+                const provider_account_id = try self.alloc.dupe(u8, email);
+                errdefer self.alloc.free(provider_account_id);
+                const stored_hash = try self.alloc.dupe(u8, pw_hash);
+                errdefer self.alloc.free(stored_hash);
+                try self.users.ensureUnusedCapacity(self.alloc, 1);
+                try self.accounts.ensureUnusedCapacity(self.alloc, 1);
+
+                self.users.appendAssumeCapacity(.{
+                    .id = stored_user_id,
+                    .name = stored_name,
+                    .email = stored_email,
+                    .email_verified = false,
+                });
+                self.accounts.appendAssumeCapacity(.{
+                    .id = stored_account_id,
+                    .user_id = account_user_id,
+                    .provider_id = provider_id,
+                    .account_id = provider_account_id,
+                    .password_hash = stored_hash,
+                });
+            },
+
             // ── INSERT INTO mauth_users ───────────────────────────────────────
             .users_insert => {
                 const id = paramText(params, 0);
@@ -561,13 +820,13 @@ pub const MemAdapter = struct {
             },
 
             // ── INSERT INTO mauth_tokens ──────────────────────────────────────
-            // params: [id, user_id, token_hash_hex, purpose, expires_at_unix]
+            // Handlers use a purpose literal and params [id, user_id, hash, expiry].
             .tokens_insert => {
                 const id = paramText(params, 0);
                 const user_id = paramText(params, 1);
                 const token_hash = paramText(params, 2);
-                const purpose = paramText(params, 3);
-                const expires_at = paramInt(params, 4);
+                const purpose = tokenPurpose(sql);
+                const expires_at = paramInt(params, 3);
                 const row = TokenRow{
                     .id = try self.alloc.dupe(u8, id),
                     .user_id = try self.alloc.dupe(u8, user_id),
@@ -581,7 +840,7 @@ pub const MemAdapter = struct {
             // ── UPDATE mauth_tokens SET used_at=NOW() WHERE id=$1 ────────────
             .tokens_mark_used => {
                 const token_id = paramText(params, 0);
-                const now_unix = currentUnixSeconds();
+                const now_unix = try currentUnixSeconds();
                 for (self.tokens.items) |*t| {
                     if (std.mem.eql(u8, t.id, token_id)) {
                         t.used_at = now_unix;
@@ -590,10 +849,10 @@ pub const MemAdapter = struct {
                 }
             },
 
-            // ── DELETE FROM mauth_tokens WHERE user_id=$1 AND purpose=$2 ──────
+            // ── DELETE FROM mauth_tokens WHERE user_id=$1 AND purpose='...' ───
             .tokens_delete_by_user_purpose => {
                 const user_id = paramText(params, 0);
-                const purpose = paramText(params, 1);
+                const purpose = tokenPurpose(sql);
                 var i: usize = 0;
                 while (i < self.tokens.items.len) {
                     const t = self.tokens.items[i];
@@ -622,11 +881,15 @@ pub const MemAdapter = struct {
 
     fn queryFn(ptr: *anyopaque, alloc: std.mem.Allocator, sql: []const u8, params: []const db.Value) anyerror!db.QueryResult {
         const self: *MemAdapter = @ptrCast(@alignCast(ptr));
+        while (!self.mutex.tryLock()) std.Thread.yield() catch std.atomic.spinLoopHint();
+        defer self.mutex.unlock();
         return self.queryImpl(alloc, sql, params);
     }
 
     fn execFn(ptr: *anyopaque, alloc: std.mem.Allocator, sql: []const u8, params: []const db.Value) anyerror!void {
         const self: *MemAdapter = @ptrCast(@alignCast(ptr));
+        while (!self.mutex.tryLock()) std.Thread.yield() catch std.atomic.spinLoopHint();
+        defer self.mutex.unlock();
         return self.execImpl(alloc, sql, params);
     }
 
@@ -656,12 +919,14 @@ test "MemAdapter users_insert then select by email" {
     defer mem_adapter.deinit();
     const a = mem_adapter.adapter();
 
-    try a.exec(std.testing.allocator,
+    try a.exec(
+        std.testing.allocator,
         "INSERT INTO mauth_users(id, name, email, email_verified, created_at, updated_at) VALUES($1,$2,$3,false,NOW(),NOW())",
         &.{ .{ .text = "uid-1" }, .{ .text = "Alice" }, .{ .text = "alice@test.com" } },
     );
 
-    var result = try a.query(std.testing.allocator,
+    var result = try a.query(
+        std.testing.allocator,
         "SELECT id FROM mauth_users WHERE email = $1",
         &.{.{ .text = "alice@test.com" }},
     );
@@ -676,7 +941,8 @@ test "MemAdapter sessions_insert then sessionCount" {
     defer mem_adapter.deinit();
     const a = mem_adapter.adapter();
 
-    try a.exec(std.testing.allocator,
+    try a.exec(
+        std.testing.allocator,
         "INSERT INTO mauth_sessions(id, user_id, token, expires_at, created_at, updated_at) VALUES($1,$2,$3,to_timestamp($4),NOW(),NOW())",
         &.{ .{ .text = "sess-1" }, .{ .text = "uid-1" }, .{ .text = "tok-1" }, .{ .text = "9999999999" } },
     );
@@ -688,7 +954,8 @@ test "MemAdapter rate_limits always returns count=1" {
     defer mem_adapter.deinit();
     const a = mem_adapter.adapter();
 
-    var result = try a.query(std.testing.allocator,
+    var result = try a.query(
+        std.testing.allocator,
         \\INSERT INTO mauth_rate_limits (key, count, window_start) VALUES ($1, 1, NOW())
         \\ON CONFLICT (key) DO UPDATE SET count = 1 RETURNING count
     ,
@@ -698,4 +965,238 @@ test "MemAdapter rate_limits always returns count=1" {
 
     try std.testing.expectEqual(@as(usize, 1), result.rows.len);
     try std.testing.expectEqual(@as(i64, 1), db.rowInt(result.rows[0], "count").?);
+}
+
+const ConsumeThread = struct {
+    adapter: db.Adapter,
+    token_hash: []const u8,
+    purpose: []const u8,
+    succeeded: *bool,
+
+    fn run(args: ConsumeThread) void {
+        var result = args.adapter.query(std.heap.page_allocator,
+            \\UPDATE mauth_tokens
+            \\SET used_at = NOW()
+            \\WHERE token_hash = $1
+            \\  AND purpose = $2
+            \\  AND used_at IS NULL
+            \\  AND expires_at > NOW()
+            \\RETURNING user_id
+        , &.{
+            .{ .text = args.token_hash },
+            .{ .text = args.purpose },
+        }) catch return;
+        defer result.deinit();
+        args.succeeded.* = result.rows.len == 1;
+    }
+};
+
+fn expectOnlyOneConcurrentConsumer(purpose: []const u8) !void {
+    var mem_adapter = MemAdapter.init(std.testing.allocator);
+    defer mem_adapter.deinit();
+    const adapter = mem_adapter.adapter();
+    const expires_at = try std.fmt.allocPrint(std.testing.allocator, "{d}", .{try currentUnixSeconds() + 3600});
+    defer std.testing.allocator.free(expires_at);
+    const insert_sql = try std.fmt.allocPrint(
+        std.testing.allocator,
+        "INSERT INTO mauth_tokens(id,user_id,token_hash,purpose,expires_at) VALUES($1,$2,$3,'{s}',to_timestamp($4))",
+        .{purpose},
+    );
+    defer std.testing.allocator.free(insert_sql);
+    try adapter.exec(std.testing.allocator, insert_sql, &.{
+        .{ .text = "token-id" },
+        .{ .text = "user-id" },
+        .{ .text = "token-hash" },
+        .{ .text = expires_at },
+    });
+
+    var succeeded = [_]bool{ false, false };
+    const first = try std.Thread.spawn(.{}, ConsumeThread.run, .{ConsumeThread{
+        .adapter = adapter,
+        .token_hash = "token-hash",
+        .purpose = purpose,
+        .succeeded = &succeeded[0],
+    }});
+    const second = try std.Thread.spawn(.{}, ConsumeThread.run, .{ConsumeThread{
+        .adapter = adapter,
+        .token_hash = "token-hash",
+        .purpose = purpose,
+        .succeeded = &succeeded[1],
+    }});
+    first.join();
+    second.join();
+
+    try std.testing.expect(succeeded[0] != succeeded[1]);
+}
+
+test "email verification token has only one concurrent consumer" {
+    try expectOnlyOneConcurrentConsumer("email_verify");
+}
+
+test "password reset token has only one concurrent consumer" {
+    try expectOnlyOneConcurrentConsumer("password_reset");
+}
+
+test "magic-link token has only one concurrent consumer" {
+    try expectOnlyOneConcurrentConsumer("magic_link");
+}
+
+const SIGNUP_ATOMIC_SQL =
+    \\WITH inserted_user AS (
+    \\  INSERT INTO mauth_users(id,name,email,email_verified) VALUES($1,$2,$3,false) RETURNING id
+    \\)
+    \\INSERT INTO mauth_oauth_accounts(id,user_id,provider_id,account_id,password_hash)
+    \\SELECT $4,id,'email',$3,$5 FROM inserted_user
+;
+
+fn insertSignup(adapter: db.Adapter, user_id: []const u8, account_id: []const u8) !void {
+    try adapter.exec(std.testing.allocator, SIGNUP_ATOMIC_SQL, &.{
+        .{ .text = user_id },
+        .{ .text = "Alice" },
+        .{ .text = "alice@test.com" },
+        .{ .text = account_id },
+        .{ .text = "password-hash" },
+    });
+}
+
+test "atomic signup failure leaves no user and can be retried" {
+    var mem_adapter = MemAdapter.init(std.testing.allocator);
+    defer mem_adapter.deinit();
+    const adapter = mem_adapter.adapter();
+
+    mem_adapter.failNextAtomic();
+    try std.testing.expectError(error.InjectedFailure, insertSignup(adapter, "user-1", "account-1"));
+    try std.testing.expectEqual(@as(usize, 0), mem_adapter.users.items.len);
+    try std.testing.expectEqual(@as(usize, 0), mem_adapter.accounts.items.len);
+
+    try insertSignup(adapter, "user-1", "account-1");
+    try std.testing.expectEqual(@as(usize, 1), mem_adapter.users.items.len);
+    try std.testing.expectEqual(@as(usize, 1), mem_adapter.accounts.items.len);
+}
+
+const AtomicSignupThread = struct {
+    adapter: db.Adapter,
+    user_id: []const u8,
+    account_id: []const u8,
+    succeeded: *bool,
+
+    fn run(args: AtomicSignupThread) void {
+        insertSignup(args.adapter, args.user_id, args.account_id) catch return;
+        args.succeeded.* = true;
+    }
+};
+
+test "atomic signup has one concurrent email owner without a stranded user" {
+    var mem_adapter = MemAdapter.init(std.testing.allocator);
+    defer mem_adapter.deinit();
+    const adapter = mem_adapter.adapter();
+
+    var succeeded = [_]bool{ false, false };
+    const first = try std.Thread.spawn(.{}, AtomicSignupThread.run, .{AtomicSignupThread{
+        .adapter = adapter,
+        .user_id = "user-1",
+        .account_id = "account-1",
+        .succeeded = &succeeded[0],
+    }});
+    const second = try std.Thread.spawn(.{}, AtomicSignupThread.run, .{AtomicSignupThread{
+        .adapter = adapter,
+        .user_id = "user-2",
+        .account_id = "account-2",
+        .succeeded = &succeeded[1],
+    }});
+    first.join();
+    second.join();
+
+    try std.testing.expect(succeeded[0] != succeeded[1]);
+    try std.testing.expectEqual(@as(usize, 1), mem_adapter.users.items.len);
+    try std.testing.expectEqual(@as(usize, 1), mem_adapter.accounts.items.len);
+    try std.testing.expectEqualStrings(mem_adapter.users.items[0].id, mem_adapter.accounts.items[0].user_id);
+}
+
+const MAGIC_LINK_ATOMIC_SQL =
+    \\WITH consumed AS (UPDATE mauth_tokens SET used_at=NOW() RETURNING user_id),
+    \\verified AS (UPDATE mauth_users SET email_verified=true RETURNING id),
+    \\inserted AS (INSERT INTO mauth_sessions(id,user_id,token,expires_at) SELECT $3,user_id,$4,$5 FROM verified)
+    \\SELECT user_id FROM inserted
+;
+
+fn seedMagicLink(adapter: db.Adapter) !void {
+    try adapter.exec(
+        std.testing.allocator,
+        "INSERT INTO mauth_users(id,name,email,email_verified) VALUES($1,$2,$3,false)",
+        &.{ .{ .text = "user-id" }, .{ .text = "Alice" }, .{ .text = "alice@test.com" } },
+    );
+    const expires_at = try std.fmt.allocPrint(std.testing.allocator, "{d}", .{try currentUnixSeconds() + 3600});
+    defer std.testing.allocator.free(expires_at);
+    try adapter.exec(
+        std.testing.allocator,
+        "INSERT INTO mauth_tokens(id,user_id,token_hash,purpose,expires_at) VALUES($1,$2,$3,'magic_link',to_timestamp($4))",
+        &.{ .{ .text = "token-id" }, .{ .text = "user-id" }, .{ .text = "token-hash" }, .{ .text = expires_at } },
+    );
+}
+
+fn consumeMagicLink(adapter: db.Adapter, session_id: []const u8) !db.QueryResult {
+    return adapter.query(std.testing.allocator, MAGIC_LINK_ATOMIC_SQL, &.{
+        .{ .text = "token-hash" },
+        .{ .text = "magic_link" },
+        .{ .text = session_id },
+        .{ .text = "session-token" },
+        .{ .text = "9999999999" },
+    });
+}
+
+test "atomic magic-link failure rolls back and token can be retried" {
+    var mem_adapter = MemAdapter.init(std.testing.allocator);
+    defer mem_adapter.deinit();
+    const adapter = mem_adapter.adapter();
+    try seedMagicLink(adapter);
+
+    mem_adapter.failNextAtomic();
+    try std.testing.expectError(error.InjectedFailure, consumeMagicLink(adapter, "session-1"));
+    try std.testing.expect(mem_adapter.tokens.items[0].used_at == null);
+    try std.testing.expect(!mem_adapter.users.items[0].email_verified);
+    try std.testing.expectEqual(@as(usize, 0), mem_adapter.sessionCount());
+
+    var retried = try consumeMagicLink(adapter, "session-1");
+    defer retried.deinit();
+    try std.testing.expectEqual(@as(usize, 1), retried.rows.len);
+    try std.testing.expect(mem_adapter.tokens.items[0].used_at != null);
+    try std.testing.expect(mem_adapter.users.items[0].email_verified);
+    try std.testing.expectEqual(@as(usize, 1), mem_adapter.sessionCount());
+}
+
+const AtomicMagicLinkThread = struct {
+    adapter: db.Adapter,
+    session_id: []const u8,
+    succeeded: *bool,
+
+    fn run(args: AtomicMagicLinkThread) void {
+        var result = consumeMagicLink(args.adapter, args.session_id) catch return;
+        defer result.deinit();
+        args.succeeded.* = result.rows.len == 1;
+    }
+};
+
+test "atomic magic-link has one concurrent session-creating consumer" {
+    var mem_adapter = MemAdapter.init(std.testing.allocator);
+    defer mem_adapter.deinit();
+    const adapter = mem_adapter.adapter();
+    try seedMagicLink(adapter);
+
+    var succeeded = [_]bool{ false, false };
+    const first = try std.Thread.spawn(.{}, AtomicMagicLinkThread.run, .{AtomicMagicLinkThread{
+        .adapter = adapter,
+        .session_id = "session-1",
+        .succeeded = &succeeded[0],
+    }});
+    const second = try std.Thread.spawn(.{}, AtomicMagicLinkThread.run, .{AtomicMagicLinkThread{
+        .adapter = adapter,
+        .session_id = "session-2",
+        .succeeded = &succeeded[1],
+    }});
+    first.join();
+    second.join();
+
+    try std.testing.expect(succeeded[0] != succeeded[1]);
+    try std.testing.expectEqual(@as(usize, 1), mem_adapter.sessionCount());
 }
