@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const res_mod = @import("response.zig");
+const security = @import("security.zig");
 
 /// Minimal route info passed from server.zig for the debug endpoint.
 pub const RouteDebugInfo = struct {
@@ -29,12 +30,13 @@ pub fn injectHotReload(alloc: std.mem.Allocator, body: []const u8) ![]u8 {
 }
 
 /// Dev error overlay — renders a styled error page in the browser when a route handler fails.
-pub fn sendErrorOverlay(std_req: *std.http.Server.Request, target: []const u8, err: anyerror, version: []const u8) !void {
+pub fn sendErrorOverlay(std_req: *std.http.Server.Request, target: []const u8, err: anyerror, version: []const u8, csp: []const u8) !void {
     const error_name = @errorName(err);
 
-    const fixed = [1]std.http.Header{
-        .{ .name = "content-type", .value = "text/html; charset=utf-8" },
-    };
+    var fixed: [1 + security.header_count]std.http.Header = undefined;
+    fixed[0] = .{ .name = "content-type", .value = "text/html; charset=utf-8" };
+    const security_headers = security.headers(csp);
+    @memcpy(fixed[1..], &security_headers);
     var header_buf: [4096]u8 = undefined;
     var bw = try std_req.respondStreaming(&header_buf, .{
         .respond_options = .{
@@ -149,7 +151,6 @@ pub fn serveDebug(
         try w.writeAll("<li>Use <code>std.log.scoped(.mypage)</code> in page handlers for route-level logs</li>");
         try w.writeAll("<li><code>/_mer/events</code> — SSE hot reload stream</li>");
         try w.writeAll("<li>Append <code>?format=json</code> to this URL for machine-readable output</li>");
-        try w.writeAll("<li>Run with <code>--debug</code> to enable kuri browser automation at <code>/_mer/kuri/</code></li>");
         try w.writeAll("</ul>");
 
         try w.writeAll("</body></html>");

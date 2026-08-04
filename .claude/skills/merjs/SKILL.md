@@ -28,7 +28,6 @@ src/          → framework internals
   html_lint.zig → comptime HTML linter (mer.lint.*)
   server.zig  → HTTP server (std.Thread.Pool, 128 workers)
   router.zig  → static dispatch table + dynamic segment matching
-  ssr.zig     → wires router to generated routes
   prerender.zig → SSG: renders pages at build time → dist/
   watcher.zig → file watcher + SSE hot reload
   static.zig  → static file serving with MIME detection
