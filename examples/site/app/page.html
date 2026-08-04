@@ -1,0 +1,144 @@
+<div class="home-shell">
+  <section class="hero-frame">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <div class="hero-kicker">merjs v{s}</div>
+        <h1 class="hero-title">A Zig-native web framework that ships without Node.</h1>
+        <p class="hero-sub">File-based routing, SSR, type-safe APIs, hot reload, Cloudflare Workers deploys, and client-side WASM. Same developer shape, but much faster and much leaner: 115,093 req/s locally and just 4.8 MB RAM under CI load.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="{s}">See v{s}</a>
+          <a class="btn btn-secondary" href="/dashboard">Open demos</a>
+          <a class="btn btn-ghost" href="/docs">Read docs</a>
+        </div>
+        <div class="hero-statline">
+          <div class="stat-pill"><strong>&lt; 5 ms</strong><span>cold start</span></div>
+          <div class="stat-pill"><strong>115k</strong><span>req/s</span></div>
+          <div class="stat-pill"><strong>4.8 MB</strong><span>RAM</span></div>
+          <div class="stat-pill"><strong>260 KB</strong><span>binary</span></div>
+        </div>
+      </div>
+
+      <aside class="hero-board-shell">
+        <div class="hero-board">
+          <div class="hero-board-top">
+            <span class="hero-board-tag">release signal</span>
+            <a class="hero-board-link" href="{s}">Open v{s}</a>
+          </div>
+          <div class="hero-metric-grid">
+            <div class="hero-metric hero-metric-strong"><span>throughput</span><strong>115,093</strong><small>req/s local benchmark</small></div>
+            <div class="hero-metric"><span>latency</span><strong>0.39</strong><small>ms avg</small></div>
+            <div class="hero-metric"><span>memory</span><strong>4.8</strong><small>MB under load</small></div>
+            <div class="hero-metric"><span>binary</span><strong>260</strong><small>KB release</small></div>
+          </div>
+          <div class="hero-terminal">
+            <div class="terminal-top">
+              <span class="dot dot-red"></span>
+              <span class="dot dot-amber"></span>
+              <span class="dot dot-cream"></span>
+              <span class="terminal-title">install</span>
+            </div>
+            <pre class="terminal-code">curl -fsSL https://merjs.trilok.ai/install.sh | bash</pre>
+          </div>
+          <div class="route-stack">
+            <div><code>app/</code><span>SSR pages</span></div>
+            <div><code>api/</code><span>typed JSON routes</span></div>
+            <div><code>wasm/</code><span>client modules</span></div>
+            <div><code>public/</code><span>static assets</span></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="section-block section-split">
+    <div class="section-lead">
+      <div class="eyebrow">At a glance</div>
+      <h2 class="section-title">Why merjs feels materially different</h2>
+      <p class="section-copy">The workflow feels familiar. The runtime profile does not. merjs keeps file routing, layouts, streaming, and typed APIs, then drops the Node-first assumptions beneath them.</p>
+      <div class="lead-notes">
+        <div class="lead-note"><strong>native runtime</strong><span>No Node process and no package-manager boot tax.</span></div>
+        <div class="lead-note"><strong>edge-ready</strong><span>Same app model can target Cloudflare Workers as a single WASM bundle.</span></div>
+      </div>
+    </div>
+
+    <div class="compare-board-shell">
+      <div class="compare-board-head">
+        <span class="board-kicker">bench board</span>
+        <p>The numbers are the story: faster startup, higher throughput, lower latency, lower RAM, smaller binary.</p>
+      </div>
+      <div class="compare-board">
+        <div class="compare-row metric-cold"><div class="compare-meta"><span>Cold start</span><small>Apple M-series local runs</small></div><div class="compare-bars"><div class="bar-group"><div class="bar-label">merjs</div><div class="bar-track"><div class="bar-fill bar-mer" style="width: 10%;">&lt; 5 ms</div></div></div><div class="bar-group"><div class="bar-label">Next.js</div><div class="bar-track"><div class="bar-fill bar-next" style="width: 80%;">~1-3 s</div></div></div></div></div>
+        <div class="compare-row metric-throughput"><div class="compare-meta"><span>Homepage throughput</span><small>wrk -t4 -c50</small></div><div class="compare-bars"><div class="bar-group"><div class="bar-label">merjs</div><div class="bar-track"><div class="bar-fill bar-mer" style="width: 95%;">115,093 req/s</div></div></div><div class="bar-group"><div class="bar-label">Next.js</div><div class="bar-track"><div class="bar-fill bar-next" style="width: 12%;">2,060 req/s</div></div></div></div></div>
+        <div class="compare-row metric-latency"><div class="compare-meta"><span>Average latency</span><small>lower is better</small></div><div class="compare-bars"><div class="bar-group"><div class="bar-label">merjs</div><div class="bar-track"><div class="bar-fill bar-mer" style="width: 24%;">0.39 ms</div></div></div><div class="bar-group"><div class="bar-label">Next.js</div><div class="bar-track"><div class="bar-fill bar-next" style="width: 78%;">41 ms</div></div></div></div></div>
+        <div class="compare-row metric-ram"><div class="compare-meta"><span>RAM under load</span><small>GitHub Actions benchmark</small></div><div class="compare-bars"><div class="bar-group"><div class="bar-label">merjs</div><div class="bar-track"><div class="bar-fill bar-mer" style="width: 12%;">4.8 MB</div></div></div><div class="bar-group"><div class="bar-label">Next.js</div><div class="bar-track"><div class="bar-fill bar-next" style="width: 82%;">71.7 MB</div></div></div></div></div>
+        <div class="compare-row metric-binary"><div class="compare-meta"><span>Binary footprint</span><small>release build</small></div><div class="compare-bars"><div class="bar-group"><div class="bar-label">merjs</div><div class="bar-track"><div class="bar-fill bar-mer" style="width: 18%;">260 KB</div></div></div><div class="bar-group"><div class="bar-label">Next.js</div><div class="bar-track"><div class="bar-fill bar-next" style="width: 85%;">~300 MB node_modules</div></div></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-block">
+    <div class="section-head left-head">
+      <div class="eyebrow">Framework surface</div>
+      <h2 class="section-title">The framework, not just the benchmark</h2>
+      <p class="section-copy">Instead of a 3-column feature row, merjs now gets a proper bento. The point is the product shape: routes, APIs, edge deploys, and Zig-native client code.</p>
+    </div>
+
+    <div class="bento-grid">
+      <article class="bento-card bento-core">
+        <span class="bento-tag">routing</span>
+        <h3>Pages, APIs, layouts, and 404s live in the filesystem.</h3>
+        <p><code>app/</code> handles SSR pages. <code>api/</code> returns typed JSON. Layout and 404 handling stay in the same primitive layer instead of being bolted on later.</p>
+      </article>
+
+      <article class="bento-card bento-stream">
+        <span class="bento-tag">rendering</span>
+        <h3>Classic SSR, shell-first flushing, and true streaming routes.</h3>
+        <p>merjs can render a full page, stream chunks, or split layout shell from body without dragging React in just to unlock the pattern.</p>
+      </article>
+
+      <article class="bento-card bento-types">
+        <span class="bento-tag">typed api</span>
+        <h3>Validation and JSON stay in Zig.</h3>
+        <p>Zig structs, comptime validation, and <code>std.json</code> remove the extra schema layer and the usual drift between code and transport.</p>
+      </article>
+
+      <article class="bento-card bento-wasm">
+        <span class="bento-tag">client</span>
+        <h3>Zig to the browser via wasm32-freestanding.</h3>
+        <p>Compile client logic directly to WASM, keep one language end-to-end, and avoid a second JS build chain just to make the browser interactive.</p>
+      </article>
+
+      <article class="bento-card bento-edge">
+        <span class="bento-tag">deploy</span>
+        <h3>Cloudflare Workers without changing the app model.</h3>
+        <p>The same routing model can ship as a single edge bundle. The installer itself now lives on the same edge platform.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section-block philosophy-band">
+    <div class="section-head left-head">
+      <div class="eyebrow">Philosophy</div>
+      <h2 class="section-title">What merjs is actually betting on</h2>
+    </div>
+    <div class="manifesto-stack">
+      <article class="manifesto-card"><span>01</span><h3>The stack should compile down, not boot up.</h3><p>The server is a native binary. The client is WASM. The runtime is the platform you are already deploying to.</p></article>
+      <article class="manifesto-card"><span>02</span><h3>Type safety should be native to the language.</h3><p>Validation, request parsing, and serialization stay in Zig instead of spreading across schema files and runtime adapters.</p></article>
+      <article class="manifesto-card"><span>03</span><h3>Developer experience should not require a heavyweight runtime tax.</h3><p>Keep the good parts: routing, layouts, reloads, edge deploys. Remove the layers that only existed because JavaScript had to be everywhere.</p></article>
+    </div>
+  </section>
+
+  <section class="release-cta-shell">
+    <div class="release-cta-card">
+      <div>
+        <div class="eyebrow">Current release</div>
+        <h2 class="section-title">v{s} ships the Zig 0.16 migration, edge installer, and one-line install.</h2>
+        <p class="section-copy left-copy">The release page goes deeper into memory reuse, caching, shell-first paint, fetch strategy, and the concrete 4.8 MB vs 71.7 MB RAM story.</p>
+      </div>
+      <div class="release-cta-actions">
+        <a class="btn btn-primary" href="{s}">Open v{s}</a>
+        <a class="btn btn-ghost" href="/about">Read the philosophy</a>
+      </div>
+    </div>
+  </section>
+</div>
