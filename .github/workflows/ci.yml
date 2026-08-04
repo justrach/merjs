@@ -4,12 +4,174 @@ on:
   push:
     branches: [main, "feature/**", "feat/**"]
   pull_request:
-    branches: [main]
+    branches: [main, "release/**"]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     name: Build & test
+
+    steps:
+      - name: Checkout merjs
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test release and package artifacts before publication
+        run: |
+          python3 -m unittest scripts/test_release_version.py
+          python3 -m unittest discover -s packages/pypi/tests -v
+          npm --prefix packages/npm test
+          (cd packages/npm && npm pack --dry-run)
+
+      - name: Setup Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Probe production build from a clean archive before standalone WASM
+        run: |
+          stage="$RUNNER_TEMP/clean-prod"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          git archive HEAD | tar -x -C "$stage"
+          (cd "$stage" && zig build prod)
+          test -f "$stage/examples/site/public/counter.wasm"
+          test -f "$stage/examples/site/public/synth.wasm"
+
+      - name: Build and test Linux compatibility matrix
+        run: |
+          zig version
+          zig test build.zig
+          zig build test
+          zig build cli
+          zig build cli -Dtarget=aarch64-macos -Doptimize=ReleaseSmall
+          zig build cli -Dtarget=x86_64-macos -Doptimize=ReleaseSmall
+          zig build cli -Dtarget=x86_64-linux -Doptimize=ReleaseSmall
+          zig build cli -Dtarget=aarch64-linux -Doptimize=ReleaseSmall
+          # Restore a host-runnable CLI for the generated-scaffold probe below.
+          zig build cli
+          zig build worker
+          cmp examples/site/worker/worker/merjs.wasm examples/vercel-edge/merjs.wasm
+          git diff --exit-code -- examples/vercel-edge/merjs.wasm
+          zig build sgdata-worker
+          git diff --exit-code -- src/generated/routes.zig examples/singapore-data-dashboard/src/generated/routes.zig
+          zig build worker-example-kanban
+          zig build wasm
+          zig build prod
+
+      - name: Check Worker JavaScript syntax and AI budget behavior
+        run: |
+          node --check examples/site/worker/worker/worker.js
+          node --check examples/site/worker/worker/fetch-bridge.js
+          node --check examples/singapore-data-dashboard/worker/worker.js
+          node --check examples/kanban/worker/worker.js
+          node --check examples/vercel-edge/api/index.js
+          node tests/worker_snapshot.mjs
+          node tests/worker_fetch_bridge.mjs
+          node --test examples/singapore-data-dashboard/worker/ai-budget.test.mjs
+
+      - name: Probe Worker deployments from a clean archive
+        run: |
+          stage="$RUNNER_TEMP/worker-deployment"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          git archive HEAD | tar -x -C "$stage"
+          rm -f \
+            "$stage/examples/site/worker/merjs.wasm" \
+            "$stage/examples/site/worker/grep.wasm" \
+            "$stage/examples/site/worker/worker/merjs.wasm" \
+            "$stage/examples/site/worker/worker/grep.wasm" \
+            "$stage/examples/vercel-edge/merjs.wasm" \
+            "$stage/examples/singapore-data-dashboard/worker/merjs.wasm" \
+            "$stage/examples/kanban/worker/merjs.wasm"
+          (cd "$stage" && zig build worker)
+          test -f "$stage/examples/site/public/counter.wasm"
+          test -f "$stage/examples/site/public/synth.wasm"
+          (cd "$stage" && zig build sgdata-worker && zig build worker-example-kanban)
+          node "$stage/tests/worker_deployment.mjs" "$stage"
+          npm ci --prefix "$stage/examples/site/worker/worker" --ignore-scripts
+          wrangler="$stage/examples/site/worker/worker/node_modules/.bin/wrangler"
+          (cd "$stage/examples/site/worker" && "$wrangler" deploy --dry-run \
+            --config wrangler.toml --outdir "$stage/.wrangler-site")
+          (cd "$stage/examples/singapore-data-dashboard/worker" && "$wrangler" deploy --dry-run \
+            --config wrangler.toml --outdir "$stage/.wrangler-sgdata")
+          (cd "$stage/examples/kanban/worker" && "$wrangler" deploy --dry-run \
+            --config wrangler.toml --outdir "$stage/.wrangler-kanban")
+
+      - name: Verify Worker modules enforce a 64 MiB maximum memory
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def leb(data, offset):
+              value = shift = 0
+              while True:
+                  byte = data[offset]
+                  offset += 1
+                  value |= (byte & 0x7f) << shift
+                  if byte < 0x80:
+                      return value, offset
+                  shift += 7
+
+          def maximum_pages(path):
+              data = Path(path).read_bytes()
+              assert data[:4] == b"\0asm", f"{path}: not WebAssembly"
+              offset = 8
+              while offset < len(data):
+                  section = data[offset]
+                  size, offset = leb(data, offset + 1)
+                  end = offset + size
+                  if section == 5:
+                      count, cursor = leb(data, offset)
+                      assert count == 1, f"{path}: expected one memory"
+                      flags, cursor = leb(data, cursor)
+                      _, cursor = leb(data, cursor)
+                      assert flags & 1, f"{path}: memory has no maximum"
+                      maximum, _ = leb(data, cursor)
+                      return maximum
+                  offset = end
+              raise AssertionError(f"{path}: no memory section")
+
+          for artifact in (
+              "examples/site/worker/worker/merjs.wasm",
+              "examples/vercel-edge/merjs.wasm",
+              "examples/singapore-data-dashboard/worker/merjs.wasm",
+              "examples/kanban/worker/merjs.wasm",
+          ):
+              assert maximum_pages(artifact) == 1024, f"{artifact}: maximum is not 64 MiB"
+          PY
+
+      - name: Probe a clean generated scaffold against this exact checkout
+        run: |
+          scaffold="$GITHUB_WORKSPACE/.ci-starter"
+          trap 'rm -rf "$scaffold"' EXIT
+          revision="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$revision"
+          zig-out/bin/mer init "$scaffold" --merjs-path ".."
+          grep -F '.path = ".."' "$scaffold/build.zig.zon"
+          grep -F 'app/_mercss.css' "$scaffold/.gitignore"
+          grep -F '@embedFile("_mercss.css")' "$scaffold/app/layout.zig"
+          (cd "$scaffold" && zig build test)
+
+      - name: Build the checked-in UI showcase consumer
+        run: (cd examples/ui-showcase && zig build test)
+
+      - name: Build merjs
+        run: zig build
+
+      - name: Verify binary
+        run: test -f zig-out/bin/merjs
+
+  native-macos:
+    runs-on: macos-latest
+    name: Native macOS build, package & production gate
 
     steps:
       - name: Checkout merjs
@@ -20,13 +182,112 @@ jobs:
         with:
           version: 0.16.0
 
-      - name: Build merjs
+      - name: Build and package native app
         run: |
-          zig build codegen
-          zig build
+          zig build native-dev-build -Doptimize=ReleaseSmall
+          zig build package -Doptimize=ReleaseSmall
+          test -x zig-out/MerJS.app/Contents/MacOS/mernative
 
-      - name: Verify binary
-        run: test -f zig-out/bin/merjs
+      - name: Compile the exact generated native scaffold snippet
+        run: |
+          zig build cli
+          scaffold="$GITHUB_WORKSPACE/.ci-native-scaffold"
+          rm -rf "$scaffold"
+          trap 'rm -rf "$scaffold"' EXIT
+          zig-out/bin/mer init "$scaffold" --merjs-path ".."
+          (cd "$scaffold" && ../zig-out/bin/mer add native > add-native.out 2>&1)
+          python3 - "$scaffold" <<'PY'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1])
+          output = (root / "add-native.out").read_text()
+          marker = "    // ── native shell (mer native / mer package)"
+          start = output.index(marker)
+          end = output.index("\n  Then:", start)
+          snippet = output[start:end].rstrip() + "\n"
+          build = root / "build.zig"
+          source = build.read_text()
+          boundary = "\n}\n\nfn addRoutesModule"
+          pos = source.index(boundary)
+          build.write_text(source[:pos] + "\n" + snippet + source[pos:])
+          PY
+          (cd "$scaffold" && zig fmt build.zig && zig build native-dev-build -Doptimize=ReleaseSmall)
+          if (cd "$scaffold" && zig build native-build \
+              -Dmacos-signing-identity=ci-placeholder \
+              -Dmacos-notarization-profile=ci-placeholder); then
+            echo "generated development manifest unexpectedly passed" >&2
+            exit 1
+          fi
+          cp "$scaffold/mer.app.zon" "$scaffold/mer.app.zon.dev"
+          python3 - "$scaffold/mer.app.zon" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          path.write_text(path.read_text().replace('        .mode = "dev", // "dev" (hot reload) | "embedded" (prod)\n', ''))
+          PY
+          if (cd "$scaffold" && zig build native-build \
+              -Dmacos-signing-identity=ci-placeholder \
+              -Dmacos-notarization-profile=ci-placeholder 2>missing-mode.log); then
+            echo "generated manifest without server.mode unexpectedly passed" >&2
+            exit 1
+          fi
+          grep -F "server.mode must be embedded" "$scaffold/missing-mode.log"
+          mv "$scaffold/mer.app.zon.dev" "$scaffold/mer.app.zon"
+          python3 - "$scaffold/mer.app.zon" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          text = path.read_text()
+          text = text.replace('.mode = "dev"', '.mode = "embedded"')
+          text = text.replace('// .provider = "github-releases",', '.provider = "github-releases",')
+          text = text.replace('// .feed_url = "https://example.com/mer-native/update.json",', '.feed_url = "https://example.com/mer-native/update.json",')
+          text = text.replace('// .public_key = "ed25519:...",', '.public_key = "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",')
+          path.write_text(text)
+          PY
+          (cd "$scaffold" && zig build native-build \
+            -Dmacos-signing-identity=ci-placeholder \
+            -Dmacos-notarization-profile=ci-placeholder)
 
-      # TODO: re-enable E2E tests once kuri is updated for Zig 0.16
-      # For now, just verify the build succeeds.
+      - name: Test rejected and accepted native-build graphs without credentials
+        run: |
+          if zig build native-build \
+              -Dmacos-signing-identity=ci-placeholder \
+              -Dmacos-notarization-profile=ci-placeholder 2>rejected.log; then
+            echo "development manifest unexpectedly passed the production gate" >&2
+            exit 1
+          fi
+          grep -F "server.mode must be embedded" rejected.log
+
+          cp mer.app.zon mer.app.zon.ci-backup
+          trap 'mv mer.app.zon.ci-backup mer.app.zon' EXIT
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("mer.app.zon")
+          text = path.read_text()
+          text = text.replace('.mode = "dev"', '.mode = "embedded"')
+          text = text.replace('// .provider = "github-releases",', '.provider = "github-releases",')
+          text = text.replace('// .feed_url = "https://example.com/mer-native/update.json",', '.feed_url = "https://example.com/mer-native/update.json",')
+          text = text.replace('// .public_key = "ed25519:...",', '.public_key = "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",')
+          path.write_text(text)
+          PY
+          zig build native-build \
+            -Dmacos-signing-identity=ci-placeholder \
+            -Dmacos-notarization-profile=ci-placeholder
+
+          # Assert the credential-bearing release tools remain strictly ordered
+          # behind the accepted gate without invoking codesign or notarytool.
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("build.zig").read_text()
+          for edge in (
+              "pkg_bin.step.dependOn(&package_clean.step)",
+              "pkg_plist.step.dependOn(&package_clean.step)",
+              "pkg_static.step.dependOn(&package_clean.step)",
+              "release_clean.step.dependOn(native_prod_check_step)",
+              "release_codesign.step.dependOn(release_package_step)",
+              "zip.step.dependOn(&release_codesign.step)",
+              "submit.step.dependOn(&zip.step)",
+              "staple.step.dependOn(&submit.step)",
+          ):
+              assert edge in source, edge
+          PY

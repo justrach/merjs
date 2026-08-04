@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g., 0.2.2)'
+        description: 'Version to publish (e.g., 0.2.5)'
         required: true
         type: string
 
@@ -18,30 +18,42 @@ jobs:
       id-token: write
     environment:
       name: pypi
-      url: https://pypi.org/p/merjs
+      url: https://pypi.org/p/merlionjs
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Validate release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          python3 -m unittest scripts/test_release_version.py
+          if [ "${{ github.event_name }}" = "release" ]; then
+            python3 scripts/validate-release-version.py --tag "$RELEASE_TAG"
+          else
+            python3 scripts/validate-release-version.py --version "$DISPATCH_VERSION"
+          fi
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
       - name: Install build dependencies
         run: pip install build twine
-      
-      - name: Update version
-        if: github.event.inputs.version
-        working-directory: dist/pypi
-        run: |
-          sed -i 's/version = "[^"]*"/version = "${{ github.event.inputs.version }}"/' pyproject.toml
-          sed -i 's/__version__ = "[^"]*"/__version__ = "${{ github.event.inputs.version }}"/' src/merjs/__init__.py
-      
+
+      - name: Test package
+        working-directory: packages/pypi
+        run: python -m unittest discover -s tests -v
+
       - name: Build package
-        working-directory: dist/pypi
+        working-directory: packages/pypi
         run: python -m build
-      
+
+      - name: Validate package
+        run: python -m twine check packages/pypi/dist/*
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: dist/pypi/dist/
+          packages-dir: packages/pypi/dist/

@@ -49,7 +49,9 @@ jobs:
       - name: Generate version tag
         id: version
         run: |
-          VERSION=$(grep 'pub const version' src/mer.zig | grep -o '"[^"]*"' | tr -d '"')
+          VERSION=$(sed -nE 's/^[[:space:]]*\.version = "([0-9]+\.[0-9]+\.[0-9]+)",$/\1/p' build.zig.zon)
+          test -n "$VERSION"
+          python3 scripts/validate-release-version.py --version "$VERSION"
           SHORT_SHA=$(git rev-parse --short HEAD)
           BETA_TAG="v${VERSION}-beta.${SHORT_SHA}"
           echo "tag=${BETA_TAG}" >> "$GITHUB_OUTPUT"

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g., 0.2.2)'
+        description: 'Version to publish (e.g., 0.2.5)'
         required: true
         type: string
 
@@ -18,21 +18,35 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Validate release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          python3 -m unittest scripts/test_release_version.py
+          if [ "${{ github.event_name }}" = "release" ]; then
+            python3 scripts/validate-release-version.py --tag "$RELEASE_TAG"
+          else
+            python3 scripts/validate-release-version.py --version "$DISPATCH_VERSION"
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-      
-      - name: Update version
-        if: github.event.inputs.version
-        working-directory: dist/npm
-        run: |
-          npm version ${{ github.event.inputs.version }} --no-git-tag-version
-      
+
+      - name: Test package
+        working-directory: packages/npm
+        run: npm test
+
+      - name: Validate package
+        working-directory: packages/npm
+        run: npm pack --dry-run
+
       - name: Publish to npm
-        working-directory: dist/npm
+        working-directory: packages/npm
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -15,6 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate release version
+        run: |
+          python3 -m unittest scripts/test_release_version.py
+          python3 scripts/validate-release-version.py --tag "${{ github.ref_name }}"
+
       - name: Setup Zig 0.16.0
         uses: mlugg/setup-zig@v2
         with:
