@@ -20,6 +20,7 @@ const app_sandbox = @import("app/sandbox");
 const app_stream_demo = @import("app/stream-demo");
 const app_synth = @import("app/synth");
 const app_users = @import("app/users");
+const app_v0_2_5_index = @import("app/v0.2.5/index");
 const app_weather = @import("app/weather");
 
 pub const routes: []const Route = &.{
@@ -40,6 +41,7 @@ pub const routes: []const Route = &.{
     .{ .path = "/stream-demo", .render = app_stream_demo.render, .render_stream = if (@hasDecl(app_stream_demo, "renderStream")) app_stream_demo.renderStream else null, .meta = if (@hasDecl(app_stream_demo, "meta")) app_stream_demo.meta else .{}, .prerender = if (@hasDecl(app_stream_demo, "prerender")) app_stream_demo.prerender else false },
     .{ .path = "/synth", .render = app_synth.render, .render_stream = if (@hasDecl(app_synth, "renderStream")) app_synth.renderStream else null, .meta = if (@hasDecl(app_synth, "meta")) app_synth.meta else .{}, .prerender = if (@hasDecl(app_synth, "prerender")) app_synth.prerender else false },
     .{ .path = "/users", .render = app_users.render, .render_stream = if (@hasDecl(app_users, "renderStream")) app_users.renderStream else null, .meta = if (@hasDecl(app_users, "meta")) app_users.meta else .{}, .prerender = if (@hasDecl(app_users, "prerender")) app_users.prerender else false },
+    .{ .path = "/v0.2.5", .render = app_v0_2_5_index.render, .render_stream = if (@hasDecl(app_v0_2_5_index, "renderStream")) app_v0_2_5_index.renderStream else null, .meta = if (@hasDecl(app_v0_2_5_index, "meta")) app_v0_2_5_index.meta else .{}, .prerender = if (@hasDecl(app_v0_2_5_index, "prerender")) app_v0_2_5_index.prerender else false },
     .{ .path = "/weather", .render = app_weather.render, .render_stream = if (@hasDecl(app_weather, "renderStream")) app_weather.renderStream else null, .meta = if (@hasDecl(app_weather, "meta")) app_weather.meta else .{}, .prerender = if (@hasDecl(app_weather, "prerender")) app_weather.prerender else false },
 };
 
@@ -58,6 +60,7 @@ comptime {
     if (!@hasDecl(app_stream_demo, "meta")) @compileError("app/stream-demo.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_synth, "meta")) @compileError("app/synth.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_users, "meta")) @compileError("app/users.zig must export pub const meta: mer.Meta");
+    if (!@hasDecl(app_v0_2_5_index, "meta")) @compileError("app/v0.2.5/index.zig must export pub const meta: mer.Meta");
     if (!@hasDecl(app_weather, "meta")) @compileError("app/weather.zig must export pub const meta: mer.Meta");
 }
 
