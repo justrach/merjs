@@ -203,4 +203,5 @@ pub const Server = @import("server.zig").Server;
 pub const Config = @import("server.zig").Config;
 pub const ServerReady = @import("server.zig").ServerReady;
 pub const Watcher = @import("watcher.zig").Watcher;
+pub const native = @import("native.zig");
 pub const runPrerender = @import("prerender.zig").run;
