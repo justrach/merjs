@@ -1,20 +1,31 @@
 # Zig build artifacts
 .zig-cache/
 zig-out/
+examples/**/zig-pkg/
 
 # Generated files (recreated by `zig build codegen`)
 src/generated/*
 !src/generated/.gitkeep
 
+# mercss-jit generated stylesheets (rebuilt by each app's codegen step)
+**/app/_mercss.css
+
 # Built assets (recreated by build steps)
 public/styles.css
 public/counter.wasm
 public/synth.wasm
+examples/site/public/counter.wasm
+examples/site/public/synth.wasm
+mer.zip
+merjs.zip
+*.app/
 dist/
 
 # Cloudflare Workers — compiled WASM output
 worker/merjs.wasm
 worker/grep.wasm
+examples/site/worker/worker/merjs.wasm
+examples/site/worker/worker/grep.wasm
 examples/kanban/worker/merjs.wasm
 examples/singapore-data-dashboard/worker/merjs.wasm
 
@@ -36,6 +47,8 @@ Thumbs.db
 examples/**/worker/.wrangler/
 examples/**/worker/.dev.vars
 node_modules/
+__pycache__/
+*.py[cod]
 
 # Environment variables and secrets — never commit real values
 .env
@@ -55,3 +68,13 @@ app.main/
 public/style.css
 *.o
 --version
+
+# Local agent worktrees/session state — never repository inputs
+.claude/worktrees/
+harness.trace.jsonl
+harness.trajectory.jsonl
+session-*.session.json
+.graff/
+.harness/
+PR100_*_HANDOFF.md
+codedb.snapshot
