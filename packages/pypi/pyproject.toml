@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "merlionjs"
-version = "0.2.2"
+version = "0.2.5"
 description = "Next.js-style web framework in Zig — zero Node.js required"
 readme = "README.md"
 license = {text = "MIT"}
@@ -18,7 +18,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
-    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Zig",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
@@ -37,6 +36,3 @@ merjs = "merjs.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-merjs = ["bin/*"]
