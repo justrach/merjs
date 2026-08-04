@@ -254,7 +254,7 @@ pub fn renderStream(req: mer.Request, stream: *mer.StreamWriter) void {
     stream.write(
         \\  <section id="sessions">
         \\    <h2>8. Sessions</h2>
-        \\    <p>HMAC-SHA256 signed session tokens. Set <code>MULTICLAW_SESSION_SECRET</code> in your <code>.env</code> file.</p>
+        \\    <p>HMAC-SHA256 signed session tokens. Set <code>MERJS_SESSION_SECRET</code> to a random value of at least 32 bytes. The verification-only <code>MULTICLAW_SESSION_SECRET</code> migration fallback must also contain at least 32 bytes; weak legacy keys are rejected. Deploy the strong canonical secret alongside the unchanged strong deprecated secret, wait at least the maximum lifetime of issued tokens, then remove the deprecated variable.</p>
         \\    <div class="code-block"><button class="copy-btn" onclick="copyCode(this)">copy</button><pre><code>// Sign a session (e.g. after login)
         \\const token = try mer.signSession(
         \\    req.allocator, user_id, mer.SESSION_DEFAULT_TTL,  // 7 days
