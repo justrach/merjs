@@ -5,13 +5,10 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const os = require('os');
 const fs = require('fs');
 
 function getBinPath() {
-  const platform = os.platform() === 'win32' ? 'windows' : os.platform() === 'darwin' ? 'macos' : 'linux';
-  const binName = platform === 'windows' ? 'mer.exe' : 'mer';
-  const binPath = path.join(__dirname, '..', 'bin', binName);
+  const binPath = path.join(__dirname, 'mer-bin');
   
   if (!fs.existsSync(binPath)) {
     console.error('merjs: binary not found. Try running `npm install` again.');

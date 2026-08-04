@@ -10,6 +10,8 @@ npm install -g merlionjs
 npx merlionjs init my-app
 ```
 
+The matching release binary is checksum-verified during installation. If the checksum cannot be downloaded or validated, installation aborts without leaving a partial binary.
+
 ## Usage
 
 ```bash
@@ -33,7 +35,8 @@ zig build prod
 
 - macOS (Intel & Apple Silicon)
 - Linux (x64 & ARM64)
-- Windows (x64)
+
+Windows is not published yet; the installer fails as unsupported instead of requesting a missing release asset.
 
 ## Documentation
 

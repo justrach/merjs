@@ -1,6 +1,6 @@
 {
   "name": "merlionjs",
-  "version": "0.2.2",
+  "version": "0.2.5",
   "description": "Next.js-style web framework in Zig — zero Node.js required",
   "keywords": [
     "zig",
@@ -30,15 +30,14 @@
   },
   "scripts": {
     "postinstall": "node install.js",
-    "preuninstall": "node uninstall.js"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=16.0.0"
   },
   "os": [
     "darwin",
-    "linux",
-    "win32"
+    "linux"
   ],
   "cpu": [
     "x64",

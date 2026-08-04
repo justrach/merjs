@@ -15,8 +15,7 @@ function getBinaryPath() {
   
   const platformMap = {
     'darwin': 'macos',
-    'linux': 'linux',
-    'win32': 'windows'
+    'linux': 'linux'
   };
   
   const p = platformMap[platform];
@@ -24,8 +23,7 @@ function getBinaryPath() {
     throw new Error(`Unsupported platform: ${platform}`);
   }
   
-  const binName = p === 'windows' ? 'mer.exe' : 'mer';
-  return path.join(__dirname, 'bin', binName);
+  return path.join(__dirname, 'bin', 'mer-bin');
 }
 
 function binaryExists() {
