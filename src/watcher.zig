@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const security = @import("security.zig");
 
 const PthreadMutex = struct {
     inner: std.c.pthread_mutex_t = std.c.PTHREAD_MUTEX_INITIALIZER,
@@ -15,6 +16,9 @@ const PthreadMutex = struct {
 };
 const log = std.log.scoped(.watcher);
 
+const sse_heartbeat_interval_ns = std.time.ns_per_s;
+const sse_max_heartbeats = 120;
+
 pub const Client = struct {
     notified: std.atomic.Value(bool),
 
@@ -26,13 +30,31 @@ pub const Client = struct {
         self.notified.store(true, .release);
     }
 
-    /// Spin-wait until notified (checks every 50ms).
-    pub fn wait(self: *Client) void {
+    /// Wait until notified or the bounded interval elapses.
+    pub fn wait(self: *Client, timeout_ns: u64) bool {
+        var remaining = timeout_ns;
         while (!self.notified.load(.acquire)) {
-            threadSleep(50 * std.time.ns_per_ms);
+            if (remaining == 0) return false;
+            const sleep_ns = @min(remaining, 50 * std.time.ns_per_ms);
+            threadSleep(sleep_ns);
+            remaining -= sleep_ns;
         }
+        return true;
     }
 };
+
+fn awaitClient(client: *Client, interval_ns: u64, max_heartbeats: usize, heartbeat: anytype) !bool {
+    for (0..max_heartbeats) |_| {
+        if (client.wait(interval_ns)) return true;
+        try heartbeat.send();
+    }
+    return client.notified.load(.acquire);
+}
+
+fn awaitRegisteredClient(watcher: *Watcher, client: *Client, interval_ns: u64, max_heartbeats: usize, heartbeat: anytype) !bool {
+    defer watcher.removeClient(client);
+    return awaitClient(client, interval_ns, max_heartbeats, heartbeat);
+}
 
 pub const Watcher = struct {
     allocator: std.mem.Allocator,
@@ -41,6 +63,7 @@ pub const Watcher = struct {
     mutex: PthreadMutex,
     mtimes: std.StringHashMap(std.Io.Timestamp),
     io: std.Io,
+    stopping: std.atomic.Value(bool),
 
     pub fn init(allocator: std.mem.Allocator, watch_dir: []const u8) Watcher {
         return .{
@@ -50,6 +73,7 @@ pub const Watcher = struct {
             .mutex = .{},
             .mtimes = std.StringHashMap(std.Io.Timestamp).init(allocator),
             .io = runtime.io, // Use shared runtime.io instead of creating new Threaded
+            .stopping = std.atomic.Value(bool).init(false),
         };
     }
 
@@ -63,7 +87,22 @@ pub const Watcher = struct {
     pub fn addClient(self: *Watcher, client: *Client) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
+        if (self.stopping.load(.acquire)) {
+            client.notify();
+            return;
+        }
         try self.clients.append(self.allocator, client);
+    }
+
+    fn removeClient(self: *Watcher, client: *Client) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        for (self.clients.items, 0..) |registered, i| {
+            if (registered == client) {
+                _ = self.clients.swapRemove(i);
+                return;
+            }
+        }
     }
 
     fn broadcast(self: *Watcher) void {
@@ -73,10 +112,18 @@ pub const Watcher = struct {
         self.clients.clearRetainingCapacity();
     }
 
-    /// Poll loop — run in a background thread.
+    /// Wake clients and ask the poll loop to return. The owner must then join
+    /// the thread before deinitializing the watcher or runtime.
+    pub fn stop(self: *Watcher) void {
+        self.stopping.store(true, .release);
+        self.broadcast();
+    }
+
+    /// Poll loop — run in an owner-joined background thread.
     pub fn run(self: *Watcher) void {
-        while (true) {
+        while (!self.stopping.load(.acquire)) {
             threadSleep(300 * std.time.ns_per_ms);
+            if (self.stopping.load(.acquire)) break;
             if (self.pollOnce()) {
                 log.info("change detected — reloading", .{});
                 self.broadcast();
@@ -116,16 +163,20 @@ pub fn handleSse(
     watcher: *Watcher,
     alloc: std.mem.Allocator,
     std_req: *std.http.Server.Request,
+    csp: []const u8,
 ) !void {
-    var header_buf: [512]u8 = undefined;
+    var extra: [3 + security.header_count]std.http.Header = undefined;
+    extra[0] = .{ .name = "content-type", .value = "text/event-stream" };
+    extra[1] = .{ .name = "cache-control", .value = "no-cache" };
+    extra[2] = .{ .name = "connection", .value = "keep-alive" };
+    const security_headers = security.headers(csp);
+    @memcpy(extra[3..], &security_headers);
+
+    var header_buf: [2048]u8 = undefined;
     var bw = try std_req.respondStreaming(&header_buf, .{
         .respond_options = .{
             .status = .ok,
-            .extra_headers = &.{
-                .{ .name = "content-type", .value = "text/event-stream" },
-                .{ .name = "cache-control", .value = "no-cache" },
-                .{ .name = "connection", .value = "keep-alive" },
-            },
+            .extra_headers = &extra,
         },
     });
 
@@ -138,14 +189,68 @@ pub fn handleSse(
     client.* = Client.init();
     try watcher.addClient(client);
 
-    // Block until the watcher fires.
-    client.wait();
+    const Heartbeat = struct {
+        body_writer: *std.http.BodyWriter,
 
-    try bw.writer.writeAll("data: reload\n\n");
+        fn send(self: *@This()) !void {
+            try self.body_writer.writer.writeAll(": heartbeat\n\n");
+            try self.body_writer.flush();
+        }
+    };
+    var heartbeat = Heartbeat{ .body_writer = &bw };
+
+    // Periodic writes discover peer/watchdog closure without a file change.
+    if (try awaitRegisteredClient(watcher, client, sse_heartbeat_interval_ns, sse_max_heartbeats, &heartbeat)) {
+        try bw.writer.writeAll("data: reload\n\n");
+    }
     try bw.end();
 }
 
 fn threadSleep(ns: u64) void {
     // Use Io.sleep with awake clock (monotonic, excludes system suspend time)
     _ = std.Io.sleep(runtime.io, .fromNanoseconds(ns), .awake) catch {};
+}
+
+test "disconnected SSE client is removed without a watcher event" {
+    const Disconnected = struct {
+        calls: usize = 0,
+
+        fn send(self: *@This()) !void {
+            self.calls += 1;
+            return error.Disconnected;
+        }
+    };
+
+    var watcher = Watcher.init(std.testing.allocator, ".");
+    defer watcher.deinit();
+    var client = Client.init();
+    try watcher.addClient(&client);
+    var disconnected = Disconnected{};
+
+    try std.testing.expectError(
+        error.Disconnected,
+        awaitRegisteredClient(&watcher, &client, 0, 1, &disconnected),
+    );
+    try std.testing.expectEqual(@as(usize, 1), disconnected.calls);
+    try std.testing.expectEqual(@as(usize, 0), watcher.clients.items.len);
+}
+
+test "SSE client lifetime is bounded without a watcher event" {
+    const Heartbeat = struct {
+        calls: usize = 0,
+
+        fn send(self: *@This()) !void {
+            self.calls += 1;
+        }
+    };
+
+    var watcher = Watcher.init(std.testing.allocator, ".");
+    defer watcher.deinit();
+    var client = Client.init();
+    try watcher.addClient(&client);
+    var heartbeat = Heartbeat{};
+
+    try std.testing.expect(!try awaitRegisteredClient(&watcher, &client, 0, 2, &heartbeat));
+    try std.testing.expectEqual(@as(usize, 2), heartbeat.calls);
+    try std.testing.expectEqual(@as(usize, 0), watcher.clients.items.len);
 }
