@@ -8,7 +8,26 @@ permissions:
   contents: write
 
 jobs:
+  native-macos:
+    runs-on: macos-latest
+    name: Verify native macOS app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build and verify app bundle
+        run: |
+          zig build desktop -Doptimize=ReleaseSmall
+          test -x zig-out/MerApp.app/Contents/MacOS/merapp
+          plutil -lint zig-out/MerApp.app/Contents/Info.plist
+
   build-and-release:
+    needs: native-macos
     runs-on: ubuntu-latest
     name: Build & publish release
 

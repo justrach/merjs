@@ -1,4 +1,4 @@
-# merjs Desktop (experimental)
+# merjs Desktop (macOS MVP)
 
 A native macOS app wrapper for merjs. Single Zig binary. Zero node_modules. No Electron.
 
@@ -15,25 +15,29 @@ open zig-out/MerApp.app
 
 ## How it works
 
-The ObjC bridge uses `extern fn` declarations for three runtime primitives (`objc_getClass`, `sel_registerName`, `objc_msgSend`) and typed function pointer casts for every method call. No `@cImport` of AppKit/WebKit headers — those contain Objective-C syntax that Zig's translate-c can't parse.
+The host calls the Objective-C runtime with typed function pointer casts for every method signature. No `@cImport` of AppKit/WebKit headers — those contain Objective-C syntax that Zig's translate-c can't parse.
 
 See [`spike.zig`](spike.zig) for the full research notes and the interop pattern decision (issue #50).
 
-## Files
+## Public API
 
-| File | Purpose |
-|---|---|
-| `spike.zig` | #50 research spike — proves Zig→ObjC bridge pattern |
-| `main.zig` | Full app: server thread + NSApp run loop + WKWebView |
+Apps can present an existing loopback server from the process main thread:
+
+```zig
+try mer.native.runLoopback(ready.port, .{
+    .title = "My App",
+});
+```
+
+The app owns server startup and shutdown. Its macOS target must link libc plus AppKit, WebKit, and Foundation, as this repository's `desktop` target does.
 
 ## Status
 
-Experimental. The window opens and loads the merjs site from a local server. Known gaps:
+MVP. The window opens and loads the merjs site from a local server. Known gaps:
 
 - No app icon
-- No `cmd+w` / `cmd+q` keyboard shortcuts wired to `[NSApp terminate:]`
 - No code signing (runs fine locally, not distributable via App Store)
-- Server shutdown on window close not yet wired
+- No manifest, JS-to-Zig command bridge, updater, or cross-platform host
 
 ## Build output
 

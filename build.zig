@@ -338,10 +338,12 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         desktop_mod.addImport("mer", mer_mod);
+        desktop_mod.addImport("runtime", runtime_mod);
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/app", "app", site_extras);
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/api", "api", &.{});
         helpers.addRoutesModule(b, desktop_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
         const desktop_exe = b.addExecutable(.{ .name = "merapp", .root_module = desktop_mod });
+        desktop_exe.step.dependOn(&run_codegen.step);
         desktop_mod.linkFramework("AppKit", .{});
         desktop_mod.linkFramework("WebKit", .{});
         desktop_mod.linkFramework("Foundation", .{});
