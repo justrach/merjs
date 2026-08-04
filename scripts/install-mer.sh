@@ -81,17 +81,29 @@ fetch "$download_url" "$bin_path"
 fetch "$checksums_url" "$checksums_path"
 
 if command -v shasum >/dev/null 2>&1; then
-    (
-        cd "$tmpdir"
-        grep " ${asset}\$" "$checksums_path" | sed "s| ${asset}\$| mer|" | shasum -a 256 -c -
-    )
+    verify_checksum() {
+        shasum -a 256 -c -
+    }
 elif command -v sha256sum >/dev/null 2>&1; then
-    (
-        cd "$tmpdir"
-        grep " ${asset}\$" "$checksums_path" | sed "s| ${asset}\$| mer|" | sha256sum -c -
-    )
+    verify_checksum() {
+        sha256sum -c -
+    }
 else
-    echo "install-mer: checksum tool not found, skipping verification" >&2
+    echo "install-mer: need shasum or sha256sum to verify the download" >&2
+    exit 1
+fi
+
+checksum_entry="${tmpdir}/checksum"
+if ! LC_ALL=C grep "^[[:xdigit:]]\{64\}  ${asset}\$" "$checksums_path" > "$checksum_entry"; then
+    echo "install-mer: checksum for ${asset} not found" >&2
+    exit 1
+fi
+if ! (
+    cd "$tmpdir"
+    sed "s| ${asset}\$| mer|" "$checksum_entry" | verify_checksum
+); then
+    echo "install-mer: checksum verification failed for ${asset}" >&2
+    exit 1
 fi
 
 mkdir -p "$install_dir"
