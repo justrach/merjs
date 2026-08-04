@@ -8,9 +8,9 @@ zig build desktop
 open zig-out/MerApp.app
 ```
 
-The build starts the example site on an ephemeral loopback port, waits for the
-server to bind, and opens `http://127.0.0.1:<port>/` in WKWebView. Closing the
-last window terminates the app.
+When launched, the app starts the example site on an ephemeral loopback port,
+waits for the server to bind, and opens `http://127.0.0.1:<port>/` in WKWebView.
+Closing the last window terminates the app.
 
 ## Public host API
 
@@ -24,11 +24,12 @@ try mer.native.runLoopback(ready.port, .{
 });
 ```
 
-`runLoopback` accepts only a nonzero loopback-server port. It constructs the
-URL internally, validates the title and dimensions, and returns after AppKit's
-event loop terminates. The app remains responsible for starting and stopping
-its server. A macOS executable using this API must link libc plus the AppKit,
-WebKit, and Foundation frameworks, as the repository's `desktop` target does.
+`runLoopback` must be called from the process main thread and accepts only a
+nonzero loopback-server port. It constructs the URL internally, validates the
+title and dimensions, and returns after AppKit's event loop terminates. The app
+remains responsible for starting and stopping its server. A macOS executable
+using this API must link libc plus the AppKit, WebKit, and Foundation
+frameworks, as the repository's `desktop` target does.
 
 ## Implementation
 

@@ -63,6 +63,11 @@ fn sendIntegerVoid(recv: Id, selector: Sel, value: NSInteger) void {
     @as(F, @ptrCast(&objc_msgSend))(recv, selector, value);
 }
 
+fn sendBool(recv: Id, selector: Sel) BOOL {
+    const F = *const fn (Id, Sel) callconv(.c) BOOL;
+    return @as(F, @ptrCast(&objc_msgSend))(recv, selector);
+}
+
 fn sendBoolVoid(recv: Id, selector: Sel, value: BOOL) void {
     const F = *const fn (Id, Sel, BOOL) callconv(.c) void;
     @as(F, @ptrCast(&objc_msgSend))(recv, selector, value);
@@ -105,7 +110,10 @@ fn createAppDelegate() Id {
     return send(send(class, sel("alloc")), sel("init"));
 }
 
-pub fn run(port: u16, config: anytype) error{NativeRuntimeUnavailable}!void {
+pub fn run(port: u16, config: anytype) error{ WrongThread, NativeRuntimeUnavailable }!void {
+    const thread_class = cls("NSThread") orelse return error.NativeRuntimeUnavailable;
+    if (sendBool(thread_class, sel("isMainThread")) == NO) return error.WrongThread;
+
     const pool_class = cls("NSAutoreleasePool") orelse return error.NativeRuntimeUnavailable;
     const pool = send(send(pool_class, sel("alloc")), sel("init")) orelse
         return error.NativeRuntimeUnavailable;
@@ -118,6 +126,11 @@ pub fn run(port: u16, config: anytype) error{NativeRuntimeUnavailable}!void {
 
     app_delegate = createAppDelegate() orelse return error.NativeRuntimeUnavailable;
     sendOneVoid(app, sel("setDelegate:"), app_delegate);
+    defer {
+        sendOneVoid(app, sel("setDelegate:"), null);
+        sendVoid(app_delegate, sel("release"));
+        app_delegate = null;
+    }
 
     const frame = CGRect{
         .origin = .{ .x = 0, .y = 0 },
@@ -135,6 +148,8 @@ pub fn run(port: u16, config: anytype) error{NativeRuntimeUnavailable}!void {
         frame,
         style,
     ) orelse return error.NativeRuntimeUnavailable;
+    sendBoolVoid(window, sel("setReleasedWhenClosed:"), NO);
+    defer sendVoid(window, sel("release"));
 
     var title_buffer: [256]u8 = undefined;
     @memcpy(title_buffer[0..config.title.len], config.title);
@@ -149,12 +164,14 @@ pub fn run(port: u16, config: anytype) error{NativeRuntimeUnavailable}!void {
         return error.NativeRuntimeUnavailable;
     const webview_config = send(send(webview_config_class, sel("alloc")), sel("init")) orelse
         return error.NativeRuntimeUnavailable;
+    defer sendVoid(webview_config, sel("release"));
     const webview = initWebView(
         send(webview_class, sel("alloc")),
         sel("initWithFrame:configuration:"),
         frame,
         webview_config,
     ) orelse return error.NativeRuntimeUnavailable;
+    defer sendVoid(webview, sel("release"));
     sendOneVoid(window, sel("setContentView:"), webview);
 
     var url_buffer: [64]u8 = undefined;
