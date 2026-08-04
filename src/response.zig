@@ -58,9 +58,18 @@ pub const SetCookie = struct {
         var pos: usize = 0;
         const base = std.fmt.bufPrint(buf, "{s}={s}; Path={s}", .{ self.name, self.value, self.path }) catch return buf[0..0];
         pos = base.len;
-        if (self.max_age) |age| { const s = std.fmt.bufPrint(buf[pos..], "; Max-Age={d}", .{age}) catch ""; pos += s.len; }
-        if (self.http_only) { const s = std.fmt.bufPrint(buf[pos..], "; HttpOnly", .{}) catch ""; pos += s.len; }
-        if (self.secure) { const s = std.fmt.bufPrint(buf[pos..], "; Secure", .{}) catch ""; pos += s.len; }
+        if (self.max_age) |age| {
+            const s = std.fmt.bufPrint(buf[pos..], "; Max-Age={d}", .{age}) catch "";
+            pos += s.len;
+        }
+        if (self.http_only) {
+            const s = std.fmt.bufPrint(buf[pos..], "; HttpOnly", .{}) catch "";
+            pos += s.len;
+        }
+        if (self.secure) {
+            const s = std.fmt.bufPrint(buf[pos..], "; Secure", .{}) catch "";
+            pos += s.len;
+        }
         const ss: []const u8 = switch (self.same_site) {
             .strict => "Strict",
             .lax => "Lax",
@@ -80,9 +89,33 @@ pub const Response = struct {
     body: []const u8,
     /// Cookies to emit as Set-Cookie headers. Slice must outlive the Response.
     cookies: []const SetCookie = &.{},
+    /// Non-null exactly when `body` is an allocation owned by this Response.
+    body_allocator: ?std.mem.Allocator = null,
 
     pub fn init(status: std.http.Status, ct: ContentType, body: []const u8) Response {
         return .{ .status = status, .content_type = ct, .body = body };
+    }
+
+    /// Replace the body with a distinct allocation and release the old owned
+    /// body. `body` must have been allocated by `allocator`.
+    pub fn replaceBodyOwned(self: *Response, allocator: std.mem.Allocator, body: []u8) void {
+        // A layout may return its input on failure. In that case ownership has
+        // not changed, and freeing the old body would invalidate the result.
+        if (body.ptr == self.body.ptr and body.len == self.body.len) return;
+        self.deinitBody();
+        self.body = body;
+        self.body_allocator = allocator;
+    }
+
+    pub fn deinitBody(self: *Response) void {
+        if (self.body_allocator) |allocator| allocator.free(@constCast(self.body));
+        self.body = "";
+        self.body_allocator = null;
+    }
+
+    pub fn deinit(self: Response) void {
+        var response = self;
+        response.deinitBody();
     }
 };
 

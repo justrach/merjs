@@ -42,6 +42,10 @@ pub const Request = struct {
     /// Raw `Cookie:` header value.
     /// Empty slice when no cookie header is present.
     cookies_raw: []const u8,
+    /// Bounded request headers supplied by edge runtimes.
+    headers: []const std.http.Header = &.{},
+    /// Server-owned peer identity suitable for abuse controls.
+    client_identity: ?[]const u8 = null,
     /// Dynamic route parameters extracted by the router.
     /// E.g. for route `/users/:id` and path `/users/42`, params = [{key:"id", value:"42"}].
     params: []const Param,
@@ -59,6 +63,8 @@ pub const Request = struct {
             .query_string = "",
             .body = "",
             .cookies_raw = "",
+            .headers = &.{},
+            .client_identity = null,
             .params = &.{},
         };
     }
@@ -104,7 +110,20 @@ pub const Request = struct {
         return map;
     }
 
-    // ── Cookies ────────────────────────────────────────────────────────────
+    // ── Headers and cookies ────────────────────────────────────────────────
+
+    /// Return the first request header value, matched case-insensitively.
+    pub fn header(self: Request, name: []const u8) ?[]const u8 {
+        for (self.headers) |entry| {
+            if (std.ascii.eqlIgnoreCase(entry.name, name)) return entry.value;
+        }
+        return null;
+    }
+
+    /// Return the server-owned identity for this client, if the platform supplied one.
+    pub fn clientIdentity(self: Request) ?[]const u8 {
+        return self.client_identity;
+    }
 
     /// Return the value of a cookie, or null if absent.
     ///
@@ -168,6 +187,15 @@ test "queryParam: single param, no ampersand" {
     var req = Request.init(std.testing.allocator, .GET, "/");
     req.query_string = "only=one";
     try std.testing.expectEqualStrings("one", req.queryParam("only").?);
+}
+
+test "client identity is dedicated server-owned metadata" {
+    var req = Request.init(std.testing.allocator, .GET, "/?x-forwarded-for=spoofed");
+    req.query_string = "x-forwarded-for=spoofed";
+    req.headers = &.{.{ .name = "x-forwarded-for", .value = "also-spoofed" }};
+    try std.testing.expect(req.clientIdentity() == null);
+    req.client_identity = "203.0.113.9";
+    try std.testing.expectEqualStrings("203.0.113.9", req.clientIdentity().?);
 }
 
 test "cookie: basic name=value" {

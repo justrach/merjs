@@ -19,6 +19,12 @@
 //   // Full document:
 //   h.document(.{ h.charset("UTF-8"), h.title("Hi") },
 //              .{ h.h1(.{}, "Hello!") })
+//
+// RenderStorage is recommended when standalone nodes are retained or copied:
+//   var storage = h.RenderStorage.init(allocator);
+//   storage.activate();
+//   defer storage.deinit();
+// Without active storage, runtime child slices use a bounded thread-local pool.
 
 const std = @import("std");
 
@@ -26,12 +32,54 @@ const std = @import("std");
 // Set by server.zig before each request so coerceChildren can heap-allocate
 // runtime children tuples (avoids returning pointers to stack-local arrays).
 threadlocal var _render_alloc: ?std.mem.Allocator = null;
+threadlocal var _active_storage: ?*RenderStorage = null;
 
 /// Call this once per request (before building any Node tree) to enable
-/// safe runtime children. server.zig calls this automatically.
+/// safe runtime children. server.zig calls this automatically. The allocator
+/// must outlive every Node built while it is selected.
 pub fn setRenderAllocator(alloc: std.mem.Allocator) void {
     _render_alloc = alloc;
+    _active_storage = null;
 }
+
+pub fn hasRenderAllocator() bool {
+    return _render_alloc != null;
+}
+
+/// Bounded storage for standalone/runtime Node construction. Node values borrow
+/// child slices from this arena, so they remain freely copyable and renderable
+/// until the storage is deinitialized.
+pub const RenderStorage = struct {
+    arena: std.heap.ArenaAllocator,
+    previous_allocator: ?std.mem.Allocator = null,
+    previous_storage: ?*RenderStorage = null,
+    active: bool = false,
+
+    pub fn init(backing_allocator: std.mem.Allocator) RenderStorage {
+        return .{ .arena = std.heap.ArenaAllocator.init(backing_allocator) };
+    }
+
+    /// Select this storage for runtime children built on the current thread.
+    /// Activations may be nested, but must be deinitialized in reverse order.
+    pub fn activate(self: *RenderStorage) void {
+        std.debug.assert(!self.active);
+        self.previous_allocator = _render_alloc;
+        self.previous_storage = _active_storage;
+        self.active = true;
+        _render_alloc = self.arena.allocator();
+        _active_storage = self;
+    }
+
+    pub fn deinit(self: *RenderStorage) void {
+        if (self.active) {
+            std.debug.assert(_active_storage == self);
+            _render_alloc = self.previous_allocator;
+            _active_storage = self.previous_storage;
+            self.active = false;
+        }
+        self.arena.deinit();
+    }
+};
 
 // ── Core types ──────────────────────────────────────────────────────────────
 
@@ -44,6 +92,12 @@ pub const Node = union(enum) {
     element: Element,
     text: []const u8,
     raw: []const u8,
+
+    /// Retained for source compatibility. Nodes do not have unique ownership;
+    /// release an active RenderStorage instead.
+    pub fn deinit(self: Node) void {
+        _ = self;
+    }
 };
 
 pub const Element = struct {
@@ -183,34 +237,63 @@ fn isSelfClosing(tag: []const u8) bool {
 ///   - []const u8 / string literal → single text node
 ///   - .{ Node, Node, ... } tuple  → slice of nodes
 ///   - []const Node                → pass through
-fn coerceChildren(children: anytype) []const Node {
+const Children = struct {
+    items: []const Node,
+};
+
+/// The thread-local standalone pool holds this many child values. Existing
+/// slices are never overwritten; use RenderStorage for sustained construction
+/// or when an explicit lifetime is required.
+pub const standalone_fallback_capacity = 1024;
+threadlocal var _standalone_fallback: [standalone_fallback_capacity]Node = undefined;
+threadlocal var _standalone_fallback_cursor: usize = 0;
+
+/// Reclaim standalone fallback storage after every node built without an active
+/// RenderStorage is no longer used. Existing fallback-backed nodes become
+/// invalid, so retained/repeated construction should prefer RenderStorage.
+pub fn resetStandaloneFallback() void {
+    std.debug.assert(_render_alloc == null);
+    _standalone_fallback_cursor = 0;
+}
+
+fn ownRuntimeChildren(nodes: []const Node) Children {
+    if (nodes.len == 0) return .{ .items = &.{} };
+
+    if (_render_alloc) |allocator| {
+        return .{ .items = allocator.dupe(Node, nodes) catch @panic("h.*: out of memory") };
+    }
+    if (nodes.len > standalone_fallback_capacity -| _standalone_fallback_cursor) {
+        @panic("h.*: standalone fallback exhausted; use h.RenderStorage");
+    }
+    const start = _standalone_fallback_cursor;
+    _standalone_fallback_cursor += nodes.len;
+    @memcpy(_standalone_fallback[start.._standalone_fallback_cursor], nodes);
+    return .{ .items = _standalone_fallback[start.._standalone_fallback_cursor] };
+}
+
+fn coerceChildren(children: anytype) Children {
     const T = @TypeOf(children);
 
-    // String literal → text node.  At runtime the [1]Node wrapper lives on the
-    // stack and becomes dangling once coerceChildren returns.  Heap-copy via
-    // the per-request arena when available, same as the tuple path below.
+    // Runtime wrappers must outlive this function. Server requests and an
+    // active RenderStorage use their arena; standalone nodes use the bounded
+    // thread-local fallback.
     if (T == []const u8) {
-        if (@inComptime()) return &.{Node{ .text = children }};
-        var singleton: [1]Node = .{Node{ .text = children }};
-        if (_render_alloc) |alloc| return alloc.dupe(Node, &singleton) catch &.{};
-        const final: [1]Node = singleton;
-        return &final;
+        if (@inComptime()) return .{ .items = &.{Node{ .text = children }} };
+        const singleton = [1]Node{Node{ .text = children }};
+        return ownRuntimeChildren(&singleton);
     }
     if (comptime isStringLiteral(T)) {
         const slice: []const u8 = children;
-        if (@inComptime()) return &.{Node{ .text = slice }};
-        var singleton: [1]Node = .{Node{ .text = slice }};
-        if (_render_alloc) |alloc| return alloc.dupe(Node, &singleton) catch &.{};
-        const final: [1]Node = singleton;
-        return &final;
+        if (@inComptime()) return .{ .items = &.{Node{ .text = slice }} };
+        const singleton = [1]Node{Node{ .text = slice }};
+        return ownRuntimeChildren(&singleton);
     }
 
-    // Already a node slice
+    // Caller-provided slices remain borrowed.
     if (T == []const Node) {
-        return children;
+        return .{ .items = children };
     }
 
-    // Tuple of nodes — coerce to slice.
     if (@typeInfo(T) == .@"struct" and @typeInfo(T).@"struct".is_tuple) {
         const fields = @typeInfo(T).@"struct".fields;
         var nodes: [fields.len]Node = undefined;
@@ -224,29 +307,23 @@ fn coerceChildren(children: anytype) []const Node {
                 nodes[idx] = val;
             }
         }
-        // Comptime path (e.g. `const page_node = page()`): &final lives in the
-        // binary's data section — safe.
         if (@inComptime()) {
             const final: [fields.len]Node = nodes;
-            return &final;
+            return .{ .items = &final };
         }
-        // Runtime path: heap-allocate via the thread-local request arena so the
-        // slice survives after coerceChildren returns (avoids dangling-pointer
-        // SIGBUS on nested h.* calls).
-        if (_render_alloc) |alloc| {
-            return alloc.dupe(Node, &nodes) catch &.{};
-        }
-        // No allocator set — fall back (safe only if there is no nesting).
-        const final: [fields.len]Node = nodes;
-        return &final;
+        return ownRuntimeChildren(&nodes);
     }
 
-    // Pointer to array of Node
+    // Pointer to array of Node.
     const info = @typeInfo(T);
     if (info == .pointer and info.pointer.size == .one) {
         const child_info = @typeInfo(info.pointer.child);
+        if (child_info == .@"struct" and child_info.@"struct".is_tuple) {
+            return coerceChildren(children.*);
+        }
         if (child_info == .array and child_info.array.child == Node) {
-            return children;
+            if (@inComptime()) return .{ .items = children };
+            return ownRuntimeChildren(children);
         }
     }
 
@@ -266,10 +343,11 @@ fn isStringLiteral(comptime T: type) bool {
 
 /// Create an element with tag, props, and children (anytype).
 pub fn el(tag: []const u8, comptime props: Props, children: anytype) Node {
+    const child_nodes = coerceChildren(children);
     return .{ .element = .{
         .tag = tag,
         .attrs = propsToAttrs(props),
-        .children = coerceChildren(children),
+        .children = child_nodes.items,
         .self_closing = isSelfClosing(tag),
     } };
 }
@@ -580,8 +658,9 @@ pub fn documentLang(comptime lang_val: []const u8, head_children: anytype, body_
 
 pub fn render(allocator: std.mem.Allocator, node: Node) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
     try renderNode(&out, node);
-    return out.written();
+    return out.toOwnedSlice();
 }
 
 fn renderNode(out: *std.Io.Writer.Allocating, node: Node) !void {
