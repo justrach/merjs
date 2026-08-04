@@ -31,8 +31,8 @@ HTTP request
 ```
 Cloudflare edge
   → worker/worker.js     fetch() handler
-      → two-phase fetch: collect_fetch_urls() dry run → JS fetches in parallel
-      → wasm.handle()    full WASM render with pre-fetched data
+      → bounded fetch rounds: dry-run/replay cached prefixes → JS fetches newly discovered requests
+      → wasm.handle()    one final WASM render with all pre-fetched data
   → HTTP Response
 ```
 

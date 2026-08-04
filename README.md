@@ -94,6 +94,64 @@ zig build serve     # dev server on :3000 with hot reload
 
 Visit `http://localhost:3000`.
 
+### Content security and static caching
+
+Production servers default to a same-origin CSP with no `unsafe-eval`,
+`wasm-unsafe-eval`, `unsafe-inline`, or demo-only origins. Development mode uses a
+separate policy that permits inline script/style only for hot reload and the error
+overlay. Applications that intentionally load other origins or browser WASM must
+set an explicit policy:
+
+```zig
+var server = mer.Server.init(alloc, .{
+    .content_security_policy = "default-src 'self'; script-src 'self' https://cdn.example.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    .static_cache_limits = .{
+        .max_entries = 256,
+        .max_bytes = 64 * 1024 * 1024,
+        .max_in_flight_bytes = 128 * 1024 * 1024,
+    },
+    .max_active_connections = 1024,
+    .kernel_backlog = 256,
+    .header_deadline_ms = 10_000,
+    .body_deadline_ms = 30_000,
+    .keepalive_deadline_ms = 15_000,
+    .write_deadline_ms = 30_000,
+    .absolute_header_deadline_ms = 15_000,
+    .absolute_body_deadline_ms = 45_000,
+    .absolute_connection_deadline_ms = 120_000,
+    .max_requests_per_connection = 100,
+}, &router, null);
+```
+
+The default production policy is safe when the app itself serves plain HTTP: it
+does not include `upgrade-insecure-requests`. A deployment behind a confirmed
+TLS terminator may add that directive through `content_security_policy`; do not
+add it when clients can legitimately reach the app over plain HTTP. The HSTS
+header likewise takes effect only when received over HTTPS.
+
+The in-process static cache is bounded by entries, resident bytes, and aggregate
+bytes being materialized, copied into cache, or sent. Cold production misses are
+single-flight per cache key. Cache hits use leases, so eviction never invalidates
+an active response. Connection workers are bounded, completed owner-joined
+workers are continuously reaped, and excess accepts are shed. One server-level
+watchdog scans all live connections, so thread growth is one worker per active
+connection plus a constant rather than two threads per connection. Inactivity
+limits are supplemented by absolute header, body, and connection deadlines that
+byte trickles cannot renew; request arenas are released after every request.
+A connection-worker spawn failure is logged and stops `listen()` with an error
+instead of silently reducing the configured admission capacity.
+
+Raw endpoints can keep using `RawHandler.callback` (boolean handled result), or
+use `callback_result` and return `mer.RawHandlerResult{ .handled = true,
+.status = .accepted }` so telemetry records the status they committed. Both
+callbacks receive the current per-request render allocator before invocation.
+Owner-run servers should pass `ServerStop`, call `request()`, and join their
+server thread before tearing down routers, allocators, watchers, or UI state.
+HTML/SPA shells are revalidated, and one-year `immutable` browser caching is used
+only for asset names with an unambiguous, delimited hexadecimal digest of at
+least 16 characters, such as `app-a1b2c3d4e5f60718.js`. Development static
+responses use `no-store`.
+
 ---
 
 ## Performance
@@ -342,7 +400,7 @@ merjs/
 ├── src/                    # framework runtime
 │   ├── mer.zig             # public API: Request, Response, h, lint, dhi
 │   ├── server.zig          # HTTP server (thread pool, hash-map router)
-│   ├── ssr.zig             # SSR engine + router builder
+│   ├── router.zig          # route matching and SSR dispatch
 │   ├── html.zig            # comptime HTML builder DSL
 │   ├── html_lint.zig       # comptime HTML linter
 │   ├── watcher.zig         # file watcher + SSE hot reload
@@ -411,7 +469,6 @@ Open an issue before submitting a large PR.
 
 - **[dhi](https://github.com/justrach/dhi)** — Pydantic-style validation for Zig
 - **[Tailwind CSS v4](https://tailwindcss.com)** — standalone CLI, no npm
-- **[kuri](https://github.com/justrach/kuri)** — E2E testing via headless Chrome
 - **Zig 0.15** — the whole stack
 
 ## License

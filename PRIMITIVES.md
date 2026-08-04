@@ -37,6 +37,42 @@ Run `zig build codegen` after adding/removing routes.
 
 ---
 
+## HTML node storage (`mer.h.RenderStorage`)
+
+Request handlers do not need to manage HTML node storage: merjs constructs runtime
+children in the request arena. Standalone runtime strings and tuples also work
+without ambient setup. They use a bounded thread-local pool of
+`h.standalone_fallback_capacity` child values. Existing child slices are never
+overwritten; construction fails loudly if that pool is exhausted rather than
+silently invalidating an older tree. After all fallback-backed nodes are dead,
+`h.resetStandaloneFallback()` reclaims the pool. That call invalidates every
+outstanding fallback-backed node on the current thread.
+
+For retained, freely copied, or repeatedly assembled trees, `RenderStorage` is the
+recommended way to avoid the fallback bound and give all child slices an explicit
+lifetime:
+
+```zig
+var storage = mer.h.RenderStorage.init(allocator);
+storage.activate();
+defer storage.deinit();
+
+const child = mer.h.span(.{}, "shared");
+const copy = child; // Nodes are freely copyable while storage is alive.
+const response = mer.render(allocator, mer.h.div(.{}, .{ child, copy }));
+defer response.deinit();
+```
+
+`mer.render` owns only its serialized response body; it does not consume the node.
+Nodes have no unique ownership and are freely copyable. `Node.deinit()` remains a
+harmless no-op for source compatibility, including when called on multiple copies.
+With active `RenderStorage`, nodes remain renderable until the storage is
+deinitialized. Storage activations may be nested and must be deinitialized in
+reverse order. Explicit `[]const h.Node` children remain borrowed from the caller
+and must live at least as long as the parent node.
+
+---
+
 ## Response (`mer.Response`)
 
 | Field | Type | Description |
@@ -45,6 +81,12 @@ Run `zig build codegen` after adding/removing routes.
 | `.content_type` | `mer.ContentType` | Response content type |
 | `.body` | `[]const u8` | Response body |
 | `.cookies` | `[]const SetCookie` | Cookies to set |
+| `.body_allocator` | `?std.mem.Allocator` | Allocator for an owned body, otherwise `null` |
+
+Call `response.deinit()` for responses returned by allocating helpers such as
+`mer.render` and `mer.typedJson`. It is also safe to call for borrowed-body
+responses. Layout replacement and buffered streaming preserve this ownership
+metadata and release superseded owned bodies.
 
 ### Response Helpers
 
@@ -139,7 +181,7 @@ Export `pub const meta: mer.Meta` from any page.
 
 ## Sessions
 
-HMAC-SHA256 signed tokens. Requires `MULTICLAW_SESSION_SECRET` env var.
+HMAC-SHA256 signed tokens. Set `MERJS_SESSION_SECRET` to a random value of at least 32 bytes. `MULTICLAW_SESSION_SECRET` is deprecated and verification-only, but it must also contain at least 32 bytes; weak legacy keys are rejected. To rotate, deploy a strong `MERJS_SESSION_SECRET` alongside the unchanged strong deprecated secret, wait at least the maximum lifetime of already-issued tokens, then remove `MULTICLAW_SESSION_SECRET`.
 
 | Function | Description |
 |----------|-------------|
@@ -182,7 +224,9 @@ Also: `mer.parseJson(T, req)` and `mer.formParam(body, name)`.
 | Function | Description |
 |----------|-------------|
 | `mer.env(name)` | Read env var. Returns `?[]const u8` |
-| `mer.loadDotenv()` | Load `.env` file (called at startup) |
+| `mer.loadDotenv(allocator)` | Load `.env` file (called at startup) |
+| `mer.loadDotenvStatus(allocator)` | Load `.env` and return errors/status |
+| `mer.deinitDotenv()` | Release loaded `.env` storage at shutdown |
 
 ---
 
