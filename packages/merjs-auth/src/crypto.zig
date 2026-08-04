@@ -4,9 +4,15 @@
 //! (or use an arena so they are freed in bulk).
 
 const std = @import("std");
+const builtin = @import("builtin");
+const runtime = @import("runtime");
 const Allocator = std.mem.Allocator;
 const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 const base64url = std.base64.url_safe_no_pad;
+
+fn io() std.Io {
+    return if (builtin.is_test) std.testing.io else runtime.io;
+}
 
 // ── Token generation ───────────────────────────────────────────────────────
 
@@ -15,7 +21,7 @@ const base64url = std.base64.url_safe_no_pad;
 /// Suitable for opaque session tokens, CSRF tokens, etc.
 pub fn generateToken(alloc: Allocator) ![]u8 {
     var raw: [32]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    try io().randomSecure(&raw);
     const encoded_len = base64url.Encoder.calcSize(raw.len);
     const buf = try alloc.alloc(u8, encoded_len);
     _ = base64url.Encoder.encode(buf, &raw);
@@ -27,7 +33,7 @@ pub fn generateToken(alloc: Allocator) ![]u8 {
 /// 16 random bytes with the version/variant bits set per RFC 4122 §4.4.
 pub fn generateUuid(alloc: Allocator) ![]u8 {
     var bytes: [16]u8 = undefined;
-    std.crypto.random.bytes(&bytes);
+    try io().randomSecure(&bytes);
 
     // Set version 4: top nibble of byte[6] = 0x4
     bytes[6] = (bytes[6] & 0x0f) | 0x40;

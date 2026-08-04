@@ -33,6 +33,9 @@ pub const email = @import("email.zig");
 pub const rate_limit = @import("rate_limit.zig");
 pub const db = @import("db/root.zig");
 pub const migrations = @import("db/migrations.zig");
+pub const oauth = struct {
+    pub const providers = @import("oauth/providers.zig");
+};
 pub const auth = @import("auth.zig");
 
 // ── Flat re-exports of the most-used symbols ──────────────────────────────
@@ -76,6 +79,8 @@ pub const RateLimitKey = rate_limit.RateLimitKey;
 // Auth top-level
 pub const Config = auth.Config;
 pub const AuthContext = auth.AuthContext;
+pub const ConfigError = auth.ConfigError;
+pub const validateConfig = auth.validateConfig;
 pub const handle = auth.handle;
 pub const getSession = auth.getSession;
 
@@ -97,4 +102,6 @@ test {
     _ = rate_limit;
     _ = db;
     _ = auth;
+    _ = @import("handlers/get_session.zig");
+    _ = @import("saml/root.zig");
 }

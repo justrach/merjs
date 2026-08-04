@@ -97,10 +97,31 @@ pub fn buildPasswordReset(alloc: Allocator, base_url: []const u8, token: []const
     };
 }
 
+fn encodeQueryComponent(alloc: Allocator, value: []const u8) ![]u8 {
+    const hex = "0123456789ABCDEF";
+    var encoded: std.ArrayList(u8) = .empty;
+    for (value) |byte| {
+        if (std.ascii.isAlphanumeric(byte) or byte == '-' or byte == '_' or byte == '.' or byte == '~') {
+            try encoded.append(alloc, byte);
+        } else {
+            try encoded.appendSlice(alloc, &.{ '%', hex[byte >> 4], hex[byte & 0x0f] });
+        }
+    }
+    return encoded.toOwnedSlice(alloc);
+}
+
 /// Build a magic-link sign-in message.
 /// `token` is the raw 64-char hex (expires in 15 minutes).
 pub fn buildMagicLink(alloc: Allocator, base_url: []const u8, token: []const u8) !EmailMessage {
-    const link = try std.fmt.allocPrint(alloc, "{s}/auth/magic-link?token={s}", .{ base_url, token });
+    return buildMagicLinkWithRedirect(alloc, base_url, token, null);
+}
+
+/// Build a magic-link message preserving a pre-validated redirect target.
+pub fn buildMagicLinkWithRedirect(alloc: Allocator, base_url: []const u8, token: []const u8, redirect_to: ?[]const u8) !EmailMessage {
+    const link = if (redirect_to) |redirect| blk: {
+        const encoded = try encodeQueryComponent(alloc, redirect);
+        break :blk try std.fmt.allocPrint(alloc, "{s}/auth/magic-link/verify?token={s}&redirect_to={s}", .{ base_url, token, encoded });
+    } else try std.fmt.allocPrint(alloc, "{s}/auth/magic-link/verify?token={s}", .{ base_url, token });
 
     const html = try std.fmt.allocPrint(alloc,
         \\<!doctype html><html><body>
@@ -166,6 +187,15 @@ test "buildVerifyEmail contains token in link" {
     try std.testing.expect(std.mem.indexOf(u8, msg.html_body, "abc123token") != null);
     try std.testing.expect(std.mem.indexOf(u8, msg.text_body, "abc123token") != null);
     try std.testing.expectEqual(TemplateType.verify_email, msg.template_type);
+}
+
+test "magic-link uses verify endpoint and encodes redirect" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const msg = try buildMagicLinkWithRedirect(arena.allocator(), "https://example.com", "abc123", "/dashboard?tab=auth&next=/billing");
+    const expected = "https://example.com/auth/magic-link/verify?token=abc123&redirect_to=%2Fdashboard%3Ftab%3Dauth%26next%3D%2Fbilling";
+    try std.testing.expect(std.mem.indexOf(u8, msg.html_body, expected) != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg.text_body, expected) != null);
 }
 
 test "buildWelcome sets .to field to email" {

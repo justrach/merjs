@@ -4,8 +4,14 @@
 //! hash so a database breach does not expose usable tokens.
 
 const std = @import("std");
+const builtin = @import("builtin");
+const runtime = @import("runtime");
 const Allocator = std.mem.Allocator;
 const Sha256 = std.crypto.hash.sha2.Sha256;
+
+fn io() std.Io {
+    return if (builtin.is_test) std.testing.io else runtime.io;
+}
 
 // ── Token purpose ──────────────────────────────────────────────────────────
 
@@ -34,7 +40,7 @@ pub fn ttlForPurpose(purpose: TokenPurpose) u32 {
 /// Caller must free the returned slice.
 pub fn generate(alloc: Allocator) ![]u8 {
     var raw: [32]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    try io().randomSecure(&raw);
     const hex = std.fmt.bytesToHex(raw, .lower);
     return alloc.dupe(u8, &hex);
 }
@@ -55,19 +61,26 @@ pub fn hashToHex(hash_bytes: [32]u8) [64]u8 {
     return std.fmt.bytesToHex(hash_bytes, .lower);
 }
 
-/// Get current Unix timestamp in seconds (Zig 0.16 compatible).
-fn currentUnixSeconds() i64 {
-    var ts: std.c.time.timespec = undefined;
-    _ = std.c.clock_gettime(std.c.time.CLOCK.REALTIME, &ts);
-    return ts.sec;
+/// Get current Unix timestamp in seconds, reporting clock errors.
+fn currentUnixSeconds() !i64 {
+    var ts: std.c.timespec = undefined;
+    if (std.c.clock_gettime(.REALTIME, &ts) != 0) return error.ClockFailed;
+    const seconds = std.math.cast(i64, ts.sec) orelse return error.ClockFailed;
+    if (seconds < 0) return error.ClockFailed;
+    return seconds;
 }
 
 // ── Expiry helper ──────────────────────────────────────────────────────────
 
-/// Returns true if the given Unix-seconds timestamp is in the past.
-pub fn isExpired(expires_at_unix: i64) bool {
-    const now = currentUnixSeconds();
+fn isExpiredWithClock(expires_at_unix: i64, clock: *const fn () anyerror!i64) bool {
+    const now = clock() catch return true;
     return expires_at_unix < now;
+}
+
+/// Returns true if the given Unix-seconds timestamp is in the past.
+/// Clock failures fail closed and treat the token as expired.
+pub fn isExpired(expires_at_unix: i64) bool {
+    return isExpiredWithClock(expires_at_unix, currentUnixSeconds);
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -99,6 +112,15 @@ test "ttlForPurpose" {
     try std.testing.expectEqual(@as(u32, 86400), ttlForPurpose(.email_verify));
     try std.testing.expectEqual(@as(u32, 3600), ttlForPurpose(.password_reset));
     try std.testing.expectEqual(@as(u32, 900), ttlForPurpose(.magic_link));
+}
+
+test "isExpired fails closed when the clock fails" {
+    const failedClock = struct {
+        fn now() !i64 {
+            return error.ClockFailed;
+        }
+    }.now;
+    try std.testing.expect(isExpiredWithClock(9_999_999_999, failedClock));
 }
 
 test "isExpired: past timestamp is expired" {
