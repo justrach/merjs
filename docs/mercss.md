@@ -1,184 +1,116 @@
-# mercss - Compile-time Atomic CSS for merjs
+# mercss - Compile-time atomic CSS for merjs
 
-mercss generates type-safe, atomic CSS at **compile time** using Zig's `comptime`. Unlike Tailwind CSS which needs a build pipeline (PostCSS → JIT → Purge), mercss generates CSS during Zig compilation with **zero runtime cost**.
+mercss is an experimental, small compile-time CSS generator. It turns Zig style
+structs into CSS and class-name constants with no runtime allocation or separate
+CSS build step.
 
-## Quick Start
+The framework exports generators, not a component library. Application design
+tokens and components belong in application or package code.
+
+## Quick start
 
 ```zig
 const mer = @import("mer");
+const h = mer.h;
 const mercss = mer.mercss;
 
-// Define component styles at compile time
+const Theme = struct {
+    const primary = "#3b82f6";
+};
+
 const Button = mercss.Component(.{
-    .background = "#3b82f6",
+    .background = Theme.primary,
     .color = "white",
     .padding = "12px 24px",
     .border_radius = "8px",
     .font_weight = "600",
 });
 
-// Use in your page
 pub const meta: mer.Meta = .{
     .extra_head = "<style>" ++ Button.css ++ "</style>",
 };
 
 pub fn render(req: mer.Request) mer.Response {
-    return mer.render(req.allocator, 
-        h.button(.{ .class = Button.classes }, "Click Me")
+    return mer.render(
+        req.allocator,
+        h.button(.{ .class = Button.classes }, "Click me"),
     );
 }
 ```
 
-## How It Works
+`Button.css` and `Button.classes` are compile-time strings. For the example
+above they contain one rule and one class per property. Snake-case property
+names are converted to CSS kebab-case; integer values are emitted as pixels.
 
-1. **Define styles** as Zig structs with design tokens
-2. **Compile time**: Zig analyzes the struct fields
-3. **CSS generation**: One atomic rule per property (`.mcss-padding{padding:12px}`)
-4. **Class generation**: Component gets all classes (`.mcss-padding .mcss-background`)
-5. **Zero runtime**: All strings are comptime constants
+## Responsive components
 
-## Comparison with Tailwind CSS
+`ResponsiveComponent` emits mobile-first base rules and media queries for the
+present `sm`, `md`, `lg`, and `xl` fields:
 
-| Feature | Tailwind CSS | mercss (merjs) |
-|---------|--------------|----------------|
-| **Build step** | PostCSS → JIT → PurgeCSS | ❌ None (Zig comptime) |
-| **File scanning** | Scans all source files | ❌ Not needed (comptime knows all) |
-| **Type safety** | Runtime errors for wrong classes | ✅ Compile-time errors |
-| **Config** | `tailwind.config.js` | ✅ Zig structs (type-safe) |
-| **Unused styles** | Need PurgeCSS | ❌ Never generated |
-| **Bundle size** | ~10KB (purged) | ~500 bytes (actual used) |
-| **Arbitrary values** | `w-[123px]` (runtime) | ✅ `width = 123` (comptime) |
-| **JIT mode** | Required for arbitrary values | ❌ Not needed (all comptime) |
-| **Plugins** | JavaScript-based | ✅ Zig functions |
-| **IDE support** | Tailwind IntelliSense | 🚧 Coming soon |
-
-## Current mercss Features
-
-### ✅ Implemented
-- [x] Atomic CSS generation from structs
-- [x] Compile-time class name generation
-- [x] Type-safe design tokens
-- [x] Component-level style scoping
-- [x] CSS string concatenation at comptime
-- [x] Integration with merjs page rendering
-
-### 🚧 Not Yet Implemented (vs Tailwind)
-- [ ] Responsive variants (`md:`, `lg:`)
-- [ ] State variants (`hover:`, `focus:`, `active:`)
-- [ ] Arbitrary value syntax (`[123px]`)
-- [ ] Plugin system
-- [ ] `@apply` directive equivalent
-- [ ] Dark mode support
-- [ ] Container queries
-- [ ] CSS grid helpers
-- [ ] Typography plugin
-- [ ] Form elements reset
-- [ ] Animation utilities
-- [ ] Transform/transition utilities
-
-### 🎯 Different Approach from Tailwind
-
-**Tailwind:** Utility-first, thousands of pre-generated classes, purge unused ones
-```html
-<button class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-```
-
-**mercss:** Generate only what you use, type-safe, compile-time
 ```zig
-const Button = mercss.Component(.{
-    .padding = "8px 16px",
-    .background = "#3b82f6",
-    .color = "white",
-    .border_radius = "6px",
+const ResponsiveContainer = mercss.ResponsiveComponent(.{
+    .base = .{ .padding = "16px", .font_size = "14px" },
+    .sm = .{ .padding = "24px", .font_size = "16px" },
+    .md = .{ .padding = "32px", .font_size = "18px" },
+    .lg = .{ .padding = "48px" },
 });
-// Generates: .mcss-padding{padding:8px 16px} .mcss-background{background:#3b82f6} ...
+
+const css = ResponsiveContainer.css;
+const classes = ResponsiveContainer.classes;
 ```
 
-## Design System / Theme
+The breakpoint values are also available as `mercss.Breakpoints.sm`, `.md`,
+`.lg`, `.xl`, and `.xl2`. `xl2` is a published token, but
+`ResponsiveComponent` currently generates variants only through `xl`.
+
+## Public primitives
+
+- `mercss.Component(styles)` creates a type with `css` and `classes` constants.
+- `mercss.ResponsiveComponent(config)` creates the same constants plus
+  mobile-first breakpoint rules.
+- `mercss.InteractiveComponent(config)` adds `hover`, `focus`, and `active`
+  state variants, including responsive state overrides.
+- `mercss.Breakpoints` exposes the standard breakpoint widths.
+
+Styles are ordinary Zig structs, so applications can keep type-safe tokens in
+an app-local theme:
 
 ```zig
 const Theme = struct {
-    pub const colors = .{
+    const colors = .{
         .primary = "#3b82f6",
-        .secondary = "#64748b",
         .danger = "#ef4444",
-        .success = "#22c55e",
     };
-    
-    pub const spacing = .{
-        .xs = 4,
-        .sm = 8,
-        .md = 16,
-        .lg = 24,
-        .xl = 32,
-    };
+    const spacing = .{ .sm = 8, .md = 16, .lg = 24 };
 };
 
-// Type-safe! This will error at compile time:
-const bad = mercss.Component(.{
-    .background = Theme.colors.nonexistent,  // ❌ Compile error!
+const Alert = mercss.Component(.{
+    .background = Theme.colors.danger,
+    .padding = Theme.spacing.md, // emits 16px
 });
 ```
 
-## Server Setup (Important!)
+See `examples/site/app/mercss-demo.zig` for a complete page using the
+release design tokens and interactive/responsive component primitives.
 
-When running the merjs server for local development, use one of these methods:
+## Deprecated demo compatibility
 
-### Method 1: Direct (foreground)
-```bash
-cd /path/to/your/merjs/project
-zig build
-./zig-out/bin/merjs --port 3000 --no-dev
-```
-Server runs in foreground. Stop with `Ctrl+C`.
+mercss remains experimental. The v0.2.5 demo declarations — `DesignSystem`,
+`Button`, `Card`, `Alert`, `ResponsiveContainer`, `InteractiveButton`,
+`ResponsiveInteractiveButton`, `getDemoHtml`, `getAllCss`, and `exampleUsage` —
+remain available from `mer.mercss` for source compatibility. New applications
+should define app-owned components with the reusable `Component`,
+`ResponsiveComponent`, and `InteractiveComponent` primitives instead.
 
-### Method 2: Background with nohup (recommended)
-```bash
-zig build
-nohup ./zig-out/bin/merjs --port 3000 --no-dev > merjs.log 2>&1 &
-```
-- Server keeps running even if terminal closes
-- Logs go to `merjs.log`
-- Stop with: `pkill -f "merjs"`
+The same deprecated names are also available from `mer.mercss_compat` to make
+migration explicit. Both compatibility surfaces are scheduled for removal in
+**0.3.0**. `Navbar`, `Hero`, and `Badge` are not framework mercss exports;
+component libraries or applications should own such UI surfaces.
 
-### Method 3: Docker
-```bash
-docker build -t merjs .
-docker run -p 3000:3000 merjs
-```
+## Current limits
 
-### Common Issues
-
-**"Connection refused" / Server crashes:**
-- Check if port is already in use: `lsof -i :3000`
-- Use a different port: `--port 3001`
-- Ensure binary exists: `ls zig-out/bin/merjs`
-- Check logs: `cat /tmp/merjs.log`
-
-**Server stops when terminal closes:**
-- Use `nohup` as shown above
-- Or use Docker/containerization
-
-## Roadmap
-
-### v0.3.0 Goals
-- [ ] Responsive breakpoints (`sm:`, `md:`, `lg:`)
-- [ ] State variants (`hover:`, `focus:`)
-- [ ] Property mapping (`border_radius` → `border-radius`)
-- [ ] Shorter hash-based class names
-- [ ] Streaming CSS (CSS arrives with component chunks)
-
-### v0.4.0 Ideas
-- [ ] Container queries
-- [ ] Dark mode (`dark:`)
-- [ ] Animation keyframes
-- [ ] CSS custom properties integration
-
-## Contributing
-
-mercss is experimental! Share ideas:
-- What features from Tailwind do you need most?
-- What should be different?
-- API design feedback welcome
-
-See Issue #90 for discussion on novel streaming CSS approaches.
+mercss generates `hover`, `focus`, and `active` state variants, including
+responsive state overrides. It does not currently generate dark-mode variants,
+container queries, plugins, resets, keyframes, or an `@apply` equivalent. CSS
+strings must be included by the application, usually through `Meta.extra_head`,
+and each component's CSS should be included only once.
