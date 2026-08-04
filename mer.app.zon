@@ -1,0 +1,65 @@
+// mer.app.zon — native app manifest for the merjs framework's own desktop app.
+//
+// Consumed comptime by src/native/main.zig via the `manifest` module wired in
+// build.zig. Drives window size/title, server binding, and (P2) bridge perms.
+.{
+    .id = "com.merjs.desktop",
+    .name = "merjs",
+    .display_name = "MerJS",
+    .version = "0.2.5",
+    .web_engine = "system",
+    .server = .{
+        .mode = "dev", // "dev" (hot reload) | "embedded" (prod)
+        .host = "127.0.0.1",
+        .port = 0, // 0 = ephemeral; shell reads back via ServerReady
+        .watch_dir = "examples/site/app",
+    },
+    .capabilities = .{ "webview", "js_bridge" },
+    .permissions = .{ "window", "clipboard", "dialog", "open" },
+    .security = .{
+        // Empty means no extra navigation origins; the shell injects the exact runtime loopback origin.
+        .navigation = .{ .allowed_origins = .{} },
+        .bridge = .{
+            .allowed_commands = .{
+                "mer.ping", "mer.echo",
+                "clipboard.read", "clipboard.write",
+                "dialog.openFile", "dialog.pickDirectory", "dialog.openDirectory",
+                "open.external", "open.path",
+                "window.setTitle", "window.close",
+            },
+            .command_origins = .{
+                "mer.ping|http://127.0.0.1",
+                "mer.echo|http://127.0.0.1",
+                "clipboard.read|http://127.0.0.1",
+                "clipboard.write|http://127.0.0.1",
+                "dialog.openFile|http://127.0.0.1",
+                "dialog.pickDirectory|http://127.0.0.1",
+                "dialog.openDirectory|http://127.0.0.1",
+                "open.external|http://127.0.0.1",
+                "open.path|http://127.0.0.1",
+                "window.setTitle|http://127.0.0.1",
+                "window.close|http://127.0.0.1",
+            },
+        },
+        .open = .{
+            .external_schemes = .{ "http", "https", "mailto" },
+            .path_roots = .{ "examples/site", "public" },
+        },
+    },
+    .macos = .{
+        // Optional. Set these for `zig build package-sign` / `mer package --sign`.
+        // .signing_identity = "Developer ID Application: Example, Inc. (TEAMID)",
+        // .team_id = "TEAMID",
+        // .entitlements = "native/entitlements.plist",
+        // .notarization_profile = "merjs-notary",
+    },
+    .update = .{
+        // Planned: signed update manifests/artifacts. No updater runs in v0.2.5.
+        // .provider = "github-releases",
+        // .feed_url = "https://example.com/mer-native/update.json",
+        // .public_key = "ed25519:...",
+    },
+    .windows = .{
+        .{ .label = "main", .title = "MerJS", .width = 1280, .height = 820 },
+    },
+}
