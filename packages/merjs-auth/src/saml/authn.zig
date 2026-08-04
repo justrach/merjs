@@ -7,8 +7,14 @@
 //!   4. buildRedirectUrl    — assemble full IdP redirect URL
 
 const std = @import("std");
+const builtin = @import("builtin");
+const runtime = @import("runtime");
 const Allocator = std.mem.Allocator;
 const saml_schema = @import("schema.zig");
+
+fn io() std.Io {
+    return if (builtin.is_test) std.testing.io else runtime.io;
+}
 
 // ── Request ID ───────────────────────────────────────────────────────────
 
@@ -16,7 +22,7 @@ const saml_schema = @import("schema.zig");
 /// Per the SAML spec the ID must begin with a letter or underscore (NCName rule).
 pub fn generateRequestId(alloc: Allocator) ![]u8 {
     var raw: [16]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    try io().randomSecure(&raw);
     const hex = std.fmt.bytesToHex(raw, .lower);
     const buf = try alloc.alloc(u8, 33); // '_' + 32 hex chars
     buf[0] = '_';

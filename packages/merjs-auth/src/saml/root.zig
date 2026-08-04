@@ -18,11 +18,13 @@ const session = @import("../session.zig");
 const mer = @import("mer");
 const AuthContext = @import("../auth.zig").AuthContext;
 
-/// Get current Unix timestamp in seconds (Zig 0.16 compatible).
-fn currentUnixSeconds() i64 {
-    var ts: std.c.time.timespec = undefined;
-    _ = std.c.clock_gettime(std.c.time.CLOCK.REALTIME, &ts);
-    return ts.sec;
+/// Get current Unix timestamp in seconds, failing closed on clock errors.
+fn currentUnixSeconds() !i64 {
+    var ts: std.c.timespec = undefined;
+    if (std.c.clock_gettime(.REALTIME, &ts) != 0) return error.ClockFailed;
+    const seconds = std.math.cast(i64, ts.sec) orelse return error.ClockFailed;
+    if (seconds < 0) return error.ClockFailed;
+    return seconds;
 }
 
 // ── SAML session TTL ──────────────────────────────────────────────────────
@@ -52,7 +54,7 @@ pub fn initiate(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Respons
         break :blk try std.fmt.allocPrint(alloc, "{s}/auth/saml/{s}/metadata", .{ base_url, provider.id });
     };
     const acs_url = try std.fmt.allocPrint(alloc, "{s}/auth/saml/{s}/callback", .{ base_url, provider.id });
-    const now_unix = currentUnixSeconds();
+    const now_unix = try currentUnixSeconds();
 
     // Generate IDs.
     const request_id = try authn.generateRequestId(alloc);
@@ -127,13 +129,20 @@ pub fn callback(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Respons
     std.base64.standard.Decoder.decode(xml_bytes, saml_response_b64) catch {
         return mer.badRequest("invalid SAMLResponse base64");
     };
-    const now_unix = currentUnixSeconds();
+    const now_unix = try currentUnixSeconds();
     // Resolve SP entity ID for audience validation.
     const base_url = mer.env("BASE_URL") orelse "http://localhost:3000";
     const sp_entity_id = if (provider.sp_entity_id) |eid| eid else blk: {
         break :blk try std.fmt.allocPrint(alloc, "{s}/auth/saml/{s}/metadata", .{ base_url, provider.id });
     };
 
+    // Fail closed until XMLDSig Reference resolution, transforms,
+    // canonicalization, and digest verification can bind the parsed identity to
+    // exactly one signed Response or Assertion.
+    xml.validateSignedIdentity(xml_bytes) catch |err| {
+        std.log.err("saml: signed identity validation unavailable: {}", .{err});
+        return mer.internalError("authentication failed");
+    };
 
     // Parse and validate the assertion (structure, conditions, audience, status).
     const assertion = xml.parseSamlResponse(xml_bytes, sp_entity_id, now_unix, alloc) catch |err| {
@@ -171,16 +180,25 @@ pub fn callback(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Respons
         return mer.internalError("authentication failed");
     };
 
+    // RelayState is an opaque correlation nonce, never a redirect target.
+    const relay_state_raw = mer.formParam(ctx.req.body, "RelayState") orelse {
+        std.log.warn("saml: callback missing RelayState", .{});
+        return mer.internalError("authentication failed");
+    };
+    const relay_state = try urlDecode(alloc, relay_state_raw);
+
     const session_sql =
         \\SELECT id FROM mauth_saml_sessions
         \\WHERE request_id = $1
         \\  AND provider_id = $2
+        \\  AND relay_state = $3
         \\  AND expires_at > NOW()
         \\LIMIT 1
     ;
     const session_result = try ctx.db.query(alloc, session_sql, &.{
         .{ .text = in_response_to },
         .{ .text = provider.id },
+        .{ .text = relay_state },
     });
     if (session_result.rows.len == 0) {
         std.log.warn("saml: no valid saml_session found for request_id={s}", .{in_response_to});
@@ -216,9 +234,20 @@ pub fn callback(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Respons
     // Create session.
     const sess_token = try crypto.generateToken(alloc);
     const sess_id = try crypto.generateUuid(alloc);
-    const sess_ttl = session.DEFAULT_TTL_S;
+    const sess_ttl = ctx.config.session_ttl_s;
     const sess_expires = now_unix + @as(i64, sess_ttl);
     const sess_expires_str = try std.fmt.allocPrint(alloc, "{d}", .{sess_expires});
+    var cookie = session.cookieSettings(
+        sess_id,
+        ctx.config.secret,
+        sess_ttl,
+        ctx.config.secure_cookies,
+        alloc,
+    ) catch |err| {
+        std.log.err("saml: invalid session secret configuration: {s}", .{@errorName(err)});
+        return mer.internalError("server configuration error");
+    };
+    cookie.name = ctx.config.session_cookie;
 
     const insert_session_sql =
         \\INSERT INTO mauth_sessions (id, user_id, token, expires_at, created_at, updated_at)
@@ -231,34 +260,12 @@ pub fn callback(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Respons
         .{ .text = sess_expires_str },
     });
 
-    // Sign the session cookie value.
-    const secret = mer.env("MULTICLAW_SESSION_SECRET") orelse {
-        std.log.err("saml: MULTICLAW_SESSION_SECRET not set", .{});
-        return mer.internalError("server configuration error");
-    };
-    const cookie_val = try session.cookieValue(alloc, sess_id, secret);
-    const cookie = mer.SetCookie{
-        .name = session.COOKIE_SESSION,
-        .value = cookie_val,
-        .path = "/",
-        .max_age = sess_ttl,
-        .http_only = true,
-        .secure = std.mem.startsWith(u8, base_url, "https"),
-        .same_site = .lax,
-    };
-
-    // Redirect to / (or relay_state if present and safe).
-    const relay_state = mer.formParam(ctx.req.body, "RelayState");
-    const redirect_path = blk: {
-        if (relay_state) |rs| {
-            // Only allow relative paths as relay state targets (prevent open redirect).
-            if (rs.len > 0 and rs[0] == '/') break :blk rs;
-        }
-        break :blk "/";
-    };
-
-    const resp = mer.redirect(redirect_path, .see_other);
-    return mer.withCookies(resp, &.{cookie});
+    // RelayState is only the verified opaque nonce. A local return path would
+    // need its own stored field and validation; this flow currently returns /.
+    const resp = mer.redirect("/", .see_other);
+    const cookies = try alloc.alloc(mer.SetCookie, 1);
+    cookies[0] = cookie;
+    return mer.withCookies(resp, cookies);
 }
 
 // ── Metadata: SP metadata XML ─────────────────────────────────────────────
@@ -310,10 +317,11 @@ pub fn metadata(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Respons
 /// TODO: Full SLO protocol (sending LogoutRequest to IdP) is not yet implemented.
 pub fn slo(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Response {
     _ = provider_id; // reserved for future full SLO protocol
+    const alloc = ctx.req.allocator;
 
     // Clear the session cookie by setting Max-Age=0.
     const clear_cookie = mer.SetCookie{
-        .name = session.COOKIE_SESSION,
+        .name = ctx.config.session_cookie,
         .value = "",
         .path = "/",
         .max_age = 0,
@@ -323,18 +331,18 @@ pub fn slo(ctx: *AuthContext, provider_id: []const u8) anyerror!mer.Response {
     };
 
     // Delete the session from the database if present.
-    const cookie_val = ctx.req.cookie(session.COOKIE_SESSION);
+    const cookie_val = ctx.req.cookie(ctx.config.session_cookie);
     if (cookie_val) |cv| {
-        const secret = mer.env("MULTICLAW_SESSION_SECRET") orelse "";
-        if (session.verifyCookie(cv, secret)) |sess_id| {
-            const alloc = ctx.req.allocator;
+        if (session.verifyCookie(cv, ctx.config.secret)) |id| {
             const del_sql = "DELETE FROM mauth_sessions WHERE id = $1";
-            _ = ctx.db.query(alloc, del_sql, &.{.{ .text = sess_id }}) catch {};
+            _ = ctx.db.query(alloc, del_sql, &.{.{ .text = id }}) catch {};
         }
     }
 
     const resp = mer.redirect("/", .see_other);
-    return mer.withCookies(resp, &.{clear_cookie});
+    const cookies = try alloc.alloc(mer.SetCookie, 1);
+    cookies[0] = clear_cookie;
+    return mer.withCookies(resp, cookies);
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────
@@ -381,6 +389,17 @@ fn replacePlaceholder(alloc: Allocator, template: []const u8, placeholder: []con
     const before = template[0..idx];
     const after = template[idx + placeholder.len ..];
     return std.mem.concat(alloc, u8, &.{ before, value, after });
+}
+
+/// Validate a separately stored local return path. RelayState must never be
+/// passed here: it is an opaque correlation nonce, not navigation data.
+fn isSafeLocalReturnPath(path: []const u8) bool {
+    if (path.len == 0 or path[0] != '/') return false;
+    if (path.len > 1 and (path[1] == '/' or path[1] == '\\')) return false;
+    for (path) |c| {
+        if (c == '\\' or c == '%' or c < 0x20 or c == 0x7f) return false;
+    }
+    return true;
 }
 
 /// URL-decode a percent-encoded string (e.g. from form body).
@@ -451,4 +470,48 @@ fn extractAndVerifySignature(
     const signature = sig_buf[0..sig_size];
 
     return verify_fn(signed_info, signature, cert_pem);
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────
+
+const canonical_test_secret = "canonical-saml-test-secret-at-least-32-bytes";
+const config_test_secret = "config-saml-test-secret-at-least-32-bytes";
+const deprecated_test_secret = "deprecated-saml-test-secret-at-least-32-bytes";
+
+test "SAML sessions use canonical secret and verify the migration fallback" {
+    mer.resetEnv();
+    defer mer.resetEnv();
+    try mer.putEnv("MERJS_SESSION_SECRET", canonical_test_secret);
+    try mer.putEnv("MULTICLAW_SESSION_SECRET", deprecated_test_secret);
+
+    const old_cookie = try session.cookieValue(std.testing.allocator, "old-session", deprecated_test_secret);
+    defer std.testing.allocator.free(old_cookie);
+    try std.testing.expectEqualStrings("old-session", session.verifyCookie(old_cookie, config_test_secret).?);
+
+    const new_cookie = try session.cookieSettings("new-session", config_test_secret, 3600, false, std.testing.allocator);
+    defer std.testing.allocator.free(new_cookie.value);
+    try std.testing.expectEqualStrings("new-session", session.verifyCookie(new_cookie.value, config_test_secret).?);
+    try std.testing.expect(crypto.verifySignedToken(new_cookie.value, config_test_secret) == null);
+}
+
+test "SAML sessions fail closed for a weak canonical secret" {
+    mer.resetEnv();
+    defer mer.resetEnv();
+    try mer.putEnv("MERJS_SESSION_SECRET", "weak");
+    try mer.putEnv("MULTICLAW_SESSION_SECRET", deprecated_test_secret);
+
+    try std.testing.expectError(error.WeakSessionSecret, session.cookieSettings("new-session", config_test_secret, 3600, false, std.testing.allocator));
+    const old_cookie = try session.cookieValue(std.testing.allocator, "old-session", deprecated_test_secret);
+    defer std.testing.allocator.free(old_cookie);
+    try std.testing.expect(session.verifyCookie(old_cookie, config_test_secret) == null);
+}
+
+test "SAML return paths reject relay redirect attacks" {
+    try std.testing.expect(isSafeLocalReturnPath("/dashboard"));
+    try std.testing.expect(!isSafeLocalReturnPath("//evil.example"));
+    try std.testing.expect(!isSafeLocalReturnPath("/\\evil.example"));
+    try std.testing.expect(!isSafeLocalReturnPath("/%2f%2fevil.example"));
+    try std.testing.expect(!isSafeLocalReturnPath("/%5cevil.example"));
+    try std.testing.expect(!isSafeLocalReturnPath("/ok\r\nLocation: evil"));
+    try std.testing.expect(!isSafeLocalReturnPath("https://evil.example"));
 }

@@ -385,7 +385,17 @@ pub const SamlError = error{
     AudienceMismatch,
     MissingNameId,
     MissingIssuer,
+    UnsupportedXmlSignature,
 };
+
+/// Validate that the identity-bearing Assertion is exactly the unique element
+/// selected by a verified XMLDSig Reference. The current parser has no
+/// namespace-aware canonicalization or transform implementation, so it cannot
+/// recompute a Reference digest defensibly. Keep ACS authentication disabled
+/// until those primitives exist rather than accepting signature wrapping.
+pub fn validateSignedIdentity(_: []const u8) SamlError!void {
+    return error.UnsupportedXmlSignature;
+}
 
 // ── Extraction state machine ──────────────────────────────────────────────
 
@@ -541,7 +551,7 @@ fn extractCallback(raw: *anyopaque, ev: Event) ParseError!void {
                 else => {},
             }
         },
-        .element_end => |_| {
+        .element_end => {
             switch (ctx.path) {
                 .response => ctx.path = .root,
                 .response_status => ctx.path = .response,
@@ -730,6 +740,20 @@ test "parse rejects DOCTYPE" {
         fn f(_: *anyopaque, _: Event) ParseError!void {}
     }.f;
     try std.testing.expectError(error.DoctypeNotAllowed, parse("<!DOCTYPE x><r/>", @ptrCast(&d), cb));
+}
+
+test "SAML identity rejects unbound XMLDSig attack classes" {
+    const attacks = [_][]const u8{
+        "<Response><Assertion ID=\"signed\"><NameID>substituted</NameID></Assertion></Response>",
+        "<Response><Assertion ID=\"signed\" email=\"altered@example.com\"/></Response>",
+        "<Response><Assertion ID=\"dup\"/><Assertion ID=\"dup\"/></Response>",
+        "<Response><Object><Assertion ID=\"signed\"/></Object><Assertion ID=\"unsigned\"/></Response>",
+        "<Response ID=\"actual\"><Reference URI=\"#other\"/></Response>",
+        "<Response ID=\"actual\"><DigestValue>mismatched</DigestValue></Response>",
+    };
+    for (attacks) |attack| {
+        try std.testing.expectError(error.UnsupportedXmlSignature, validateSignedIdentity(attack));
+    }
 }
 
 test "parse counts events" {
