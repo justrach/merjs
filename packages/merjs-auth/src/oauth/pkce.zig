@@ -8,9 +8,15 @@
 //! them (or use an arena).
 
 const std = @import("std");
+const builtin = @import("builtin");
+const runtime = @import("runtime");
 const Allocator = std.mem.Allocator;
 const Sha256 = std.crypto.hash.sha2.Sha256;
 const base64url = std.base64.url_safe_no_pad;
+
+fn io() std.Io {
+    return if (builtin.is_test) std.testing.io else runtime.io;
+}
 
 // ── Code verifier ──────────────────────────────────────────────────────────
 
@@ -20,7 +26,7 @@ const base64url = std.base64.url_safe_no_pad;
 /// authorization server.
 pub fn generateCodeVerifier(alloc: Allocator) ![]u8 {
     var raw: [32]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    try io().randomSecure(&raw);
     const encoded_len = base64url.Encoder.calcSize(raw.len);
     const buf = try alloc.alloc(u8, encoded_len);
     _ = base64url.Encoder.encode(buf, &raw);
@@ -50,7 +56,7 @@ pub fn codeChallenge(alloc: Allocator, verifier: []const u8) ![]u8 {
 /// it in the DB, and verify it matches in the callback.
 pub fn generateState(alloc: Allocator) ![]u8 {
     var raw: [16]u8 = undefined;
-    std.crypto.random.bytes(&raw);
+    try io().randomSecure(&raw);
     const hex = std.fmt.bytesToHex(raw, .lower);
     return alloc.dupe(u8, &hex);
 }

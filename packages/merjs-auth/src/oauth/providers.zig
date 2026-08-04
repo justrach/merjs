@@ -8,6 +8,26 @@ const std = @import("std");
 
 // ── Provider type ──────────────────────────────────────────────────────────
 
+/// Field names used by a provider whose userinfo response explicitly asserts
+/// that the returned email is verified. The verification field must be a JSON
+/// boolean with value `true`.
+pub const VerifiedEmailMapping = struct {
+    account_id: []const u8 = "sub",
+    email: []const u8 = "email",
+    email_verified: []const u8 = "email_verified",
+    name: ?[]const u8 = "name",
+    avatar: ?[]const u8 = "picture",
+};
+
+pub const EmailVerification = enum {
+    none,
+    oidc,
+    github,
+    discord,
+    /// Retained for configuration compatibility; validateConfig rejects it.
+    microsoft,
+};
+
 /// Full configuration for an OAuth 2.0 provider.
 pub const Provider = struct {
     /// Unique identifier, e.g. "google", "github".
@@ -27,6 +47,12 @@ pub const Provider = struct {
     /// Optional redirect URI override.
     /// When null the auth layer derives: {base_url}/auth/oauth/{id}/callback
     redirect_uri: ?[]const u8 = null,
+    /// Built-in verification protocol. Custom providers should leave this as
+    /// `.none` and configure `verified_email_mapping`.
+    email_verification: EmailVerification = .none,
+    /// Explicit mapping for a custom userinfo response. Without this mapping,
+    /// custom providers fail closed rather than trusting an email claim.
+    verified_email_mapping: ?VerifiedEmailMapping = null,
 };
 
 // ── Built-in providers ─────────────────────────────────────────────────────
@@ -42,6 +68,7 @@ pub fn google(client_id: []const u8, client_secret: []const u8) Provider {
         .token_url = "https://oauth2.googleapis.com/token",
         .userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo",
         .scopes = &.{ "openid", "email", "profile" },
+        .email_verification = .oidc,
     };
 }
 
@@ -56,6 +83,7 @@ pub fn github(client_id: []const u8, client_secret: []const u8) Provider {
         .token_url = "https://github.com/login/oauth/access_token",
         .userinfo_url = "https://api.github.com/user",
         .scopes = &.{"user:email"},
+        .email_verification = .github,
     };
 }
 
@@ -70,13 +98,12 @@ pub fn discord(client_id: []const u8, client_secret: []const u8) Provider {
         .token_url = "https://discord.com/api/oauth2/token",
         .userinfo_url = "https://discord.com/api/users/@me",
         .scopes = &.{ "identify", "email" },
+        .email_verification = .discord,
     };
 }
 
-/// Microsoft / Azure AD — OpenID Connect / OAuth 2.0.
-/// `tenant_id` is your Azure tenant (e.g. "common", "organizations",
-/// "consumers", or a specific tenant GUID / domain).
-/// Scopes: openid, email, profile.
+/// Microsoft compatibility constructor. The returned provider is rejected by
+/// validateConfig until cryptographic OIDC ID token verification is implemented.
 pub fn microsoft(
     client_id: []const u8,
     client_secret: []const u8,
@@ -100,7 +127,7 @@ pub fn microsoft(
     return microsoftForTenant(client_id, client_secret, tenant_id);
 }
 
-/// Internal helper — builds Microsoft URLs for a given tenant string.
+/// Compatibility helper for an unsupported Microsoft provider.
 /// `tenant_id` must be a string literal or have static lifetime because the
 /// returned `Provider` stores raw pointers into it.
 pub fn microsoftForTenant(
@@ -121,6 +148,7 @@ pub fn microsoftForTenant(
             .token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
             .userinfo_url = "https://graph.microsoft.com/v1.0/me",
             .scopes = &.{ "openid", "email", "profile" },
+            .email_verification = .microsoft,
         };
     }
     if (std.mem.eql(u8, tenant_id, "organizations")) {
@@ -132,6 +160,7 @@ pub fn microsoftForTenant(
             .token_url = "https://login.microsoftonline.com/organizations/oauth2/v2.0/token",
             .userinfo_url = "https://graph.microsoft.com/v1.0/me",
             .scopes = &.{ "openid", "email", "profile" },
+            .email_verification = .microsoft,
         };
     }
     if (std.mem.eql(u8, tenant_id, "consumers")) {
@@ -143,6 +172,7 @@ pub fn microsoftForTenant(
             .token_url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
             .userinfo_url = "https://graph.microsoft.com/v1.0/me",
             .scopes = &.{ "openid", "email", "profile" },
+            .email_verification = .microsoft,
         };
     }
     // For all other tenant IDs: the caller is responsible for ensuring
@@ -161,11 +191,12 @@ pub fn microsoftForTenant(
         .token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         .userinfo_url = "https://graph.microsoft.com/v1.0/me",
         .scopes = &.{ "openid", "email", "profile" },
+        .email_verification = .microsoft,
     };
 }
 
-/// Build a Microsoft `Provider` with dynamically constructed per-tenant URLs.
-/// Uses `alloc` to allocate the URL strings; they must outlive the Provider.
+/// Build a compatibility Microsoft `Provider` with dynamic per-tenant URLs.
+/// The result remains unsupported and is rejected by validateConfig.
 pub fn microsoftBuildUrls(
     alloc: std.mem.Allocator,
     client_id: []const u8,
@@ -190,5 +221,6 @@ pub fn microsoftBuildUrls(
         .token_url = token_url,
         .userinfo_url = "https://graph.microsoft.com/v1.0/me",
         .scopes = &.{ "openid", "email", "profile" },
+        .email_verification = .microsoft,
     };
 }
