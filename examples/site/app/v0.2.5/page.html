@@ -1,0 +1,162 @@
+<div class="release-shell">
+  <section class="release-hero">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <div class="release-topline">release line</div>
+        <h1 class="release-title">v{s}</h1>
+        <p class="release-sub">Zig 0.16 across the framework, CLI, and examples. One-line install served from the edge. A leaner runtime profile across throughput, latency, RAM, and binary size.</p>
+        <div class="release-actions">
+          <a class="rel-btn rel-primary" href="https://merjs.trilok.ai/install.sh">Installer</a>
+          <a class="rel-btn rel-secondary" href="/docs">Docs</a>
+          <a class="rel-btn rel-ghost" href="/">Back home</a>
+        </div>
+        <div class="install-card">
+          <span class="install-label">one-line install</span>
+          <code>curl -fsSL https://merjs.trilok.ai/install.sh | bash</code>
+        </div>
+      </div>
+      <aside class="hero-board">
+        <div class="hero-board-label">release signal</div>
+        <div class="hero-board-grid">
+          <div class="hero-metric hero-metric-strong"><span>throughput</span><strong>115,093</strong><small>req/s</small></div>
+          <div class="hero-metric"><span>latency</span><strong>0.39</strong><small>ms avg</small></div>
+          <div class="hero-metric"><span>memory</span><strong>4.8</strong><small>MB under load</small></div>
+          <div class="hero-metric"><span>binary</span><strong>260</strong><small>KB release</small></div>
+        </div>
+        <p class="hero-board-note">Numbers from the local benchmark pass on the v0.1.0 → v0.2.5 line. Full deltas in the perf board below.</p>
+      </aside>
+    </div>
+  </section>
+
+  <section class="release-section">
+    <div class="section-head">
+      <div class="eyebrow">Snapshot</div>
+      <h2>What landed in v{s}</h2>
+    </div>
+    <div class="snapshot-grid">
+      <article class="snapshot-card snapshot-zig"><span>zig</span><strong>0.16.0</strong><p>Full migration complete across framework, CLI, and examples.</p></article>
+      <article class="snapshot-card snapshot-install"><span>install</span><strong>1 command</strong><p>curl pipe install now live, with the script served from the edge.</p></article>
+      <article class="snapshot-card snapshot-edge"><span>edge</span><strong>Workers served</strong><p>The installer moved to Cloudflare Workers to match the deployment story.</p></article>
+      <article class="snapshot-card snapshot-ram"><span>ram</span><strong>4.8 MB</strong><p>CI memory use under load versus 71.7 MB for the comparison run.</p></article>
+    </div>
+  </section>
+
+  <section class="release-section">
+    <div class="section-head left-head">
+      <div class="eyebrow">Migration graph</div>
+      <h2>Zig 0.16 upgrade surface</h2>
+      <p>These were the big breakage zones called out in the migration guide. All four tracks are now fully migrated in the current release line.</p>
+    </div>
+    <div class="shipped-panel">
+      <div class="shipped-row"><span class="shipped-check">✓</span><div class="shipped-meta"><strong>Networking</strong><span>std.net → std.Io.net</span></div><span class="shipped-tag">shipped</span></div>
+      <div class="shipped-row"><span class="shipped-check">✓</span><div class="shipped-meta"><strong>IO</strong><span>std.io → std.Io writer paths</span></div><span class="shipped-tag">shipped</span></div>
+      <div class="shipped-row"><span class="shipped-check">✓</span><div class="shipped-meta"><strong>Time</strong><span>timestamp() → clock_gettime()</span></div><span class="shipped-tag">shipped</span></div>
+      <div class="shipped-row"><span class="shipped-check">✓</span><div class="shipped-meta"><strong>Collections</strong><span>ArrayList unmanaged + .empty init</span></div><span class="shipped-tag">shipped</span></div>
+    </div>
+  </section>
+
+  <section class="release-section">
+    <div class="section-head left-head">
+      <div class="eyebrow">Memory and runtime</div>
+      <h2>Current line systems work</h2>
+      <p>Engine work this cycle: how requests reuse memory, static assets cache, the shell paints first, and parallel fetches collapse onto a single critical path.</p>
+    </div>
+    <div class="graph-grid">
+      <article class="graph-card graph-memory">
+        <header class="graph-card-head">
+          <span class="graph-kicker">allocator</span>
+          <span class="graph-impact-tag">−50% allocator ops</span>
+        </header>
+        <h3>Request memory reuse</h3>
+        <p>Keep-alive cycles drop from allocator churn to a single reset path that reuses the same arena memory.</p>
+        <div class="delta-line">
+          <div class="delta-cell"><span>Before</span><strong>2 ops / cycle</strong></div>
+          <span class="delta-arrow" aria-hidden="true">→</span>
+          <div class="delta-cell after"><span>After</span><strong>1 op / cycle</strong></div>
+        </div>
+      </article>
+      <article class="graph-card graph-static">
+        <header class="graph-card-head">
+          <span class="graph-kicker">cache</span>
+          <span class="graph-impact-tag">0 disk reads when warm</span>
+        </header>
+        <h3>Static asset serving</h3>
+        <p>Static files hit disk once, then serve from memory. Repeat requests stop paying the same filesystem cost.</p>
+        <div class="delta-line">
+          <div class="delta-cell"><span>Before</span><strong>1 hit / request</strong></div>
+          <span class="delta-arrow" aria-hidden="true">→</span>
+          <div class="delta-cell after"><span>After</span><strong>1 hit, then 0</strong></div>
+        </div>
+      </article>
+      <article class="graph-card graph-shell">
+        <header class="graph-card-head">
+          <span class="graph-kicker">streaming</span>
+          <span class="graph-impact-tag">+1 early shell chunk</span>
+        </header>
+        <h3>Shell-first paint</h3>
+        <p>The layout flushes its head chunk immediately so the browser starts rendering chrome before the body finishes building.</p>
+        <div class="delta-line">
+          <div class="delta-cell"><span>Before</span><strong>0 early chunks</strong></div>
+          <span class="delta-arrow" aria-hidden="true">→</span>
+          <div class="delta-cell after"><span>After</span><strong>1 early chunk</strong></div>
+        </div>
+      </article>
+      <article class="graph-card graph-fetch">
+        <header class="graph-card-head">
+          <span class="graph-kicker">fetch</span>
+          <span class="graph-impact-tag">1-step critical path</span>
+        </header>
+        <h3>Parallel fetch strategy</h3>
+        <p><code>mer.fetchAll()</code> bounds total latency to the slowest request instead of the sum of all of them.</p>
+        <div class="delta-line">
+          <div class="delta-cell"><span>Before</span><strong>N-step path</strong></div>
+          <span class="delta-arrow" aria-hidden="true">→</span>
+          <div class="delta-cell after"><span>After</span><strong>1-step path</strong></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="release-section">
+    <div class="section-head left-head">
+      <div class="eyebrow">Performance deltas</div>
+      <h2>Measured wins already on the board</h2>
+      <p>These numbers are from the changelog's local measurements and recent site work. They are a better picture of the project than version number alone.</p>
+    </div>
+    <div class="perf-board-head">
+      <div class="perf-board-copy">
+        <span class="perf-board-kicker">bench board</span>
+        <p>Local benchmark wins plus recent site improvements, framed as a release board instead of a plain comparison table.</p>
+      </div>
+      <div class="perf-legend">
+        <span><i class="legend-swatch legend-before"></i>baseline</span>
+        <span><i class="legend-swatch legend-after"></i>merjs now</span>
+      </div>
+    </div>
+    <div class="perf-panel">
+      <div class="perf-row metric-throughput"><div class="perf-meta"><strong>Homepage throughput</strong><span>v0.1.0 performance pass</span><em class="perf-chip chip-up">higher is better · 48× faster</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 4%;">2,400 req/s</div><div class="perf-bar after" style="width: 100%;">115,093 req/s</div></div></div>
+      <div class="perf-row metric-latency"><div class="perf-meta"><strong>Average latency</strong><span>same benchmark pass</span><em class="perf-chip chip-down">lower is better · 105× faster</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 100%;">41 ms</div><div class="perf-bar after" style="width: 4%;">0.39 ms</div></div></div>
+      <div class="perf-row metric-ram"><div class="perf-meta"><strong>RAM under load</strong><span>CI benchmark</span><em class="perf-chip chip-down">lower is better · 15× leaner</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 100%;">71.7 MB</div><div class="perf-bar after" style="width: 7%;">4.8 MB</div></div></div>
+      <div class="perf-row metric-binary"><div class="perf-meta"><strong>Binary size</strong><span>release small + strip</span><em class="perf-chip chip-down">smaller is better · 7× smaller</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 100%;">1.9 MB</div><div class="perf-bar after" style="width: 14%;">260 KB</div></div></div>
+      <div class="perf-row metric-lcp"><div class="perf-meta"><strong>LCP on sgdata</strong><span>recent preload fixes</span><em class="perf-chip chip-down">lower is better · 6.8× faster</em></div><div class="perf-bars"><div class="perf-bar before" style="width: 100%;">5.4 s</div><div class="perf-bar after" style="width: 15%;">0.8 s</div></div></div>
+    </div>
+  </section>
+
+  <section class="release-section release-note-grid">
+    <article class="note-card">
+      <div class="eyebrow">Added</div>
+      <h3>Zig 0.16 across the surface</h3>
+      <p>Framework, CLI, and examples all on 0.16.0. See the migration guide for the four breakage classes and their exact replacements.</p>
+    </article>
+    <article class="note-card">
+      <div class="eyebrow">Added</div>
+      <h3>Edge-served installer</h3>
+      <p>Install script ships from Cloudflare Workers — the first touch with merjs runs on the same edge stack it targets.</p>
+    </article>
+    <article class="note-card">
+      <div class="eyebrow">Changed</div>
+      <h3>Modernized core APIs</h3>
+      <p>Networking, IO, time, and collections all moved to 0.16 idioms. Reduces drift from upstream so future bumps stay small.</p>
+    </article>
+  </section>
+</div>
