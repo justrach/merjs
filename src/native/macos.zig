@@ -18,6 +18,7 @@ extern fn objc_msgSend() void;
 extern fn objc_allocateClassPair(superclass: Id, name: [*:0]const u8, extra_bytes: usize) Id;
 extern fn class_addMethod(cls: Id, name: Sel, imp: *const anyopaque, types: [*:0]const u8) BOOL;
 extern fn objc_registerClassPair(cls: Id) void;
+extern fn objc_disposeClassPair(cls: Id) void;
 
 const NSWindowStyleMaskTitled: NSUInteger = 1;
 const NSWindowStyleMaskClosable: NSUInteger = 2;
@@ -58,9 +59,14 @@ fn sendOneVoid(recv: Id, selector: Sel, arg: Id) void {
     @as(F, @ptrCast(&objc_msgSend))(recv, selector, arg);
 }
 
-fn sendIntegerVoid(recv: Id, selector: Sel, value: NSInteger) void {
-    const F = *const fn (Id, Sel, NSInteger) callconv(.c) void;
-    @as(F, @ptrCast(&objc_msgSend))(recv, selector, value);
+fn sendOneBool(recv: Id, selector: Sel, arg: Id) BOOL {
+    const F = *const fn (Id, Sel, Id) callconv(.c) BOOL;
+    return @as(F, @ptrCast(&objc_msgSend))(recv, selector, arg);
+}
+
+fn sendIntegerBool(recv: Id, selector: Sel, value: NSInteger) BOOL {
+    const F = *const fn (Id, Sel, NSInteger) callconv(.c) BOOL;
+    return @as(F, @ptrCast(&objc_msgSend))(recv, selector, value);
 }
 
 fn sendBool(recv: Id, selector: Sel) BOOL {
@@ -90,23 +96,25 @@ fn initWebView(recv: Id, selector: Sel, frame: CGRect, config: Id) Id {
     return @as(F, @ptrCast(&objc_msgSend))(recv, selector, frame, config);
 }
 
-fn shouldTerminateAfterLastWindow(_: Id, _: Sel, _: Id) callconv(.c) BOOL {
-    return YES;
+fn stopAfterLastWindow(_: Id, _: Sel, app: Id) callconv(.c) BOOL {
+    sendOneVoid(app, sel("stop:"), null);
+    return NO;
 }
 
 fn createAppDelegate() Id {
-    const class = cls("MerNativeAppDelegate") orelse blk: {
+    const method = sel("applicationShouldTerminateAfterLastWindowClosed:");
+    const class_name = "MerjsNativeWindowLifecycleDelegate_v1";
+    const class = cls(class_name) orelse blk: {
         const superclass = cls("NSObject") orelse return null;
-        const new_class = objc_allocateClassPair(superclass, "MerNativeAppDelegate", 0) orelse return null;
-        if (class_addMethod(
-            new_class,
-            sel("applicationShouldTerminateAfterLastWindowClosed:"),
-            @ptrCast(&shouldTerminateAfterLastWindow),
-            "c@:@",
-        ) == NO) return null;
+        const new_class = objc_allocateClassPair(superclass, class_name, 0) orelse return null;
+        if (class_addMethod(new_class, method, @ptrCast(&stopAfterLastWindow), "c@:@") == NO) {
+            objc_disposeClassPair(new_class);
+            return null;
+        }
         objc_registerClassPair(new_class);
         break :blk new_class;
     };
+    if (sendOneBool(class, sel("instancesRespondToSelector:"), method) == NO) return null;
     return send(send(class, sel("alloc")), sel("init"));
 }
 
@@ -122,7 +130,8 @@ pub fn run(port: u16, config: anytype) error{ WrongThread, NativeRuntimeUnavaila
     const app_class = cls("NSApplication") orelse return error.NativeRuntimeUnavailable;
     const app = send(app_class, sel("sharedApplication")) orelse
         return error.NativeRuntimeUnavailable;
-    sendIntegerVoid(app, sel("setActivationPolicy:"), NSApplicationActivationPolicyRegular);
+    if (sendIntegerBool(app, sel("setActivationPolicy:"), NSApplicationActivationPolicyRegular) == NO)
+        return error.NativeRuntimeUnavailable;
 
     app_delegate = createAppDelegate() orelse return error.NativeRuntimeUnavailable;
     sendOneVoid(app, sel("setDelegate:"), app_delegate);
