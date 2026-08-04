@@ -46,8 +46,9 @@ pub const Ctx = struct {
     /// Per-process unguessable bridge capability. Platform backends inject this
     /// into the private JS shim closure and every bridge envelope must echo it.
     bridge_token: ?[]const u8 = null,
-    /// Token validation is required by default for fail-closed embedders. Unit
-    /// tests that exercise legacy dispatch behavior can opt out explicitly.
+    /// Token validation is required by default for fail-closed embedders. Opting
+    /// out is intended for non-WebView tests only; the macOS shim requires
+    /// token-bearing requests and responses.
     require_bridge_token: bool = true,
     external_url_schemes: []const []const u8 = &.{ "http", "https", "mailto" },
     open_path_roots: []const []const u8 = &.{},
@@ -75,10 +76,10 @@ pub const BridgeError = error{
 
 /// Result of a handler invocation.
 pub const HandlerResult = union(enum) {
-    /// Borrowed/static JSON payload; dispatch does not free it.
+    /// Borrowed/static JSON payload; dispatch validates it as JSON and does not free it.
     ok: Json,
-    /// Owned JSON payload allocated with ctx.allocator; dispatch frees it after
-    /// copying it into the JS resolve string.
+    /// Owned JSON payload allocated with ctx.allocator; dispatch validates it as
+    /// JSON and frees it after copying it into the JS resolve string.
     ok_owned: []u8,
     err: BridgeError,
 };
@@ -286,6 +287,12 @@ fn jsonString(alloc: std.mem.Allocator, value: []const u8) ![]u8 {
     return out.toOwnedSlice();
 }
 
+fn isValidJsonFragment(alloc: std.mem.Allocator, json: []const u8) bool {
+    var parsed = std.json.parseFromSlice(std.json.Value, alloc, json, .{}) catch return false;
+    defer parsed.deinit();
+    return true;
+}
+
 /// True if `perm` is granted by the manifest's permissions list. Empty perm
 /// means the command is always allowed (e.g. mer.ping).
 pub fn hasPermission(ctx: *Ctx, perm: []const u8) bool {
@@ -304,6 +311,32 @@ pub fn isCommandAllowed(ctx: *Ctx, name: []const u8) bool {
     return false;
 }
 
+fn isLoopbackOriginHost(host: []const u8) bool {
+    const normalized = if (host.len >= 2 and host[0] == '[' and host[host.len - 1] == ']')
+        host[1 .. host.len - 1]
+    else
+        host;
+    if (std.ascii.eqlIgnoreCase(normalized, "::1")) return true;
+
+    var parts = std.mem.splitScalar(u8, normalized, '.');
+    var count: usize = 0;
+    var first: u8 = 0;
+    while (parts.next()) |part| {
+        if (part.len == 0 or part.len > 3) return false;
+        for (part) |c| if (!std.ascii.isDigit(c)) return false;
+        const value = std.fmt.parseInt(u8, part, 10) catch return false;
+        if (count == 0) first = value;
+        count += 1;
+        if (count > 4) return false;
+    }
+    return count == 4 and first == 127;
+}
+
+fn commandOriginHostsEqual(actual: []const u8, allowed: []const u8, globally_constrained: bool) bool {
+    return std.ascii.eqlIgnoreCase(actual, allowed) or
+        (globally_constrained and isLoopbackOriginHost(actual) and isLoopbackOriginHost(allowed));
+}
+
 pub fn isCommandOriginAllowed(ctx: *Ctx, name: []const u8) bool {
     const origin = ctx.current_origin orelse return ctx.command_origins.len == 0;
     const actual = parseOrigin(origin) orelse return false;
@@ -315,29 +348,129 @@ pub fn isCommandOriginAllowed(ctx: *Ctx, name: []const u8) bool {
         saw_rule_for_command = true;
         const allowed = parseOrigin(entry[sep + 1 ..]) orelse continue;
         if (!std.ascii.eqlIgnoreCase(actual.scheme, allowed.scheme)) continue;
-        if (!std.ascii.eqlIgnoreCase(actual.host, allowed.host)) continue;
+        // The global exact-origin check has already constrained the frame to
+        // this app's ephemeral runtime origin. Treat IPv4/IPv6 loopback host
+        // spellings as equivalent for generated portless command policies.
+        if (!commandOriginHostsEqual(actual.host, allowed.host, ctx.allowed_origins.len != 0)) continue;
         // Command-origin entries may omit the port for ephemeral loopback apps.
         // The platform backend has already enforced the strict global origin,
         // so this does not expand bridge access beyond the loaded app origin.
         if (allowed.port) |allowed_port| {
             if (actual.port == null or !std.mem.eql(u8, actual.port.?, allowed_port)) continue;
+        } else if (actual.port != null and ctx.allowed_origins.len == 0) {
+            // Portless command-origin entries are only safe as a convenience
+            // after a global exact-origin allowlist has already constrained the
+            // runtime port. Lower-level embedders without that allowlist must
+            // use exact ports in command_origins.
+            continue;
         }
         return true;
     }
     return ctx.command_origins.len == 0 and !saw_rule_for_command;
 }
 
+fn isValidUrlScheme(scheme: []const u8) bool {
+    if (scheme.len == 0) return false;
+    for (scheme, 0..) |c, i| {
+        if (i == 0) {
+            if (!std.ascii.isAlphabetic(c)) return false;
+        } else if (!(std.ascii.isAlphanumeric(c) or c == '+' or c == '-' or c == '.')) return false;
+    }
+    return true;
+}
+
+fn isValidPort(port: []const u8) bool {
+    if (port.len == 0 or port.len > 5) return false;
+    for (port) |c| if (!std.ascii.isDigit(c)) return false;
+    const value = std.fmt.parseInt(u16, port, 10) catch return false;
+    return value > 0;
+}
+
+fn isValidIpv6Literal(value: []const u8) bool {
+    if (value.len == 0 or std.mem.indexOfScalar(u8, value, ':') == null) return false;
+    if (std.mem.indexOf(u8, value, ":::")) |_| return false;
+    const compressed = std.mem.indexOf(u8, value, "::") != null;
+    if (compressed and std.mem.indexOf(u8, value, "::") != std.mem.lastIndexOf(u8, value, "::")) return false;
+    if (!compressed and (value[0] == ':' or value[value.len - 1] == ':')) return false;
+
+    var groups: usize = 0;
+    var it = std.mem.splitScalar(u8, value, ':');
+    while (it.next()) |part| {
+        if (part.len == 0) continue;
+        if (part.len > 4) return false;
+        for (part) |c| if (!std.ascii.isHex(c)) return false;
+        groups += 1;
+    }
+    return if (compressed) groups < 8 else groups == 8;
+}
+
+fn isValidHttpHost(host: []const u8) bool {
+    if (host.len == 0 or host.len > 253) return false;
+    var prev_dot = true;
+    for (host) |c| {
+        if (c == '.') {
+            if (prev_dot) return false;
+            prev_dot = true;
+            continue;
+        }
+        prev_dot = false;
+        if (!(std.ascii.isAlphanumeric(c) or c == '-' or c == '_')) return false;
+    }
+    return !prev_dot;
+}
+
+fn isStrictHttpUrl(url: []const u8, scheme_end: usize) bool {
+    if (url.len < scheme_end + 3 or !std.mem.eql(u8, url[scheme_end + 1 .. scheme_end + 3], "//")) return false;
+    const authority_start = scheme_end + 3;
+    const authority_end = blk: {
+        var i: usize = authority_start;
+        while (i < url.len) : (i += 1) {
+            switch (url[i]) {
+                '/', '?', '#' => break :blk i,
+                else => {},
+            }
+        }
+        break :blk url.len;
+    };
+    const authority = url[authority_start..authority_end];
+    if (authority.len == 0) return false;
+    // Userinfo produces ambiguous native-open behavior and is unnecessary for
+    // desktop handoff URLs, so deny it at the bridge boundary.
+    if (std.mem.indexOfScalar(u8, authority, '@') != null) return false;
+    if (authority[0] == '[') {
+        const close = std.mem.indexOfScalar(u8, authority, ']') orelse return false;
+        if (!isValidIpv6Literal(authority[1..close])) return false;
+        const rest = authority[close + 1 ..];
+        return rest.len == 0 or (rest[0] == ':' and isValidPort(rest[1..]));
+    }
+    const colon = std.mem.indexOfScalar(u8, authority, ':');
+    const host = if (colon) |c| authority[0..c] else authority;
+    if (!isValidHttpHost(host)) return false;
+    if (colon) |c| if (!isValidPort(authority[c + 1 ..])) return false;
+    return true;
+}
+
 fn isAllowedExternalUrl(ctx: *Ctx, url: []const u8) bool {
+    if (url.len == 0) return false;
+    for (url) |c| {
+        if (c <= 0x20 or c == 0x7f or c == '\\') return false;
+    }
     const scheme_end = std.mem.indexOfScalar(u8, url, ':') orelse return false;
     const scheme = url[0..scheme_end];
-    if (scheme.len == 0) return false;
-    for (scheme) |c| {
-        if (!(std.ascii.isAlphanumeric(c) or c == '+' or c == '-' or c == '.')) return false;
-    }
+    if (!isValidUrlScheme(scheme)) return false;
+    var scheme_allowed = false;
     for (ctx.external_url_schemes) |allowed| {
-        if (std.ascii.eqlIgnoreCase(scheme, allowed)) return true;
+        if (std.ascii.eqlIgnoreCase(scheme, allowed)) {
+            scheme_allowed = true;
+            break;
+        }
     }
-    return false;
+    if (!scheme_allowed) return false;
+    if (std.ascii.eqlIgnoreCase(scheme, "http") or std.ascii.eqlIgnoreCase(scheme, "https")) {
+        return isStrictHttpUrl(url, scheme_end);
+    }
+    // Non-hierarchical schemes such as mailto: still need a non-empty payload.
+    return scheme_end + 1 < url.len;
 }
 
 const path_canonicalizer = if (builtin.os.tag == .windows) struct {
@@ -470,9 +603,13 @@ fn dispatchCommand(ctx: *Ctx, env: Envelope, cmd: Command, require_explicit_allo
     }
     const res = cmd.handler(ctx, env.args);
     switch (res) {
-        .ok => |json| return resolveStrForCtx(ctx, env.id, true, json),
+        .ok => |json| {
+            if (!isValidJsonFragment(ctx.allocator, json)) return resolveErrorForCtx(ctx, env.id, "HandlerError");
+            return resolveStrForCtx(ctx, env.id, true, json);
+        },
         .ok_owned => |json| {
             defer ctx.allocator.free(json);
+            if (!isValidJsonFragment(ctx.allocator, json)) return resolveErrorForCtx(ctx, env.id, "HandlerError");
             return resolveStrForCtx(ctx, env.id, true, json);
         },
         .err => |e| return resolveErrorForCtx(ctx, env.id, @errorName(e)),
@@ -503,6 +640,11 @@ pub fn dispatchWithRegistry(ctx: *Ctx, payload: []const u8, extra_commands: []co
         if (!isValidBridgeToken(expected)) return resolveError(alloc, 0, "InvalidToken");
         const supplied = env.token orelse return resolveError(alloc, 0, "InvalidToken");
         if (!std.mem.eql(u8, supplied, expected)) return resolveError(alloc, 0, "InvalidToken");
+    }
+
+    if (ctx.allowed_origins.len > 0) {
+        const origin = ctx.current_origin orelse return resolveErrorForCtx(ctx, env.id, "OriginNotAllowed");
+        if (!isOriginAllowed(ctx, origin)) return resolveErrorForCtx(ctx, env.id, "OriginNotAllowed");
     }
 
     validateCommandRegistry(extra_commands) catch {
@@ -583,6 +725,11 @@ fn customDanger(_: *Ctx, _: std.json.Value) HandlerResult {
     return .{ .ok = "{\"danger\":true}" };
 }
 
+fn customInvalidJson(_: *Ctx, _: std.json.Value) HandlerResult {
+    custom_handler_called = true;
+    return .{ .ok = "not json" };
+}
+
 test "dispatch: mer.ping resolves ok" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -659,6 +806,7 @@ test "dispatchWithRegistry: custom command requires explicit allowlist permissio
     const alloc = arena.allocator();
     custom_handler_called = false;
     var ctx = newCtx(alloc, &.{"app.export"});
+    ctx.allowed_origins = &.{"http://127.0.0.1:49152"};
     ctx.allowed_commands = &.{"app.exportData"};
     ctx.command_origins = &.{"app.exportData|http://127.0.0.1"};
     ctx.current_origin = "http://127.0.0.1:49152";
@@ -678,6 +826,19 @@ test "dispatchWithRegistry: custom command is denied when not explicitly allowli
     const js = try dispatchWithRegistry(&ctx, "{\"cmd\":\"app.exportData\",\"args\":null,\"id\":22}", &extra);
     try testing.expectEqualStrings("window.mer._resolve(22,false,\"CommandDenied\");", js);
     try testing.expect(!custom_handler_called);
+}
+
+test "dispatchWithRegistry: custom command invalid JSON is rejected" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    custom_handler_called = false;
+    var ctx = newCtx(alloc, &.{"app.export"});
+    ctx.allowed_commands = &.{"app.badJson"};
+    const extra = [_]Command{.{ .name = "app.badJson", .permission = "app.export", .handler = customInvalidJson }};
+    const js = try dispatchWithRegistry(&ctx, "{\"cmd\":\"app.badJson\",\"args\":null,\"id\":27}", &extra);
+    try testing.expectEqualStrings("window.mer._resolve(27,false,\"HandlerError\");", js);
+    try testing.expect(custom_handler_called);
 }
 
 test "dispatchWithRegistry: custom command without permission is invalid and not invoked" {
@@ -745,6 +906,44 @@ test "dispatchWithRegistry: command origin bindings deny missing origin" {
     const js = try dispatchWithRegistry(&ctx, "{\"cmd\":\"app.exportData\",\"args\":null,\"id\":26}", &extra);
     try testing.expectEqualStrings("window.mer._resolve(26,false,\"OriginNotAllowed\");", js);
     try testing.expect(!custom_handler_called);
+}
+
+test "dispatchWithRegistry: global origin allowlist is enforced in bridge dispatch" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{});
+    ctx.allowed_origins = &.{"http://127.0.0.1:3000"};
+    ctx.current_origin = "http://127.0.0.1:4444";
+    ctx.command_origins = &.{"mer.ping|http://127.0.0.1"};
+    const js = try dispatch(&ctx, "{\"cmd\":\"mer.ping\",\"args\":null,\"id\":28}");
+    try testing.expectEqualStrings("window.mer._resolve(28,false,\"OriginNotAllowed\");", js);
+}
+
+test "dispatchWithRegistry: generated IPv4 command origins allow an exact IPv6 runtime" {
+    try testing.expect(commandOriginHostsEqual("[::1]", "127.0.0.1", true));
+    try testing.expect(!commandOriginHostsEqual("[::1]", "127.0.0.1", false));
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{});
+    ctx.allowed_origins = &.{"http://[::1]:4444"};
+    ctx.current_origin = "http://[::1]:4444";
+    ctx.command_origins = &.{"mer.ping|http://127.0.0.1"};
+    const js = try dispatch(&ctx, "{\"cmd\":\"mer.ping\",\"args\":null,\"id\":30}");
+    try testing.expectEqualStrings("window.mer._resolve(30,true,{\"pong\":true});", js);
+}
+
+test "dispatchWithRegistry: portless command origins require global origin allowlist" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{});
+    ctx.current_origin = "http://127.0.0.1:4444";
+    ctx.command_origins = &.{"mer.ping|http://127.0.0.1"};
+    const js = try dispatch(&ctx, "{\"cmd\":\"mer.ping\",\"args\":null,\"id\":29}");
+    try testing.expectEqualStrings("window.mer._resolve(29,false,\"OriginNotAllowed\");", js);
 }
 
 test "dispatch: permission gate blocks unpermitted command" {
@@ -858,6 +1057,39 @@ test "dispatch: open.external rejects disallowed URL schemes before native open"
     ctx.allowed_commands = &.{"open.external"};
     const js = try dispatch(&ctx, "{\"cmd\":\"open.external\",\"args\":{\"url\":\"javascript:alert(1)\"},\"id\":13}");
     try testing.expectEqualStrings("window.mer._resolve(13,false,\"UrlDenied\");", js);
+}
+
+test "dispatch: open.external rejects malformed allowed-scheme URLs" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{"open"});
+    ctx.allowed_commands = &.{"open.external"};
+    const bad = [_][]const u8{
+        "https:example.com",
+        "https://user@example.com",
+        "https://example.com/has space",
+        "http:javascript:alert(1)",
+        "https://[not-an-ipv6]/",
+        "https://exa<mple.com/",
+        "https://example.com|evil/",
+        "https://example.com^evil/",
+    };
+    for (bad, 0..) |url, i| {
+        const payload = try std.fmt.allocPrint(alloc, "{{\"cmd\":\"open.external\",\"args\":{{\"url\":\"{s}\"}},\"id\":{d}}}", .{ url, 40 + i });
+        const js = try dispatch(&ctx, payload);
+        try testing.expect(std.mem.indexOf(u8, js, "UrlDenied") != null);
+    }
+}
+
+test "dispatch: open.external allows strict http and mailto URLs" {
+    var ctx = newCtx(testing.allocator, &.{"open"});
+    try testing.expect(!isAllowedExternalUrl(&ctx, "https://example.com\\@evil.test"));
+    try testing.expect(!isAllowedExternalUrl(&ctx, "https://example.com/has\x01control"));
+    try testing.expect(isAllowedExternalUrl(&ctx, "https://example.com/path?x=1#frag"));
+    try testing.expect(isAllowedExternalUrl(&ctx, "https://[::1]:8443/"));
+    try testing.expect(isAllowedExternalUrl(&ctx, "http://127.0.0.1:8080/"));
+    try testing.expect(isAllowedExternalUrl(&ctx, "mailto:hello@example.com"));
 }
 
 test "dispatch: open.path rejects when no roots are configured" {
