@@ -24,19 +24,25 @@ const SignUpBody = struct {
 pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
     const alloc = ctx.req.allocator;
 
-    // 1. Rate limit by IP (max 10 per 15 min).
-    const ip = ctx.req.queryParam("x-forwarded-for") orelse "unknown";
-    const ip_hash = try rate_limit.hashKey(ip, alloc);
+    // 1. Rate limit by server-owned client identity (max 10 per 15 min).
+    // Signup has no account key to fall back to, so fail closed if the hosting
+    // platform cannot provide a trusted identity.
+    const client_identity = ctx.req.clientIdentity() orelse return mer.Response.init(
+        .service_unavailable,
+        .json,
+        "{\"error\":\"signup temporarily unavailable\"}",
+    );
+    const ip_hash = try rate_limit.hashKey(client_identity, alloc);
     defer alloc.free(ip_hash);
     rate_limit.check(ctx.db, ip_hash, .{ .max_attempts = 10, .window_s = 900 }, alloc) catch |err| {
-        if (err == error.RateLimited) return mer.json("{\"error\":\"too many requests\"}");
+        if (err == error.RateLimited) return mer.Response.init(.too_many_requests, .json, "{\"error\":\"too many requests\"}");
         return err;
     };
 
     // 2. Parse JSON body.
-    const parsed = mer.parseJson(SignUpBody, ctx.req) catch {
+    const parsed = (mer.parseJson(SignUpBody, ctx.req) catch {
         return mer.badRequest("invalid request body");
-    };
+    }) orelse return mer.badRequest("invalid request body");
     defer parsed.deinit();
     const body = parsed.value;
 
@@ -53,7 +59,7 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
 
     // 4. Normalize email to lowercase.
     const email_norm = try alloc.dupe(u8, body.email);
-    std.ascii.lowerString(email_norm, body.email);
+    _ = std.ascii.lowerString(email_norm, body.email);
 
     // 5. Check for existing user.
     var existing = try ctx.db.query(
@@ -67,38 +73,42 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
         return mer.Response{
             .status = .conflict,
             .body = body_json,
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     }
 
     // 7. Hash password.
-    const pw_hash = try password.hash(alloc, body.password, ctx.config.argon2_params);
+    const pw_hash = password.hash(alloc, body.password, ctx.config.argon2_params) catch |err| {
+        if (err == error.CapacityExhausted) return mer.Response.init(
+            .service_unavailable,
+            .json,
+            "{\"error\":\"password service busy\"}",
+        );
+        return err;
+    };
 
     // 8. Generate user_id.
     const user_id = try crypto.generateUuid(alloc);
 
-    // 9. Insert user.
+    // 9. Generate account_id.
+    const account_id = try crypto.generateUuid(alloc);
+
+    // 10. Insert the user and email account atomically. PostgreSQL executes a
+    // single statement atomically, so an account failure cannot strand a user.
     try ctx.db.exec(alloc,
-        \\INSERT INTO mauth_users(id, name, email, email_verified, created_at, updated_at)
-        \\VALUES($1,$2,$3,false,NOW(),NOW())
+        \\WITH inserted_user AS (
+        \\  INSERT INTO mauth_users(id, name, email, email_verified, created_at, updated_at)
+        \\  VALUES($1,$2,$3,false,NOW(),NOW())
+        \\  RETURNING id
+        \\)
+        \\INSERT INTO mauth_oauth_accounts(id, user_id, provider_id, account_id, password_hash, created_at, updated_at)
+        \\SELECT $4,id,'email',$3,$5,NOW(),NOW() FROM inserted_user
     , &.{
         .{ .text = user_id },
         .{ .text = body.name },
         .{ .text = email_norm },
-    });
-
-    // 10. Generate account_id.
-    const account_id = try crypto.generateUuid(alloc);
-
-    // 11. Insert email account with password hash.
-    try ctx.db.exec(alloc,
-        \\INSERT INTO mauth_oauth_accounts(id, user_id, provider_id, account_id, password_hash, created_at, updated_at)
-        \\VALUES($1,$2,'email',$3,$4,NOW(),NOW())
-    , &.{
         .{ .text = account_id },
-        .{ .text = user_id },
-        .{ .text = email_norm },
         .{ .text = pw_hash },
     });
 
@@ -153,24 +163,28 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
     const csrf_token = try csrf.generateCsrfToken(session_id, ctx.config.secret, alloc);
 
     // 16. Build response.
-    const resp_body = try std.fmt.allocPrint(alloc,
-        \\{{"user":{{"id":"{s}","email":"{s}","name":"{s}","email_verified":false}}}}
-    , .{ user_id, email_norm, body.name });
+    var base_resp = mer.typedJson(alloc, .{
+        .user = .{
+            .id = user_id,
+            .email = email_norm,
+            .name = body.name,
+            .email_verified = false,
+        },
+    });
+    base_resp.status = .created;
 
-    const session_cookie = try session.cookieSettings(
+    var session_cookie = try session.cookieSettings(
         session_id,
         ctx.config.secret,
         ctx.config.session_ttl_s,
         ctx.config.secure_cookies,
         alloc,
     );
+    session_cookie.name = ctx.config.session_cookie;
     const csrf_cookie = csrf.csrfCookieSettings(csrf_token, ctx.config.secure_cookies);
+    const cookies = try alloc.alloc(mer.SetCookie, 2);
+    cookies[0] = session_cookie;
+    cookies[1] = csrf_cookie;
 
-    const base_resp = mer.Response{
-        .status = .created,
-        .body = resp_body,
-        .content_type = "application/json",
-        .cookies = &.{},
-    };
-    return mer.withCookies(base_resp, &.{ session_cookie, csrf_cookie });
+    return mer.withCookies(base_resp, cookies);
 }

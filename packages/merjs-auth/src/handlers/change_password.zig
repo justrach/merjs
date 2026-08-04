@@ -24,7 +24,7 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
         return mer.Response{
             .status = .unauthorized,
             .body = "{\"error\":\"not authenticated\"}",
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     };
@@ -32,7 +32,7 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
         return mer.Response{
             .status = .unauthorized,
             .body = "{\"error\":\"not authenticated\"}",
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     };
@@ -42,7 +42,7 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
         return mer.Response{
             .status = .forbidden,
             .body = "{\"error\":\"invalid csrf token\"}",
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     };
@@ -65,16 +65,16 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
         return mer.Response{
             .status = .unauthorized,
             .body = "{\"error\":\"session expired\"}",
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     }
     const user_id = db.rowText(sess_result.rows[0], "user_id") orelse return mer.internalError("db error");
 
     // 3. Parse body.
-    const parsed = mer.parseJson(ChangePasswordBody, ctx.req) catch {
+    const parsed = (mer.parseJson(ChangePasswordBody, ctx.req) catch {
         return mer.badRequest("invalid request body");
-    };
+    }) orelse return mer.badRequest("invalid request body");
     defer parsed.deinit();
     const body = parsed.value;
 
@@ -97,17 +97,29 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
     const current_hash = db.rowText(acc_result.rows[0], "password_hash") orelse return mer.internalError("db error");
 
     // 6. Verify current password.
-    if (!password.verify(alloc, body.current_password, current_hash)) {
-        return mer.Response{
-            .status = .unauthorized,
-            .body = "{\"error\":\"current password is incorrect\"}",
-            .content_type = "application/json",
-            .cookies = &.{},
-        };
-    }
+    const valid = password.verifyStatus(alloc, body.current_password, current_hash) catch |err| switch (err) {
+        error.CapacityExhausted => return mer.Response.init(
+            .service_unavailable,
+            .json,
+            "{\"error\":\"password service busy\"}",
+        ),
+    };
+    if (!valid) return mer.Response{
+        .status = .unauthorized,
+        .body = "{\"error\":\"current password is incorrect\"}",
+        .content_type = .json,
+        .cookies = &.{},
+    };
 
     // 7. Hash new password.
-    const new_hash = try password.hash(alloc, body.new_password, ctx.config.argon2_params);
+    const new_hash = password.hash(alloc, body.new_password, ctx.config.argon2_params) catch |err| {
+        if (err == error.CapacityExhausted) return mer.Response.init(
+            .service_unavailable,
+            .json,
+            "{\"error\":\"password service busy\"}",
+        );
+        return err;
+    };
 
     // 8. Update password.
     try ctx.db.exec(

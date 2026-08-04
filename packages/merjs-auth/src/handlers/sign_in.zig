@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const mer = @import("mer");
+const runtime = @import("runtime");
 const db = @import("../db/root.zig");
 const crypto = @import("../crypto.zig");
 const password = @import("../password.zig");
@@ -22,29 +23,30 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
     const alloc = ctx.req.allocator;
 
     // 1. Rate limit by email hash (max 5/15min) + IP hash (max 20/15min).
-    const parsed = mer.parseJson(SignInBody, ctx.req) catch {
+    const parsed = (mer.parseJson(SignInBody, ctx.req) catch {
         return mer.badRequest("invalid request body");
-    };
+    }) orelse return mer.badRequest("invalid request body");
     defer parsed.deinit();
     const body = parsed.value;
 
     const email_norm = try alloc.dupe(u8, body.email);
-    std.ascii.lowerString(email_norm, body.email);
+    _ = std.ascii.lowerString(email_norm, body.email);
 
     const email_hash = try rate_limit.hashKey(email_norm, alloc);
     defer alloc.free(email_hash);
     rate_limit.check(ctx.db, email_hash, .{ .max_attempts = 5, .window_s = 900 }, alloc) catch |err| {
-        if (err == error.RateLimited) return mer.json("{\"error\":\"too many requests\"}");
+        if (err == error.RateLimited) return mer.Response.init(.too_many_requests, .json, "{\"error\":\"too many requests\"}");
         return err;
     };
 
-    const ip = ctx.req.queryParam("x-forwarded-for") orelse "unknown";
-    const ip_hash = try rate_limit.hashKey(ip, alloc);
-    defer alloc.free(ip_hash);
-    rate_limit.check(ctx.db, ip_hash, .{ .max_attempts = 20, .window_s = 900 }, alloc) catch |err| {
-        if (err == error.RateLimited) return mer.json("{\"error\":\"too many requests\"}");
-        return err;
-    };
+    if (ctx.req.clientIdentity()) |client_identity| {
+        const ip_hash = try rate_limit.hashKey(client_identity, alloc);
+        defer alloc.free(ip_hash);
+        rate_limit.check(ctx.db, ip_hash, .{ .max_attempts = 20, .window_s = 900 }, alloc) catch |err| {
+            if (err == error.RateLimited) return mer.Response.init(.too_many_requests, .json, "{\"error\":\"too many requests\"}");
+            return err;
+        };
+    }
 
     // 4. Find user + account.
     var result = try ctx.db.query(alloc,
@@ -57,35 +59,40 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
 
     // 5. Not found: constant-time delay to prevent enumeration, then 401.
     if (result.rows.len == 0) {
-        std.Thread.sleep(100 * std.time.ns_per_ms);
+        std.Io.sleep(runtime.io, .fromMilliseconds(100), .awake) catch {};
         return mer.Response{
             .status = .unauthorized,
             .body = "{\"error\":\"invalid credentials\"}",
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     }
 
     const row = result.rows[0];
     const pw_hash = db.rowText(row, "password_hash") orelse {
-        std.Thread.sleep(100 * std.time.ns_per_ms);
+        std.Io.sleep(runtime.io, .fromMilliseconds(100), .awake) catch {};
         return mer.Response{
             .status = .unauthorized,
             .body = "{\"error\":\"invalid credentials\"}",
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     };
 
     // 6. Verify password.
-    if (!password.verify(alloc, body.password, pw_hash)) {
-        return mer.Response{
-            .status = .unauthorized,
-            .body = "{\"error\":\"invalid credentials\"}",
-            .content_type = "application/json",
-            .cookies = &.{},
-        };
-    }
+    const valid = password.verifyStatus(alloc, body.password, pw_hash) catch |err| switch (err) {
+        error.CapacityExhausted => return mer.Response.init(
+            .service_unavailable,
+            .json,
+            "{\"error\":\"password service busy\"}",
+        ),
+    };
+    if (!valid) return mer.Response{
+        .status = .unauthorized,
+        .body = "{\"error\":\"invalid credentials\"}",
+        .content_type = .json,
+        .cookies = &.{},
+    };
 
     const user_id = db.rowText(row, "id") orelse return mer.internalError("db error");
     const user_name = db.rowText(row, "name") orelse "";
@@ -114,30 +121,28 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
     const csrf_token = try csrf.generateCsrfToken(session_id, ctx.config.secret, alloc);
 
     // 10. Return 200 with user + session data.
-    const resp_body = try std.fmt.allocPrint(alloc,
-        \\{{"user":{{"id":"{s}","email":"{s}","name":"{s}","email_verified":{s}}},"session":{{"expires_at":{d}}}}}
-    , .{
-        user_id,
-        user_email,
-        user_name,
-        if (email_verified) "true" else "false",
-        session_expires,
+    const base_resp = mer.typedJson(alloc, .{
+        .user = .{
+            .id = user_id,
+            .email = user_email,
+            .name = user_name,
+            .email_verified = email_verified,
+        },
+        .session = .{ .expires_at = session_expires },
     });
 
-    const session_cookie = try session.cookieSettings(
+    var session_cookie = try session.cookieSettings(
         session_id,
         ctx.config.secret,
         ttl_s,
         ctx.config.secure_cookies,
         alloc,
     );
+    session_cookie.name = ctx.config.session_cookie;
     const csrf_cookie = csrf.csrfCookieSettings(csrf_token, ctx.config.secure_cookies);
+    const cookies = try alloc.alloc(mer.SetCookie, 2);
+    cookies[0] = session_cookie;
+    cookies[1] = csrf_cookie;
 
-    const base_resp = mer.Response{
-        .status = .ok,
-        .body = resp_body,
-        .content_type = "application/json",
-        .cookies = &.{},
-    };
-    return mer.withCookies(base_resp, &.{ session_cookie, csrf_cookie });
+    return mer.withCookies(base_resp, cookies);
 }

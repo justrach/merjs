@@ -22,19 +22,27 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
     // 2. Hash token and query DB.
     const hash_bytes = token_mod.hashForStorage(raw_token);
     const hash_hex = token_mod.hashToHex(hash_bytes);
-    const now_str = try std.fmt.allocPrint(alloc, "{d}", .{ctx.now_unix});
-    defer alloc.free(now_str);
 
     var tok_result = try ctx.db.query(alloc,
-        \\SELECT t.id, t.user_id
-        \\FROM mauth_tokens t
-        \\WHERE t.token_hash = $1
-        \\  AND t.purpose = 'email_verify'
-        \\  AND t.used_at IS NULL
-        \\  AND t.expires_at > to_timestamp($2)
+        \\WITH consumed AS (
+        \\  UPDATE mauth_tokens
+        \\  SET used_at = NOW()
+        \\  WHERE token_hash = $1
+        \\    AND purpose = $2
+        \\    AND used_at IS NULL
+        \\    AND expires_at > NOW()
+        \\  RETURNING user_id
+        \\), verified AS (
+        \\  UPDATE mauth_users AS users
+        \\  SET email_verified = true, updated_at = NOW()
+        \\  FROM consumed
+        \\  WHERE users.id = consumed.user_id
+        \\  RETURNING users.id AS user_id
+        \\)
+        \\SELECT user_id FROM verified
     , &.{
         .{ .text = &hash_hex },
-        .{ .text = now_str },
+        .{ .text = "email_verify" },
     });
     defer tok_result.deinit();
 
@@ -44,24 +52,9 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
         return mer.redirect(url, .see_other);
     }
 
-    const token_id = db.rowText(tok_result.rows[0], "id") orelse return mer.internalError("db error");
-    const user_id = db.rowText(tok_result.rows[0], "user_id") orelse return mer.internalError("db error");
+    _ = db.rowText(tok_result.rows[0], "user_id") orelse return mer.internalError("db error");
 
-    // 4. Mark token used.
-    try ctx.db.exec(
-        alloc,
-        "UPDATE mauth_tokens SET used_at=NOW() WHERE id=$1",
-        &.{.{ .text = token_id }},
-    );
-
-    // 5. Mark user email as verified.
-    try ctx.db.exec(
-        alloc,
-        "UPDATE mauth_users SET email_verified=true, updated_at=NOW() WHERE id=$1",
-        &.{.{ .text = user_id }},
-    );
-
-    // 6. Redirect to success URL.
+    // 5. Redirect to success URL.
     const url = try std.fmt.allocPrint(alloc, "{s}?verified=true", .{ctx.config.base_url});
     return mer.redirect(url, .see_other);
 }
