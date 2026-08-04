@@ -25,6 +25,7 @@ const std = @import("std");
 const mer = @import("mer");
 const db = @import("../db/root.zig");
 const crypto = @import("../crypto.zig");
+const session = @import("../session.zig");
 const pkce = @import("pkce.zig");
 const providers = @import("providers.zig");
 
@@ -33,6 +34,7 @@ const providers = @import("providers.zig");
 const GoogleUserInfo = struct {
     sub: []const u8,
     email: []const u8,
+    email_verified: bool = false,
     name: []const u8 = "",
     picture: ?[]const u8 = null,
 };
@@ -55,14 +57,8 @@ const DiscordUserInfo = struct {
     id: []const u8,
     username: []const u8 = "",
     email: ?[]const u8 = null,
+    verified: bool = false,
     avatar: ?[]const u8 = null,
-};
-
-const MicrosoftUserInfo = struct {
-    id: []const u8,
-    displayName: []const u8 = "",
-    mail: ?[]const u8 = null,
-    userPrincipalName: ?[]const u8 = null,
 };
 
 /// Normalised user info extracted from any provider.
@@ -194,9 +190,7 @@ fn doHttpFetch(
 /// 4. Persist state in mauth_oauth_states (TTL 10 min).
 /// 5. Build authorization URL and redirect.
 pub fn initiate(ctx: anytype, provider_id: []const u8) anyerror!mer.Response {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    const alloc = ctx.req.allocator;
 
     const provider = findProvider(ctx.config.oauth_providers, provider_id) orelse {
         std.debug.print("[oauth] initiate: unknown provider '{s}'\n", .{provider_id});
@@ -236,7 +230,17 @@ pub fn initiate(ctx: anytype, provider_id: []const u8) anyerror!mer.Response {
     try appendParam(alloc, &qbuf, "code_challenge_method", "S256");
 
     const auth_url = try std.fmt.allocPrint(alloc, "{s}?{s}", .{ provider.auth_url, qbuf.items });
-    return mer.redirect(auth_url);
+    const cookies = try alloc.alloc(mer.SetCookie, 1);
+    cookies[0] = .{
+        .name = ctx.config.oauth_state_cookie,
+        .value = state,
+        .path = "/",
+        .max_age = 600,
+        .http_only = true,
+        .secure = ctx.config.secure_cookies,
+        .same_site = .lax,
+    };
+    return mer.withCookies(mer.redirect(auth_url, .found), cookies);
 }
 
 // ── callback ───────────────────────────────────────────────────────────────
@@ -250,16 +254,45 @@ pub fn initiate(ctx: anytype, provider_id: []const u8) anyerror!mer.Response {
 /// 5. Find-or-create mauth_users + mauth_oauth_accounts.
 /// 6. Create session, set cookie, redirect to /.
 pub fn callback(ctx: anytype, provider_id: []const u8) anyerror!mer.Response {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    const response = callbackInner(ctx, provider_id) catch |err| {
+        std.debug.print("[oauth] callback failed: {s}\n", .{@errorName(err)});
+        return withClearedStateCookie(ctx, mer.internalError("OAuth callback failed"));
+    };
+    return withClearedStateCookie(ctx, response);
+}
+
+fn withClearedStateCookie(ctx: anytype, response: mer.Response) !mer.Response {
+    const cookies = try ctx.req.allocator.alloc(mer.SetCookie, response.cookies.len + 1);
+    @memcpy(cookies[0..response.cookies.len], response.cookies);
+    cookies[response.cookies.len] = .{
+        .name = ctx.config.oauth_state_cookie,
+        .value = "",
+        .path = "/",
+        .max_age = 0,
+        .http_only = true,
+        .secure = ctx.config.secure_cookies,
+        .same_site = .lax,
+    };
+    return mer.withCookies(response, cookies);
+}
+
+fn constantTimeEqual(a: []const u8, b: []const u8) bool {
+    var a_hash: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+    var b_hash: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(a, &a_hash, .{});
+    std.crypto.hash.sha2.Sha256.hash(b, &b_hash, .{});
+    return std.crypto.timing_safe.eql([a_hash.len]u8, a_hash, b_hash);
+}
+
+fn callbackInner(ctx: anytype, provider_id: []const u8) anyerror!mer.Response {
+    const alloc = ctx.req.allocator;
 
     const provider = findProvider(ctx.config.oauth_providers, provider_id) orelse {
         std.debug.print("[oauth] callback: unknown provider '{s}'\n", .{provider_id});
         return mer.badRequest("Unknown OAuth provider");
     };
 
-    const qs = queryStringOf(ctx.req.url);
+    const qs = ctx.req.query_string;
 
     if (getQueryParam(qs, "error")) |err_code| {
         std.debug.print("[oauth] callback: provider error '{s}'\n", .{err_code});
@@ -275,23 +308,39 @@ pub fn callback(ctx: anytype, provider_id: []const u8) anyerror!mer.Response {
         return mer.badRequest("Missing state parameter");
     };
 
-    // Look up state.
+    const cookie_state = ctx.req.cookie(ctx.config.oauth_state_cookie) orelse {
+        std.debug.print("[oauth] callback: missing browser correlation cookie\n", .{});
+        return mer.badRequest("OAuth state expired or invalid");
+    };
+    if (!constantTimeEqual(cookie_state, state_param)) {
+        std.debug.print("[oauth] callback: browser correlation mismatch\n", .{});
+        return mer.badRequest("OAuth state expired or invalid");
+    }
+
+    // Atomically claim the single-use state. Concurrent or replayed callbacks
+    // can never both exchange an authorization code.
     var state_result = try ctx.db.query(alloc,
-        \\SELECT id, code_verifier, redirect_uri
-        \\FROM mauth_oauth_states
+        \\DELETE FROM mauth_oauth_states
         \\WHERE state = $1
+        \\  AND provider_id = $2
         \\  AND expires_at > NOW()
-        \\LIMIT 1
-    , &[_]db.Value{.{ .text = state_param }});
+        \\RETURNING state, code_verifier, redirect_uri
+    , &[_]db.Value{
+        .{ .text = state_param },
+        .{ .text = provider_id },
+    });
     defer state_result.deinit();
 
-    if (state_result.rows.len == 0) {
-        std.debug.print("[oauth] callback: state not found or expired\n", .{});
+    if (state_result.rows.len != 1) {
+        std.debug.print("[oauth] callback: state not found, expired, or consumed\n", .{});
         return mer.badRequest("OAuth state expired or invalid");
     }
     const state_row = state_result.rows[0];
-
-    const state_id_db = db.rowText(state_row, "id") orelse return error.OAuthStateMissingId;
+    const state_db = db.rowText(state_row, "state") orelse return error.OAuthStateMissingId;
+    if (!constantTimeEqual(cookie_state, state_db)) {
+        std.debug.print("[oauth] callback: stored state mismatch\n", .{});
+        return mer.badRequest("OAuth state expired or invalid");
+    }
     const verifier = db.rowText(state_row, "code_verifier") orelse {
         std.debug.print("[oauth] callback: missing code_verifier\n", .{});
         return error.OAuthStateMissingVerifier;
@@ -302,18 +351,16 @@ pub fn callback(ctx: anytype, provider_id: []const u8) anyerror!mer.Response {
     else
         try buildRedirectUri(alloc, ctx.config.base_url, provider_id, provider.redirect_uri);
 
-    // Delete state (single-use).
-    try ctx.db.exec(
-        alloc,
-        "DELETE FROM mauth_oauth_states WHERE id = $1",
-        &[_]db.Value{.{ .text = state_id_db }},
-    );
-
     // Exchange code for tokens.
-    const token_resp = try exchangeCode(alloc, ctx.config.http_fetch, provider, code, verifier, redirect_uri);
+    const http_fetch = ctx.config.http_fetch orelse return mer.Response.init(
+        .service_unavailable,
+        .json,
+        "{\"error\":\"OAuth HTTP fetch is not configured\"}",
+    );
+    const token_resp = try exchangeCode(alloc, http_fetch, provider, code, verifier, redirect_uri);
 
     // Fetch user info.
-    const user_info = try fetchUserInfo(alloc, ctx.config.http_fetch, provider, token_resp.access_token);
+    const user_info = try fetchUserInfo(alloc, http_fetch, provider, token_resp.access_token);
 
     // Find or create user.
     const user_id = try findOrCreateUser(alloc, ctx.db, ctx.now_unix, provider_id, user_info, token_resp);
@@ -335,15 +382,17 @@ pub fn callback(ctx: anytype, provider_id: []const u8) anyerror!mer.Response {
     });
 
     // Build Set-Cookie and redirect.
-    const cookie = try std.fmt.allocPrint(
+    var cookie = try session.cookieSettings(
+        session_id,
+        ctx.config.secret,
+        ctx.config.session_ttl_s,
+        ctx.config.secure_cookies,
         alloc,
-        "{s}={s}; Path=/; HttpOnly; SameSite=Lax; Max-Age={d}",
-        .{ ctx.config.session_cookie, session_token, ctx.config.session_ttl_s },
     );
-
-    var resp = mer.redirect("/");
-    resp = try resp.withHeader("Set-Cookie", cookie);
-    return resp;
+    cookie.name = ctx.config.session_cookie;
+    const cookies = try alloc.alloc(mer.SetCookie, 1);
+    cookies[0] = cookie;
+    return mer.withCookies(mer.redirect("/", .see_other), cookies);
 }
 
 // ── Token exchange ─────────────────────────────────────────────────────────
@@ -409,18 +458,23 @@ fn fetchUserInfo(
     }, "");
     defer alloc.free(raw);
 
-    if (std.mem.eql(u8, provider.id, "google")) return parseGoogleUserInfo(alloc, raw);
-    if (std.mem.eql(u8, provider.id, "github")) return parseGitHubUserInfo(alloc, http_fetch, raw, access_token);
-    if (std.mem.eql(u8, provider.id, "discord")) return parseDiscordUserInfo(alloc, raw);
-    if (std.mem.eql(u8, provider.id, "microsoft")) return parseMicrosoftUserInfo(alloc, raw);
-    // Generic fallback: try Google-style (sub, email, name).
-    return parseGoogleUserInfo(alloc, raw);
+    return switch (provider.email_verification) {
+        .oidc => parseGoogleUserInfo(alloc, raw),
+        .github => parseGitHubUserInfo(alloc, http_fetch, raw, access_token),
+        .discord => parseDiscordUserInfo(alloc, raw),
+        .microsoft => error.UnsupportedProvider,
+        .none => if (provider.verified_email_mapping) |mapping|
+            parseMappedUserInfo(alloc, raw, mapping)
+        else
+            error.OAuthUntrustedEmailClaim,
+    };
 }
 
 fn parseGoogleUserInfo(alloc: std.mem.Allocator, raw: []const u8) !UserInfo {
     const parsed = try std.json.parseFromSlice(GoogleUserInfo, alloc, raw, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
     const v = parsed.value;
+    if (!v.email_verified) return error.OAuthEmailNotVerified;
     return UserInfo{
         .provider_account_id = try alloc.dupe(u8, v.sub),
         .email = try alloc.dupe(u8, v.email),
@@ -446,10 +500,9 @@ fn parseGitHubUserInfo(
         try alloc.dupe(u8, v.login);
     const avatar = if (v.avatar_url) |a| try alloc.dupe(u8, a) else null;
 
-    const email = if (v.email != null and v.email.?.len > 0)
-        try alloc.dupe(u8, v.email.?)
-    else
-        try fetchGitHubPrimaryEmail(alloc, http_fetch, access_token);
+    // `/user.email` does not carry its verification assertion. Always use the
+    // scoped email endpoint and accept only an entry marked verified.
+    const email = try fetchGitHubPrimaryEmail(alloc, http_fetch, access_token);
 
     return UserInfo{
         .provider_account_id = account_id,
@@ -483,8 +536,7 @@ fn fetchGitHubPrimaryEmail(
     for (parsed.value) |e| {
         if (e.verified) return alloc.dupe(u8, e.email);
     }
-    if (parsed.value.len > 0) return alloc.dupe(u8, parsed.value[0].email);
-    return error.GitHubNoEmail;
+    return error.GitHubNoVerifiedEmail;
 }
 
 fn parseDiscordUserInfo(alloc: std.mem.Allocator, raw: []const u8) !UserInfo {
@@ -496,6 +548,7 @@ fn parseDiscordUserInfo(alloc: std.mem.Allocator, raw: []const u8) !UserInfo {
         std.debug.print("[oauth] Discord: no email — ensure 'email' scope is included\n", .{});
         return error.DiscordNoEmail;
     };
+    if (!v.verified) return error.OAuthEmailNotVerified;
     const avatar: ?[]u8 = if (v.avatar) |hash|
         try std.fmt.allocPrint(alloc, "https://cdn.discordapp.com/avatars/{s}/{s}.png", .{ v.id, hash })
     else
@@ -509,21 +562,41 @@ fn parseDiscordUserInfo(alloc: std.mem.Allocator, raw: []const u8) !UserInfo {
     };
 }
 
-fn parseMicrosoftUserInfo(alloc: std.mem.Allocator, raw: []const u8) !UserInfo {
-    const parsed = try std.json.parseFromSlice(MicrosoftUserInfo, alloc, raw, .{ .ignore_unknown_fields = true });
-    defer parsed.deinit();
-    const v = parsed.value;
-
-    const email = v.mail orelse v.userPrincipalName orelse {
-        std.debug.print("[oauth] Microsoft: no email address\n", .{});
-        return error.MicrosoftNoEmail;
+fn mappedString(object: std.json.ObjectMap, field: []const u8) ?[]const u8 {
+    const value = object.get(field) orelse return null;
+    return switch (value) {
+        .string => |s| s,
+        else => null,
     };
+}
 
-    return UserInfo{
-        .provider_account_id = try alloc.dupe(u8, v.id),
+fn parseMappedUserInfo(
+    alloc: std.mem.Allocator,
+    raw: []const u8,
+    mapping: providers.VerifiedEmailMapping,
+) !UserInfo {
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, raw, .{});
+    defer parsed.deinit();
+    const object = switch (parsed.value) {
+        .object => |o| o,
+        else => return error.OAuthInvalidUserInfo,
+    };
+    const verified = object.get(mapping.email_verified) orelse return error.OAuthEmailNotVerified;
+    const is_verified = switch (verified) {
+        .bool => |value| value,
+        else => false,
+    };
+    if (!is_verified) return error.OAuthEmailNotVerified;
+
+    const account_id = mappedString(object, mapping.account_id) orelse return error.OAuthMissingAccountId;
+    const email = mappedString(object, mapping.email) orelse return error.OAuthMissingEmail;
+    const name = if (mapping.name) |field| mappedString(object, field) orelse email else email;
+    const avatar = if (mapping.avatar) |field| mappedString(object, field) else null;
+    return .{
+        .provider_account_id = try alloc.dupe(u8, account_id),
         .email = try alloc.dupe(u8, email),
-        .name = try alloc.dupe(u8, if (v.displayName.len > 0) v.displayName else email),
-        .avatar = null,
+        .name = try alloc.dupe(u8, name),
+        .avatar = if (avatar) |value| try alloc.dupe(u8, value) else null,
     };
 }
 
@@ -623,4 +696,210 @@ fn findOrCreateUser(
     });
 
     return user_id;
+}
+
+const LifetimeTestAdapter = struct {
+    fn query(_: *anyopaque, alloc: std.mem.Allocator, sql: []const u8, _: []const db.Value) anyerror!db.QueryResult {
+        var arena = std.heap.ArenaAllocator.init(alloc);
+        errdefer arena.deinit();
+        const aa = arena.allocator();
+        const fields = if (std.mem.indexOf(u8, sql, "mauth_oauth_states") != null) blk: {
+            const result = try aa.alloc(db.Field, 3);
+            result[0] = .{ .name = "state", .value = .{ .text = "state" } };
+            result[1] = .{ .name = "code_verifier", .value = .{ .text = "verifier" } };
+            result[2] = .{ .name = "redirect_uri", .value = .{ .text = "https://app.test/auth/oauth/google/callback" } };
+            break :blk result;
+        } else if (std.mem.indexOf(u8, sql, "mauth_oauth_accounts") != null) blk: {
+            const result = try aa.alloc(db.Field, 1);
+            result[0] = .{ .name = "user_id", .value = .{ .text = "user-id" } };
+            break :blk result;
+        } else try aa.alloc(db.Field, 0);
+        const rows = try aa.alloc(db.Row, if (fields.len == 0) 0 else 1);
+        if (rows.len == 1) rows[0] = fields;
+        return .{ .rows = rows, ._arena = arena };
+    }
+
+    fn exec(_: *anyopaque, _: std.mem.Allocator, _: []const u8, _: []const db.Value) anyerror!void {}
+    fn deinit(_: *anyopaque) void {}
+
+    const vtable = db.Adapter.VTable{ .queryFn = query, .execFn = exec, .deinitFn = deinit };
+};
+
+fn lifetimeTestFetch(
+    alloc: std.mem.Allocator,
+    url: []const u8,
+    _: []const u8,
+    _: []const [2][]const u8,
+    _: []const u8,
+) anyerror!db.FetchResult {
+    const body = if (std.mem.indexOf(u8, url, "token") != null)
+        "{\"access_token\":\"access-token\",\"expires_in\":3600}"
+    else
+        "{\"sub\":\"provider-user\",\"email\":\"alice@test.com\",\"email_verified\":true,\"name\":\"Alice\"}";
+    return .{ .status = 200, .body = try alloc.dupe(u8, body), ._alloc = alloc };
+}
+
+fn clobberStack() void {
+    var bytes: [16 * 1024]u8 = undefined;
+    @memset(&bytes, 0xa5);
+    std.mem.doNotOptimizeAway(&bytes);
+}
+
+const lifetime_test_provider = providers.Provider{
+    .id = "google",
+    .client_id = "client-id",
+    .client_secret = "client-secret",
+    .auth_url = "https://provider.test/authorize",
+    .token_url = "https://provider.test/token",
+    .userinfo_url = "https://provider.test/userinfo",
+    .scopes = &.{ "openid", "email" },
+    .email_verification = .oidc,
+};
+
+test "OAuth initiate Location survives handler return and stack clobber" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var adapter_state: u8 = 0;
+    const adapter = db.Adapter{ .ptr = &adapter_state, .vtable = &LifetimeTestAdapter.vtable };
+    const config = .{
+        .oauth_providers = @as([]const providers.Provider, &.{lifetime_test_provider}),
+        .base_url = @as([]const u8, "https://app.test"),
+        .oauth_state_cookie = @as([]const u8, "mauth_oauth_state"),
+        .secure_cookies = false,
+    };
+    const req = mer.Request.init(arena.allocator(), .GET, "/auth/oauth/google/initiate");
+    const ctx = .{ .req = req, .config = &config, .db = adapter, .now_unix = @as(i64, 1) };
+
+    const response = try initiate(&ctx, "google");
+    clobberStack();
+    const serialized = try std.fmt.allocPrint(std.testing.allocator, "Location: {s}\r\n", .{response.body});
+    defer std.testing.allocator.free(serialized);
+    try std.testing.expect(std.mem.startsWith(u8, serialized, "Location: https://provider.test/authorize?"));
+    try std.testing.expect(std.mem.indexOf(u8, serialized, "code_challenge=") != null);
+    try std.testing.expectEqual(@as(usize, 1), response.cookies.len);
+    try std.testing.expectEqualStrings("mauth_oauth_state", response.cookies[0].name);
+    try std.testing.expectEqual(@as(?u32, 600), response.cookies[0].max_age);
+    try std.testing.expect(response.cookies[0].http_only);
+    try std.testing.expectEqual(mer.SameSite.lax, response.cookies[0].same_site);
+}
+
+test "OAuth callback Set-Cookie survives handler return and stack clobber" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var adapter_state: u8 = 0;
+    const adapter = db.Adapter{ .ptr = &adapter_state, .vtable = &LifetimeTestAdapter.vtable };
+    const config = .{
+        .oauth_providers = @as([]const providers.Provider, &.{lifetime_test_provider}),
+        .base_url = @as([]const u8, "https://app.test"),
+        .http_fetch = @as(?db.FetchFn, lifetimeTestFetch),
+        .session_ttl_s = @as(u32, 3600),
+        .secure_cookies = false,
+        .session_cookie = @as([]const u8, "mauth_session"),
+        .oauth_state_cookie = @as([]const u8, "mauth_oauth_state"),
+        .secret = @as([]const u8, "test-secret-at-least-32-bytes-long!!"),
+    };
+    var req = mer.Request.init(arena.allocator(), .GET, "/auth/oauth/google/callback");
+    req.query_string = "code=code&state=state";
+    req.cookies_raw = "mauth_oauth_state=state";
+    const ctx = .{ .req = req, .config = &config, .db = adapter, .now_unix = @as(i64, 1) };
+
+    const response = try callback(&ctx, "google");
+    clobberStack();
+    try std.testing.expectEqual(@as(usize, 2), response.cookies.len);
+    var cookie_buf: [512]u8 = undefined;
+    const serialized = response.cookies[0].headerValue(&cookie_buf);
+    try std.testing.expect(std.mem.startsWith(u8, serialized, "mauth_session="));
+    try std.testing.expect(std.mem.indexOf(u8, serialized, "; Max-Age=3600") != null);
+    try std.testing.expectEqualStrings("mauth_oauth_state", response.cookies[1].name);
+    try std.testing.expectEqual(@as(?u32, 0), response.cookies[1].max_age);
+}
+
+test "OAuth callback cannot be shared with another browser" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var adapter_state: u8 = 0;
+    const adapter = db.Adapter{ .ptr = &adapter_state, .vtable = &LifetimeTestAdapter.vtable };
+    const config = .{
+        .oauth_providers = @as([]const providers.Provider, &.{lifetime_test_provider}),
+        .base_url = @as([]const u8, "https://app.test"),
+        .http_fetch = @as(?db.FetchFn, lifetimeTestFetch),
+        .session_ttl_s = @as(u32, 3600),
+        .secure_cookies = true,
+        .session_cookie = @as([]const u8, "mauth_session"),
+        .oauth_state_cookie = @as([]const u8, "mauth_oauth_state"),
+        .secret = @as([]const u8, "test-secret-at-least-32-bytes-long!!"),
+    };
+    var req = mer.Request.init(arena.allocator(), .GET, "/auth/oauth/google/callback");
+    req.query_string = "code=code&state=state";
+    const ctx = .{ .req = req, .config = &config, .db = adapter, .now_unix = @as(i64, 1) };
+
+    const response = try callback(&ctx, "google");
+    try std.testing.expectEqual(std.http.Status.bad_request, response.status);
+    try std.testing.expectEqual(@as(usize, 1), response.cookies.len);
+    try std.testing.expectEqual(@as(?u32, 0), response.cookies[0].max_age);
+    try std.testing.expect(response.cookies[0].secure);
+}
+
+test "OAuth callback rejects session-swapped correlation state" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var adapter_state: u8 = 0;
+    const adapter = db.Adapter{ .ptr = &adapter_state, .vtable = &LifetimeTestAdapter.vtable };
+    const config = .{
+        .oauth_providers = @as([]const providers.Provider, &.{lifetime_test_provider}),
+        .base_url = @as([]const u8, "https://app.test"),
+        .http_fetch = @as(?db.FetchFn, lifetimeTestFetch),
+        .session_ttl_s = @as(u32, 3600),
+        .secure_cookies = false,
+        .session_cookie = @as([]const u8, "mauth_session"),
+        .oauth_state_cookie = @as([]const u8, "mauth_oauth_state"),
+        .secret = @as([]const u8, "test-secret-at-least-32-bytes-long!!"),
+    };
+    var req = mer.Request.init(arena.allocator(), .GET, "/auth/oauth/google/callback");
+    req.query_string = "code=attacker-code&state=attacker-state";
+    req.cookies_raw = "mauth_oauth_state=victim-state";
+    const ctx = .{ .req = req, .config = &config, .db = adapter, .now_unix = @as(i64, 1) };
+
+    const response = try callback(&ctx, "google");
+    try std.testing.expectEqual(std.http.Status.bad_request, response.status);
+    try std.testing.expectEqual(@as(usize, 1), response.cookies.len);
+    try std.testing.expectEqual(@as(?u32, 0), response.cookies[0].max_age);
+}
+
+fn unverifiedGitHubEmailFetch(
+    alloc: std.mem.Allocator,
+    _: []const u8,
+    _: []const u8,
+    _: []const [2][]const u8,
+    _: []const u8,
+) anyerror!db.FetchResult {
+    const body = "[{\"email\":\"victim@example.com\",\"primary\":true,\"verified\":false}]";
+    return .{ .status = 200, .body = try alloc.dupe(u8, body), ._alloc = alloc };
+}
+
+test "OAuth rejects unverified provider email claims" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    try std.testing.expectError(
+        error.OAuthEmailNotVerified,
+        parseGoogleUserInfo(alloc, "{\"sub\":\"attacker\",\"email\":\"victim@example.com\",\"email_verified\":false}"),
+    );
+    try std.testing.expectError(
+        error.GitHubNoVerifiedEmail,
+        parseGitHubUserInfo(
+            alloc,
+            unverifiedGitHubEmailFetch,
+            "{\"id\":1,\"login\":\"attacker\",\"email\":\"victim@example.com\"}",
+            "token",
+        ),
+    );
+    try std.testing.expectError(
+        error.OAuthEmailNotVerified,
+        parseMappedUserInfo(
+            alloc,
+            "{\"sub\":\"attacker\",\"email\":\"victim@example.com\",\"email_verified\":false}",
+            .{},
+        ),
+    );
 }
