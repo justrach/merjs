@@ -2,6 +2,8 @@
 
 const std = @import("std");
 
+pub const wasm_max_memory: u64 = 64 * 1024 * 1024;
+
 /// Scan dir/ recursively and add each *.zig as a named module import.
 /// `dir` is the filesystem path; `import_prefix` is the module name prefix.
 /// Example: dir="examples/site/app", prefix="app" → "app/index", "app/about", etc.
@@ -79,5 +81,6 @@ pub fn addWasmExe(b: *std.Build, name: []const u8, source: []const u8, wasm_targ
     });
     exe.rdynamic = true;
     exe.entry = .disabled;
+    exe.max_memory = wasm_max_memory;
     return exe;
 }
