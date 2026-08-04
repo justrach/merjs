@@ -19,20 +19,20 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
     const alloc = ctx.req.allocator;
 
     // 2. Parse body.
-    const parsed = mer.parseJson(SendResetBody, ctx.req) catch {
+    const parsed = (mer.parseJson(SendResetBody, ctx.req) catch {
         return mer.badRequest("invalid request body");
-    };
+    }) orelse return mer.badRequest("invalid request body");
     defer parsed.deinit();
     const body = parsed.value;
 
     const email_norm = try alloc.dupe(u8, body.email);
-    std.ascii.lowerString(email_norm, body.email);
+    _ = std.ascii.lowerString(email_norm, body.email);
 
     // 1. Rate limit by email hash (max 3 per hour). Always return 200 regardless.
     const email_hash = try rate_limit.hashKey(email_norm, alloc);
     defer alloc.free(email_hash);
     rate_limit.check(ctx.db, email_hash, .{ .max_attempts = 3, .window_s = 3600 }, alloc) catch |err| {
-        if (err == error.RateLimited) return mer.json(OK_RESPONSE);
+        if (err == error.RateLimited) return mer.Response.init(.too_many_requests, .json, "{\"error\":\"too many requests\"}");
         return err;
     };
 

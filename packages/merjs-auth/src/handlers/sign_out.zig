@@ -50,8 +50,11 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
     const base_resp = mer.Response{
         .status = .ok,
         .body = "{\"ok\":true}",
-        .content_type = "application/json",
+        .content_type = .json,
         .cookies = &.{},
     };
-    return mer.withCookies(base_resp, &.{ expired_session, expired_csrf });
+    const cookies = try alloc.alloc(mer.SetCookie, 2);
+    cookies[0] = expired_session;
+    cookies[1] = expired_csrf;
+    return mer.withCookies(base_resp, cookies);
 }

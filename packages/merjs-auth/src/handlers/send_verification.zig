@@ -20,7 +20,7 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
         return mer.Response{
             .status = .unauthorized,
             .body = "{\"error\":\"not authenticated\"}",
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     };
@@ -28,7 +28,7 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
         return mer.Response{
             .status = .unauthorized,
             .body = "{\"error\":\"not authenticated\"}",
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     };
@@ -52,7 +52,7 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
         return mer.Response{
             .status = .unauthorized,
             .body = "{\"error\":\"session expired\"}",
-            .content_type = "application/json",
+            .content_type = .json,
             .cookies = &.{},
         };
     }
@@ -66,7 +66,7 @@ pub fn handle(ctx: *AuthContext) anyerror!mer.Response {
     const uid_hash = try rate_limit.hashKey(user_id, alloc);
     defer alloc.free(uid_hash);
     rate_limit.check(ctx.db, uid_hash, .{ .max_attempts = 3, .window_s = 3600 }, alloc) catch |err| {
-        if (err == error.RateLimited) return mer.json("{\"error\":\"too many requests\"}");
+        if (err == error.RateLimited) return mer.Response.init(.too_many_requests, .json, "{\"error\":\"too many requests\"}");
         return err;
     };
 
