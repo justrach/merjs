@@ -1,17 +1,32 @@
 // Integration test: proves a consumer project can use merjs with its own routes.
 // This is the core test for issue #62.
 //
-// Before the fix, ssr.zig did @import("generated/routes.zig") which resolved to
-// merjs's cached copy containing api/hello, app/about, etc. — causing build
-// failures for consumer projects with different pages.
-//
-// After the fix, consumers use mer.Router.fromGenerated(@import("routes")) —
-// a named module that the consumer's build.zig wires to their own routes file.
-// No need to import ssr.zig or wire its transitive deps.
+// Consumers use mer.Router.fromGenerated(@import("routes")) with a named
+// module wired by their own build.zig, so framework example routes cannot leak
+// into consumer projects.
 
 const std = @import("std");
 const mer = @import("mer");
 const routes = @import("routes");
+
+test "consumer: legacy optional parseJson usage compiles and preserves behavior" {
+    const Body = struct { name: []const u8 };
+
+    var req = mer.Request.init(std.testing.allocator, .POST, "/api");
+    req.body = "{\"name\":\"legacy\"}";
+    const parsed = (try mer.parseJson(Body, req)) orelse return error.ExpectedJsonBody;
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings("legacy", parsed.value.name);
+
+    req.body = "";
+    try std.testing.expect((try mer.parseJson(Body, req)) == null);
+
+    req.body = "{";
+    if (mer.parseJson(Body, req)) |unexpected| {
+        if (unexpected) |value| value.deinit();
+        return error.ExpectedMalformedJsonError;
+    } else |_| {}
+}
 
 test "consumer: buildRouter uses consumer routes, not framework example routes" {
     var router = mer.Router.fromGenerated(std.testing.allocator, routes);
