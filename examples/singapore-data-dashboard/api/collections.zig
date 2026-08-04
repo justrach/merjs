@@ -19,16 +19,14 @@ pub fn render(req: mer.Request) mer.Response {
 
     // Build URL
     const url = if (search) |q|
-        std.fmt.allocPrint(req.allocator,
-            "https://api-production.data.gov.sg/v2/public/api/datasets?search={s}", .{q}) catch
+        std.fmt.allocPrint(req.allocator, "https://api-production.data.gov.sg/v2/public/api/datasets?search={s}", .{q}) catch
             return mer.internalError("alloc failed")
     else
-        std.fmt.allocPrint(req.allocator,
-            "https://api-production.data.gov.sg/v2/public/api/collections?page={s}", .{page}) catch
+        std.fmt.allocPrint(req.allocator, "https://api-production.data.gov.sg/v2/public/api/collections?page={s}", .{page}) catch
             return mer.internalError("alloc failed");
 
     const result = mer.fetch(req.allocator, .{
-        .url   = url,
+        .url = url,
         .headers = &.{
             .{ .name = "x-api-key", .value = api_key },
         },

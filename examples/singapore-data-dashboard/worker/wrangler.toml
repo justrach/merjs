@@ -10,8 +10,15 @@ routes = [
 directory = "../public"
 
 [build]
-command = ""
+command = "cd ../../.. && zig build sgdata-worker"
 
 [[rules]]
 type = "CompiledWasm"
 globs = ["**/*.wasm"]
+
+[vars]
+AI_BUDGET_ACCOUNT = "merlionjs-sgdata-production"
+
+[[services]]
+binding = "AI_BUDGET_GUARD"
+service = "merjs-ai-budget-guard"
