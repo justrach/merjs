@@ -1,310 +1,268 @@
-//! Additional unit tests for merlionjs core functionality
+//! Cross-module core API tests. This file is a dedicated `zig build test` root
+//! so public API drift cannot silently leave the integration suite uncompiled.
 
 const std = @import("std");
 const mer = @import("mer");
 
-// ============================================================================
-// HTML Builder Tests
-// ============================================================================
+test "core API: HTML builder renders nested and void elements" {
+    var storage = mer.h.RenderStorage.init(std.testing.allocator);
+    storage.activate();
+    defer storage.deinit();
 
-test "html builder: basic element" {
-    const h = mer.h;
-    const node = h.div(.{}, "Hello");
-    
-    var buf = std.ArrayList(u8).init(std.testing.allocator);
-    defer buf.deinit();
-    
-    try h.renderToWriter(std.testing.allocator, node, buf.writer());
-    const result = try buf.toOwnedSlice();
-    defer std.testing.allocator.free(result);
-    
-    try std.testing.expect(std.mem.indexOf(u8, result, "<div") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result, "Hello") != null);
-}
-
-test "html builder: element with attributes" {
-    const h = mer.h;
-    const attrs = [_]h.Attribute{
-        .{ .name = "class", .value = "test-class" },
-        .{ .name = "id", .value = "test-id" },
-    };
-    const node = h.div(.{ .attributes = &attrs }, "Content");
-    
-    var buf = std.ArrayList(u8).init(std.testing.allocator);
-    defer buf.deinit();
-    
-    try h.renderToWriter(std.testing.allocator, node, buf.writer());
-    const result = try buf.toOwnedSlice();
-    defer std.testing.allocator.free(result);
-    
-    try std.testing.expect(std.mem.indexOf(u8, result, "class=\"test-class\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result, "id=\"test-id\"") != null);
-}
-
-test "html builder: nested elements" {
-    const h = mer.h;
-    const node = h.div(.{}, &.{
-        h.h1(.{}, "Title"),
-        h.p(.{}, "Paragraph"),
+    const node = mer.h.div(.{ .class = "card" }, .{
+        mer.h.h1(.{}, "Title"),
+        mer.h.p(.{}, "Paragraph"),
+        mer.h.input(.{ .type = "text" }),
     });
-    
-    var buf = std.ArrayList(u8).init(std.testing.allocator);
-    defer buf.deinit();
-    
-    try h.renderToWriter(std.testing.allocator, node, buf.writer());
-    const result = try buf.toOwnedSlice();
-    defer std.testing.allocator.free(result);
-    
-    try std.testing.expect(std.mem.indexOf(u8, result, "<h1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result, "<p") != null);
+    const response = mer.render(std.testing.allocator, node);
+    defer response.deinit();
+
+    try std.testing.expectEqual(std.http.Status.ok, response.status);
+    try std.testing.expectEqual(mer.ContentType.html, response.content_type);
+    try std.testing.expect(std.mem.indexOf(u8, response.body, "<div class=\"card\">") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response.body, "<h1>Title</h1>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response.body, "<input type=\"text\">") != null);
 }
 
-test "html builder: self-closing tags" {
-    const h = mer.h;
-    const node = h.input(.{ .type_attr = "text" });
-    
-    var buf = std.ArrayList(u8).init(std.testing.allocator);
-    defer buf.deinit();
-    
-    try h.renderToWriter(std.testing.allocator, node, buf.writer());
-    const result = try buf.toOwnedSlice();
-    defer std.testing.allocator.free(result);
-    
-    try std.testing.expect(std.mem.indexOf(u8, result, "<input") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result, "type=\"text\"") != null);
+test "core API: response helpers expose status type and body" {
+    const html_response = mer.html("<p>Hello</p>");
+    try std.testing.expectEqual(std.http.Status.ok, html_response.status);
+    try std.testing.expectEqual(mer.ContentType.html, html_response.content_type);
+    try std.testing.expectEqualStrings("<p>Hello</p>", html_response.body);
+
+    const redirect = mer.redirect("/new-path", .see_other);
+    try std.testing.expectEqual(std.http.Status.see_other, redirect.status);
+    try std.testing.expectEqual(mer.ContentType.redirect, redirect.content_type);
+    try std.testing.expectEqualStrings("/new-path", redirect.body);
+
+    try std.testing.expectEqual(std.http.Status.not_found, mer.notFound().status);
+    try std.testing.expectEqual(std.http.Status.bad_request, mer.badRequest("bad").status);
+    try std.testing.expectEqual(std.http.Status.internal_server_error, mer.internalError("failed").status);
 }
 
-// ============================================================================
-// Response Tests
-// ============================================================================
+test "core API: request query form and cookie parsing" {
+    var req = mer.Request.init(std.testing.allocator, .POST, "/submit");
+    req.query_string = "page=2&filter=active";
+    req.body = "name=alice&empty=";
+    req.cookies_raw = "session=abc123; theme=dark";
 
-test "response: html response" {
-    const resp = mer.html("<p>Hello</p>");
-    
-    try std.testing.expectEqual(resp.status, .ok);
-    try std.testing.expectEqual(resp.content_type, .html);
-    try std.testing.expectEqualStrings("<p>Hello</p>", resp.body);
-}
-
-test "response: json response" {
-    const resp = mer.json("{\"key\":\"value\"}");
-    
-    try std.testing.expectEqual(resp.status, .ok);
-    try std.testing.expectEqual(resp.content_type, .json);
-    try std.testing.expectEqualStrings("{\"key\":\"value\"}", resp.body);
-}
-
-test "response: text response" {
-    const resp = mer.text(.ok, "Plain text");
-    
-    try std.testing.expectEqual(resp.status, .ok);
-    try std.testing.expectEqual(resp.content_type, .text);
-    try std.testing.expectEqualStrings("Plain text", resp.body);
-}
-
-test "response: not found" {
-    const resp = mer.notFound();
-    
-    try std.testing.expectEqual(resp.status, .not_found);
-}
-
-test "response: bad request" {
-    const resp = mer.badRequest("Invalid input");
-    
-    try std.testing.expectEqual(resp.status, .bad_request);
-    try std.testing.expectEqualStrings("Invalid input", resp.body);
-}
-
-test "response: redirect" {
-    const resp = mer.redirect("/new-path", .see_other);
-    
-    try std.testing.expectEqual(resp.status, .see_other);
-    try std.testing.expectEqualStrings("/new-path", resp.location.?);
-}
-
-test "response: internal error" {
-    const resp = mer.internalError("Something went wrong");
-    
-    try std.testing.expectEqual(resp.status, .internal_server_error);
-    try std.testing.expectEqualStrings("Something went wrong", resp.body);
-}
-
-// ============================================================================
-// Request Parsing Tests
-// ============================================================================
-
-test "formParam: parses simple params" {
-    const body = "name=alice&age=30";
-    
-    const name = mer.formParam(body, "name");
-    try std.testing.expectEqualStrings("alice", name.?);
-    
-    const age = mer.formParam(body, "age");
-    try std.testing.expectEqualStrings("30", age.?);
-}
-
-test "formParam: returns null for missing param" {
-    const body = "name=alice";
-    
-    const missing = mer.formParam(body, "missing");
-    try std.testing.expect(missing == null);
-}
-
-test "formParam: handles empty value" {
-    const body = "name=&age=30";
-    
-    const name = mer.formParam(body, "name");
-    try std.testing.expectEqualStrings("", name.?);
-}
-
-test "formParam: handles single param" {
-    const body = "only=value";
-    
-    const result = mer.formParam(body, "only");
-    try std.testing.expectEqualStrings("value", result.?);
-}
-
-// ============================================================================
-// Cookie Tests
-// ============================================================================
-
-test "cookie: parse single cookie" {
-    const cookies_raw = "session=abc123";
-    
-    var cookies = std.mem.splitScalar(u8, cookies_raw, ';');
-    const first = cookies.next();
-    try std.testing.expect(first != null);
-    
-    var parts = std.mem.splitScalar(u8, first.?, '=');
-    const name = parts.next();
-    const value = parts.next();
-    
-    try std.testing.expectEqualStrings("session", std.mem.trim(u8, name.?, &std.ascii.whitespace));
-    try std.testing.expectEqualStrings("abc123", value.?);
-}
-
-test "cookie: parse multiple cookies" {
-    const cookies_raw = "session=abc123; user=alice; theme=dark";
-    
-    var cookies = std.mem.splitScalar(u8, cookies_raw, ';');
-    var count: usize = 0;
-    while (cookies.next()) |_| {
-        count += 1;
-    }
-    
-    try std.testing.expectEqual(@as(usize, 3), count);
-}
-
-// ============================================================================
-// Router Tests (Additional)
-// ============================================================================
-
-test "router: exact match with params" {
-    const routes = [_]mer.Route{
-        .{ .path = "/", .render = dummyRender, .meta = .{} },
-        .{ .path = "/users/:id", .render = dummyRender, .meta = .{} },
-    };
-    
-    var router = mer.Router.init(std.testing.allocator, &routes);
-    defer router.deinit();
-    
-    const found = router.findRoute("/users/42");
-    try std.testing.expect(found != null);
-    try std.testing.expectEqualStrings("/users/:id", found.?.path);
-}
-
-test "router: no match returns null" {
-    const routes = [_]mer.Route{
-        .{ .path = "/", .render = dummyRender, .meta = .{} },
-    };
-    
-    var router = mer.Router.init(std.testing.allocator, &routes);
-    defer router.deinit();
-    
-    const found = router.findRoute("/nonexistent");
-    try std.testing.expect(found == null);
-}
-
-test "router: empty routes" {
-    const routes = [_]mer.Route{};
-    
-    var router = mer.Router.init(std.testing.allocator, &routes);
-    defer router.deinit();
-    
-    const found = router.findRoute("/");
-    try std.testing.expect(found == null);
+    try std.testing.expectEqualStrings("2", req.queryParam("page").?);
+    try std.testing.expectEqualStrings("alice", mer.formParam(req.body, "name").?);
+    try std.testing.expectEqualStrings("", mer.formParam(req.body, "empty").?);
+    try std.testing.expectEqualStrings("abc123", req.cookie("session").?);
+    try std.testing.expect(req.queryParam("missing") == null);
 }
 
 fn dummyRender(_: mer.Request) mer.Response {
-    return mer.html("");
+    return mer.html("ok");
 }
 
-// ============================================================================
-// Session Tests
-// ============================================================================
-
-test "session: create and verify" {
-    const secret = "test-secret-key-min-32-bytes-long";
-    const data = "{\"user\":\"alice\"}";
-    
-    const signed = mer.signSession(data, secret);
-    
-    // Parse the signed value to get session ID
-    var parts = std.mem.splitScalar(u8, signed, ':');
-    const payload = parts.next();
-    const sig = parts.next();
-    
-    try std.testing.expect(payload != null);
-    try std.testing.expect(sig != null);
-}
-
-// ============================================================================
-// Environment Tests
-// ============================================================================
-
-test "env: loadDotenv exists" {
-    // Just verify the function is accessible
-    const f = mer.loadDotenv;
-    _ = f;
-}
-
-// ============================================================================
-// Meta Tests
-// ============================================================================
-
-test "meta: default values" {
-    const meta: mer.Meta = .{};
-    
-    try std.testing.expectEqualStrings("", meta.title);
-    try std.testing.expectEqualStrings("", meta.description);
-}
-
-test "meta: custom values" {
-    const meta: mer.Meta = .{
-        .title = "Test Page",
-        .description = "Test Description",
+test "core API: router exact dynamic and missing routes" {
+    const routes = [_]mer.Route{
+        .{ .path = "/", .render = dummyRender },
+        .{ .path = "/users/:id", .render = dummyRender },
     };
-    
-    try std.testing.expectEqualStrings("Test Page", meta.title);
-    try std.testing.expectEqualStrings("Test Description", meta.description);
+    var router = mer.Router.init(std.testing.allocator, &routes);
+    defer router.deinit();
+
+    try std.testing.expectEqualStrings("/", router.findRoute("/").?.path);
+    try std.testing.expectEqualStrings("/users/:id", router.findRoute("/users/42/").?.path);
+    try std.testing.expect(router.findRoute("/missing/path") == null);
 }
 
-// ============================================================================
-// Utility Tests
-// ============================================================================
+test "core API: typedJson returns caller-owned serialized body" {
+    const Data = struct { name: []const u8, count: i32 };
+    const response = mer.typedJson(std.testing.allocator, Data{ .name = "test", .count = 42 });
+    defer response.deinit();
 
-test "typedJson: serializes structs" {
-    const TestData = struct {
-        name: []const u8,
-        count: i32,
-    };
-    
-    const data = TestData{ .name = "test", .count = 42 };
-    const resp = mer.typedJson(std.testing.allocator, data);
-    defer resp.free(std.testing.allocator);
-    
-    try std.testing.expectEqual(resp.status, .ok);
-    try std.testing.expectEqual(resp.content_type, .json);
-    try std.testing.expect(std.mem.indexOf(u8, resp.body, "test") != null);
-    try std.testing.expect(std.mem.indexOf(u8, resp.body, "42") != null);
+    try std.testing.expectEqual(std.http.Status.ok, response.status);
+    try std.testing.expectEqual(mer.ContentType.json, response.content_type);
+    try std.testing.expect(std.mem.indexOf(u8, response.body, "\"name\":\"test\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, response.body, "\"count\":42") != null);
+}
+
+test "core API: environment lifecycle owns values and resets them" {
+    mer.resetEnv();
+    defer mer.resetEnv();
+
+    var value = [_]u8{ 'o', 'w', 'n', 'e', 'd' };
+    try mer.putEnv("MERJS_PUBLIC_API_LIFECYCLE_TEST", &value);
+    @memset(&value, 'x');
+    try std.testing.expectEqualStrings("owned", mer.env("MERJS_PUBLIC_API_LIFECYCLE_TEST").?);
+
+    mer.deinitDotenv();
+    mer.resetEnv();
+    try std.testing.expect(mer.env("MERJS_PUBLIC_API_LIFECYCLE_TEST") == null);
+    _ = mer.loadDotenv;
+    _ = mer.loadDotenvStatus;
+}
+
+test "core API: v0.2.5 mercss declarations remain source compatible" {
+    inline for (.{
+        "DesignSystem",
+        "Button",
+        "Card",
+        "Alert",
+        "getDemoHtml",
+        "getAllCss",
+        "ResponsiveContainer",
+        "InteractiveButton",
+        "ResponsiveInteractiveButton",
+        "exampleUsage",
+    }) |name| {
+        try std.testing.expect(@hasDecl(mer.mercss, name));
+        try std.testing.expect(@hasDecl(mer.mercss_compat, name));
+    }
+    try std.testing.expectEqualStrings("#3b82f6", mer.mercss.DesignSystem.colors.primary);
+}
+
+test "core API: shared exports retain their public type identity" {
+    try std.testing.expect(mer.RenderFn == *const fn (mer.Request) mer.Response);
+    try std.testing.expect(mer.Route == @TypeOf(mer.Route{
+        .path = "/",
+        .render = dummyRender,
+    }));
+    try std.testing.expect(mer.h.Node == @TypeOf(mer.h.raw("identity")));
+}
+
+fn runtimeNestedNode(title: []const u8) mer.h.Node {
+    return mer.h.div(.{}, .{
+        mer.h.h1(.{}, title),
+        mer.h.div(.{}, &.{mer.h.span(.{}, "nested")}),
+    });
+}
+
+test "core API: standalone runtime strings and tuples own their children" {
+    try std.testing.expect(!mer.h.hasRenderAllocator());
+    mer.h.resetStandaloneFallback();
+    defer mer.h.resetStandaloneFallback();
+
+    var runtime_text = [_]u8{ 'r', 'u', 'n', 't', 'i', 'm', 'e' };
+    const string_node = mer.h.p(.{}, runtime_text[0..]);
+    defer string_node.deinit();
+    const string_body = try mer.h.render(std.testing.allocator, string_node);
+    defer std.testing.allocator.free(string_body);
+    try std.testing.expectEqualStrings("<p>runtime</p>", string_body);
+
+    const tuple_node = mer.h.div(.{}, .{
+        mer.h.span(.{}, runtime_text[0..]),
+        mer.h.strong(.{}, " tuple"),
+    });
+    defer tuple_node.deinit();
+    const tuple_body = try mer.h.render(std.testing.allocator, tuple_node);
+    defer std.testing.allocator.free(tuple_body);
+    try std.testing.expectEqualStrings(
+        "<div><span>runtime</span><strong> tuple</strong></div>",
+        tuple_body,
+    );
+}
+
+test "core API: standalone Node copies can both be deinitialized harmlessly" {
+    try std.testing.expect(!mer.h.hasRenderAllocator());
+    mer.h.resetStandaloneFallback();
+    defer mer.h.resetStandaloneFallback();
+
+    const node = mer.h.div(.{}, .{mer.h.span(.{}, "copy")});
+    const copy = node;
+    node.deinit();
+    copy.deinit();
+
+    const body = try mer.h.render(std.testing.allocator, copy);
+    defer std.testing.allocator.free(body);
+    try std.testing.expectEqualStrings("<div><span>copy</span></div>", body);
+}
+
+test "core API: later standalone nodes do not invalidate earlier trees" {
+    try std.testing.expect(!mer.h.hasRenderAllocator());
+    mer.h.resetStandaloneFallback();
+    defer mer.h.resetStandaloneFallback();
+
+    const first = mer.h.p(.{}, "first");
+    for (0..64) |_| {
+        const node = mer.h.p(.{}, "later");
+        node.deinit();
+    }
+    const body = try mer.h.render(std.testing.allocator, first);
+    defer std.testing.allocator.free(body);
+    try std.testing.expectEqualStrings("<p>first</p>", body);
+}
+
+test "core API: standalone nested runtime children survive constructor frames" {
+    try std.testing.expect(!mer.h.hasRenderAllocator());
+    mer.h.resetStandaloneFallback();
+    defer mer.h.resetStandaloneFallback();
+
+    const node = runtimeNestedNode("standalone");
+    defer node.deinit();
+
+    var clobber: [4096]u8 = undefined;
+    @memset(&clobber, 0xaa);
+    std.mem.doNotOptimizeAway(&clobber);
+
+    const body = try mer.h.render(std.testing.allocator, node);
+    defer std.testing.allocator.free(body);
+    try std.testing.expectEqualStrings(
+        "<div><h1>standalone</h1><div><span>nested</span></div></div>",
+        body,
+    );
+}
+
+test "core API: copied runtime nodes render through separate roots" {
+    var storage = mer.h.RenderStorage.init(std.testing.allocator);
+    storage.activate();
+    defer storage.deinit();
+
+    const child = mer.h.div(.{}, .{mer.h.span(.{}, "shared")});
+    const first = mer.render(std.testing.allocator, mer.h.section(.{}, .{child}));
+    defer first.deinit();
+    const copy = child;
+    const second = mer.render(std.testing.allocator, mer.h.article(.{}, .{copy}));
+    defer second.deinit();
+
+    try std.testing.expectEqualStrings("<section><div><span>shared</span></div></section>", first.body);
+    try std.testing.expectEqualStrings("<article><div><span>shared</span></div></article>", second.body);
+}
+
+test "core API: runtime nested children survive constructor stack frames" {
+    var storage = mer.h.RenderStorage.init(std.testing.allocator);
+    storage.activate();
+    defer storage.deinit();
+
+    const node = runtimeNestedNode("runtime");
+
+    var clobber: [4096]u8 = undefined;
+    @memset(&clobber, 0xaa);
+    std.mem.doNotOptimizeAway(&clobber);
+
+    const body = try mer.h.render(std.testing.allocator, node);
+    defer std.testing.allocator.free(body);
+    try std.testing.expectEqualStrings(
+        "<div><h1>runtime</h1><div><span>nested</span></div></div>",
+        body,
+    );
+}
+
+test "core API: repeated owned responses release their bodies" {
+    var storage = mer.h.RenderStorage.init(std.testing.allocator);
+    storage.activate();
+    defer storage.deinit();
+
+    for (0..100) |i| {
+        const json_response = mer.typedJson(std.testing.allocator, .{ .request = i });
+        json_response.deinit();
+        const html_response = mer.render(std.testing.allocator, mer.h.div(.{}, "request"));
+        html_response.deinit();
+    }
+}
+
+test "core API: serialization failures release partial allocations" {
+    var json_failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
+    const response = mer.typedJson(json_failing.allocator(), .{ .value = "allocation failure" });
+    response.deinit();
+
+    var html_failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
+    try std.testing.expectError(
+        error.OutOfMemory,
+        mer.h.render(html_failing.allocator(), mer.h.raw("allocation failure")),
+    );
 }
