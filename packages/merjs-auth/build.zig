@@ -4,31 +4,39 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const merjs = b.dependency("merjs", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     // Module-only package. No executable is produced.
-    // consumers must call: merjs_auth_mod.addImport("mer", mer_mod)
     const merjs_auth_mod = b.addModule("merjs-auth", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
-
-    // Expose module reference so consumers can reference it:
-    // const merjs_auth = b.dependency("merjs-auth", .{});
-    // const auth_mod = merjs_auth.module("merjs-auth");
-    _ = merjs_auth_mod;
+    merjs_auth_mod.addImport("mer", merjs.module("mer"));
+    merjs_auth_mod.addImport("runtime", merjs.module("runtime"));
 
     // Test step — runs all tests in the src tree.
     const test_step = b.step("test", "Run merjs-auth unit tests");
 
     const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
+        .root_module = merjs_auth_mod,
+    });
+
+    const run_tests = b.addRunArtifact(unit_tests);
+
+    const consumer_mod = b.createModule(.{
+        .root_source_file = b.path("src/tests/consumer_test.zig"),
         .target = target,
         .optimize = optimize,
     });
+    consumer_mod.addImport("mer", merjs.module("mer"));
+    consumer_mod.addImport("runtime", merjs.module("runtime"));
+    consumer_mod.addImport("merjs-auth", merjs_auth_mod);
+    const run_consumer_tests = b.addRunArtifact(b.addTest(.{ .root_module = consumer_mod }));
 
-    // Tests that exercise mer-integrated code (session, csrf) need the
-    // mer module injected here. For pure-Zig modules (crypto, token,
-    // password, db) tests run standalone.
-    const run_tests = b.addRunArtifact(unit_tests);
     test_step.dependOn(&run_tests.step);
+    test_step.dependOn(&run_consumer_tests.step);
 }

@@ -22,7 +22,7 @@ This directory contains the npm and PyPI package configurations for distributing
 ### How it Works
 1. User runs `npm install -g merlionjs`
 2. `postinstall` hook runs `install.js`
-3. Script detects platform (macOS/Linux/Windows) and arch (x64/arm64)
+3. Script detects a published platform (macOS/Linux) and arch (x64/arm64)
 4. Downloads appropriate binary from GitHub releases
 5. Verifies SHA256 checksum
 6. Places binary in `bin/` directory
@@ -69,7 +69,7 @@ mer init my-app
 ```bash
 # npm
 cd packages/npm
-npm version 0.2.3
+npm version 0.2.5
 npm publish --access public
 
 # PyPI
@@ -90,9 +90,9 @@ Both packages should stay in sync with the main merlionjs version:
 
 | File | Version Location |
 |------|------------------|
-| `package.json` | `"version": "0.2.2"` |
-| `pyproject.toml` | `version = "0.2.2"` |
-| `src/merjs/__init__.py` | `__version__ = "0.2.2"` |
+| `package.json` | `"version": "0.2.5"` |
+| `pyproject.toml` | `version = "0.2.5"` |
+| `src/merjs/__init__.py` | `__version__ = "0.2.5"` |
 
 ## Platform Support
 
@@ -101,10 +101,9 @@ Both packages should stay in sync with the main merlionjs version:
 - ✅ macOS Apple Silicon (arm64)
 - ✅ Linux x64
 - ✅ Linux ARM64
-- ✅ Windows x64
 
 ### Future
-- Windows ARM64 (when Zig supports)
+- Windows x64/ARM64 after CLI support and release assets are published
 - FreeBSD (community request)
 
 ## Troubleshooting
@@ -118,7 +117,6 @@ Check Python version: `python --version` (needs 3.8+)
 ### Binary not found after install
 - Check internet connection (binary downloads from GitHub)
 - Try force reinstall: `npm install -g merlionjs --force` or `pip install --force-reinstall merlionjs`
-- Check antivirus isn't blocking the binary (Windows)
 
 ## Security
 
