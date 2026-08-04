@@ -1,0 +1,66 @@
+// mer.app.zon — native app manifest (scaffolded by `mer add native`).
+//
+// Consumed comptime by native/main.zig. Edit window size/title, server mode,
+// and permissions here. See docs/native.md for the full schema.
+.{
+    .id = "com.example.my-app",
+    .name = "my-app",
+    .display_name = "My App",
+    .version = "0.1.0",
+    .web_engine = "system",
+    .server = .{
+        .mode = "dev", // "dev" (hot reload) | "embedded" (prod)
+        .host = "127.0.0.1",
+        .port = 0, // 0 = ephemeral; shell reads back via ServerReady
+    },
+    .capabilities = .{ "webview", "js_bridge" },
+    .permissions = .{ "window", "clipboard", "dialog", "open" },
+    .security = .{
+        .navigation = .{ .allowed_origins = .{"mer://app"} },
+        .bridge = .{
+            // Tauri-style least privilege: commands must be explicitly listed
+            // here and still pass their permission class below.
+            .allowed_commands = .{
+                "mer.ping",             "mer.echo",
+                "clipboard.read",       "clipboard.write",
+                "dialog.openFile",      "dialog.pickDirectory",
+                "dialog.openDirectory", "open.external",
+                "open.path",            "window.setTitle",
+                "window.close",
+            },
+            .command_origins = .{
+                "mer.ping|http://127.0.0.1",
+                "mer.echo|http://127.0.0.1",
+                "clipboard.read|http://127.0.0.1",
+                "clipboard.write|http://127.0.0.1",
+                "dialog.openFile|http://127.0.0.1",
+                "dialog.pickDirectory|http://127.0.0.1",
+                "dialog.openDirectory|http://127.0.0.1",
+                "open.external|http://127.0.0.1",
+                "open.path|http://127.0.0.1",
+                "window.setTitle|http://127.0.0.1",
+                "window.close|http://127.0.0.1",
+            },
+        },
+        .open = .{
+            .external_schemes = .{ "http", "https", "mailto" },
+            .path_roots = .{"public"},
+        },
+    },
+    .macos = .{
+        // Optional. Set for `mer package --sign` / `mer package --notarize`.
+        // .signing_identity = "Developer ID Application: Example, Inc. (TEAMID)",
+        // .team_id = "TEAMID",
+        // .entitlements = "native/entitlements.plist",
+        // .notarization_profile = "merjs-notary",
+    },
+    .update = .{
+        // Planned: signed update manifests/artifacts. No updater runs in v0.2.5.
+        // .provider = "github-releases",
+        // .feed_url = "https://example.com/mer-native/update.json",
+        // .public_key = "ed25519:...",
+    },
+    .windows = .{
+        .{ .label = "main", .title = "My App", .width = 1024, .height = 720 },
+    },
+}

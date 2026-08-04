@@ -1,5 +1,6 @@
 const std = @import("std");
 const mer = @import("mer");
+const mercss_css = @embedFile("_mercss.css");
 
 /// Framework primitive — automatically wraps all HTML page responses.
 pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, meta: mer.Meta) []const u8 {
@@ -52,6 +53,10 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\  </style>
         \\
     ) catch return body;
+
+    w.writeAll("  <style>\n") catch return body;
+    w.writeAll(mercss_css) catch return body;
+    w.writeAll("\n  </style>\n") catch return body;
 
     if (meta.extra_head) |extra| {
         w.writeAll(extra) catch {};
