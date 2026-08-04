@@ -1,111 +1,119 @@
-#!/bin/bash
-# install.sh — One-liner installer for merjs
-# Usage: curl -fsSL https://merjs.trilok.ai/install.sh | bash
+#!/bin/sh
 
-set -e
+set -eu
 
-REPO="justrach/merjs"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-VERSION="${VERSION:-latest}"
+REPO="${MER_INSTALL_REPO:-justrach/merjs}"
+VERSION="${MER_INSTALL_VERSION:-latest}"
 
-detect_os() {
-    case "$(uname -s)" in
-        Linux*)     echo "linux";;
-        Darwin*)    echo "macos";;
-        *)          echo "unknown";;
-    esac
+need_cmd() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "install-mer: missing required command: $1" >&2
+        exit 1
+    fi
 }
 
-detect_arch() {
-    case "$(uname -m)" in
-        x86_64|amd64)   echo "x86_64";;
-        arm64|aarch64)  echo "arm64";;
-        *)              echo "unknown";;
-    esac
-}
+need_cmd uname
+need_cmd mktemp
+need_cmd chmod
+need_cmd mkdir
+need_cmd mv
 
-OS=$(detect_os)
-ARCH=$(detect_arch)
-
-if [ "$OS" = "unknown" ] || [ "$ARCH" = "unknown" ]; then
-    echo "Error: Unsupported platform: ${OS}/${ARCH}"
+if command -v curl >/dev/null 2>&1; then
+    fetch() {
+        curl -fsSL "$1" -o "$2"
+    }
+elif command -v wget >/dev/null 2>&1; then
+    fetch() {
+        wget -qO "$2" "$1"
+    }
+else
+    echo "install-mer: need curl or wget to download releases" >&2
     exit 1
 fi
 
-echo "🚀 merjs installer"
-echo "   Platform: ${OS}/${ARCH}"
-echo "   Install dir: ${INSTALL_DIR}"
-echo ""
+OS="$(uname -s)"
+ARCH="$(uname -m)"
 
-# Get latest version
+case "$OS" in
+    Darwin) os="macos" ;;
+    Linux) os="linux" ;;
+    *)
+        echo "install-mer: unsupported OS: $OS" >&2
+        exit 1
+        ;;
+esac
+
+case "$ARCH" in
+    arm64|aarch64) arch="aarch64" ;;
+    x86_64|amd64) arch="x86_64" ;;
+    *)
+        echo "install-mer: unsupported architecture: $ARCH" >&2
+        exit 1
+        ;;
+esac
+
+asset="mer-${os}-${arch}"
+base_url="https://github.com/${REPO}/releases"
 if [ "$VERSION" = "latest" ]; then
-    echo "📦 Fetching latest version..."
-    VERSION=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    if [ -z "$VERSION" ]; then
-        VERSION="v0.2.5"
-    fi
-fi
-
-echo "   Version: ${VERSION}"
-
-# Map to release asset naming
-if [ "$OS" = "macos" ]; then
-    if [ "$ARCH" = "arm64" ]; then
-        ASSET="mer-macos-aarch64"
-    else
-        ASSET="mer-macos-x86_64"
-    fi
+    download_url="${base_url}/latest/download/${asset}"
+    checksums_url="${base_url}/latest/download/checksums.txt"
 else
-    if [ "$ARCH" = "arm64" ]; then
-        ASSET="mer-linux-aarch64"
-    else
-        ASSET="mer-linux-x86_64"
-    fi
+    download_url="${base_url}/download/${VERSION}/${asset}"
+    checksums_url="${base_url}/download/${VERSION}/checksums.txt"
 fi
 
-URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
+if [ -n "${MER_INSTALL_DIR:-}" ]; then
+    install_dir="$MER_INSTALL_DIR"
+elif [ -w /usr/local/bin ]; then
+    install_dir="/usr/local/bin"
+else
+    install_dir="${HOME}/.local/bin"
+fi
 
-TMP_DIR=$(mktemp -d)
-trap "rm -rf $TMP_DIR" EXIT
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT INT TERM
 
-echo "⬇️  Downloading ${ASSET}..."
-if ! curl -fsSL "$URL" -o "$TMP_DIR/mer"; then
-    echo "Error: Failed to download ${URL}"
-    echo "The release may not exist yet. Build from source:"
-    echo "  git clone https://github.com/${REPO}.git"
-    echo "  cd merjs && zig build cli"
+bin_path="${tmpdir}/mer"
+checksums_path="${tmpdir}/checksums.txt"
+
+echo "install-mer: downloading ${asset}" >&2
+fetch "$download_url" "$bin_path"
+fetch "$checksums_url" "$checksums_path"
+
+if command -v shasum >/dev/null 2>&1; then
+    verify_checksum() {
+        shasum -a 256 -c -
+    }
+elif command -v sha256sum >/dev/null 2>&1; then
+    verify_checksum() {
+        sha256sum -c -
+    }
+else
+    echo "install-mer: need shasum or sha256sum to verify the download" >&2
     exit 1
 fi
 
-echo "🔧 Installing..."
-
-if [ -w "$INSTALL_DIR" ]; then
-    SUDO=""
-else
-    echo "   (may prompt for sudo password)"
-    SUDO="sudo"
+checksum_entry="${tmpdir}/checksum"
+if ! LC_ALL=C grep "^[[:xdigit:]]\{64\}  ${asset}\$" "$checksums_path" > "$checksum_entry"; then
+    echo "install-mer: checksum for ${asset} not found" >&2
+    exit 1
+fi
+if ! (
+    cd "$tmpdir"
+    sed "s| ${asset}\$| mer|" "$checksum_entry" | verify_checksum
+); then
+    echo "install-mer: checksum verification failed for ${asset}" >&2
+    exit 1
 fi
 
-$SUDO mkdir -p "$INSTALL_DIR"
-$SUDO cp "$TMP_DIR/mer" "${INSTALL_DIR}/mer"
-$SUDO chmod +x "${INSTALL_DIR}/mer"
+mkdir -p "$install_dir"
+chmod +x "$bin_path"
+mv "$bin_path" "${install_dir}/mer"
 
-if command -v mer &> /dev/null; then
-    INSTALLED_VERSION=$(mer --version 2>/dev/null || echo "unknown")
-    echo ""
-    echo "✅ merjs installed successfully!"
-    echo ""
-    echo "   Version: ${INSTALLED_VERSION}"
-    echo "   Location: $(which mer)"
-    echo ""
-    echo "Next steps:"
-    echo "   mer init myapp    # Create a new project"
-    echo "   mer dev           # Start dev server"
-else
-    echo "⚠️  mer installed but not in PATH"
-    echo "   Add this to your shell profile:"
-    echo "   export PATH=\"${INSTALL_DIR}:\$PATH\""
-fi
-
-echo ""
-echo "Documentation: https://github.com/justrach/merjs"
+echo "install-mer: installed to ${install_dir}/mer" >&2
+case ":${PATH}:" in
+    *":${install_dir}:"*) ;;
+    *)
+        echo "install-mer: add ${install_dir} to PATH to run 'mer'" >&2
+        ;;
+esac
