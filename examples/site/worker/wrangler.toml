@@ -1,8 +1,7 @@
 # merlionjs.com production deployment
-# This is the site-specific config — the root worker/wrangler.toml is generic.
 
 name = "merjs"
-main = "worker.js"
+main = "worker/worker.js"
 compatibility_date = "2024-12-01"
 
 routes = [
@@ -13,7 +12,7 @@ routes = [
 directory = "../public"
 
 [build]
-command = "cd ../.. && /opt/homebrew/bin/zig build worker"
+command = "cd ../../.. && zig build worker"
 
 [[rules]]
 type = "CompiledWasm"
@@ -22,3 +21,10 @@ globs = ["**/*.wasm"]
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "merjs-docs"
+
+[vars]
+AI_BUDGET_ACCOUNT = "merlionjs-site-production"
+
+[[services]]
+binding = "AI_BUDGET_GUARD"
+service = "merjs-ai-budget-guard"

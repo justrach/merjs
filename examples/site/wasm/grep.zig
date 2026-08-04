@@ -26,10 +26,10 @@ export fn get_result_len() u32 {
 // ── Stopwords ──────────────────────────────────────────────────────────────
 fn isStopword(w: []const u8) bool {
     const stops = [_][]const u8{
-        "the", "and", "for", "are", "was", "were", "been", "have", "has",
-        "had", "not", "but", "with", "from", "this", "that", "its",
-        "which", "who", "how", "much", "many", "what", "does", "did",
-        "will", "would", "could", "should",
+        "the",   "and",    "for",  "are",  "was",  "were", "been", "have", "has",
+        "had",   "not",    "but",  "with", "from", "this", "that", "its",  "which",
+        "who",   "how",    "much", "many", "what", "does", "did",  "will", "would",
+        "could", "should",
     };
     for (stops) |s| {
         if (std.mem.eql(u8, w, s)) return true;
@@ -147,16 +147,23 @@ export fn grep(q_len: u32, c_len: u32) void {
     }
 
     // ── Write JSON result ──────────────────────────────────────────────
-    var out = std.io.fixedBufferStream(&result_buf);
-    const w = out.writer();
-    w.writeByte('[') catch return;
+    var out_pos: usize = 0;
+    result_buf[out_pos] = '[';
+    out_pos += 1;
     var first = true;
     for (top) |t| {
         if (t.score == 0) continue;
-        if (!first) w.writeByte(',') catch return;
-        w.print("[{d},{d}]", .{ t.index, t.score }) catch return;
+        if (!first) {
+            if (out_pos >= result_buf.len) return;
+            result_buf[out_pos] = ',';
+            out_pos += 1;
+        }
+        const written = std.fmt.bufPrint(result_buf[out_pos..], "[{d},{d}]", .{ t.index, t.score }) catch return;
+        out_pos += written.len;
         first = false;
     }
-    w.writeByte(']') catch return;
-    result_len = @intCast(out.pos);
+    if (out_pos >= result_buf.len) return;
+    result_buf[out_pos] = ']';
+    out_pos += 1;
+    result_len = @intCast(out_pos);
 }
