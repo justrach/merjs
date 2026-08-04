@@ -1,5 +1,13 @@
 const std = @import("std");
 const mer = @import("mer");
+const mercss_css = @embedFile("_mercss.css");
+
+// Dynamic component variants are assembled at runtime, so expose their finite
+// utility set to the JIT scanner through a literal safelist.
+const mercss_safelist = .{ .class = "inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:pointer-events-none disabled:opacity-50 bg-slate-900 text-white hover:bg-slate-800 bg-slate-100 text-slate-900 hover:bg-slate-200 bg-red-600 hover:bg-red-700 border border-slate-300 bg-transparent hover:bg-slate-100 underline-offset-4 hover:underline h-8 px-3 text-sm h-10 px-4 py-2 h-12 px-6 text-lg w-10 p-2 rounded-lg border-slate-200 bg-white shadow-sm flex w-full placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 rounded-full px-2.5 py-0.5 text-xs font-semibold border-transparent text-slate-50 bg-red-500 text-slate-950 relative p-4 bg-slate-50 border-red-200 bg-red-50 text-red-900" };
+comptime {
+    _ = mercss_safelist;
+}
 
 /// Framework primitive — automatically wraps all HTML page responses.
 pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, meta: mer.Meta) []const u8 {
@@ -52,6 +60,10 @@ pub fn wrap(allocator: std.mem.Allocator, path: []const u8, body: []const u8, me
         \\  </style>
         \\
     ) catch return body;
+
+    w.writeAll("  <style>\n") catch return body;
+    w.writeAll(mercss_css) catch return body;
+    w.writeAll("\n  </style>\n") catch return body;
 
     if (meta.extra_head) |extra| {
         w.writeAll(extra) catch {};

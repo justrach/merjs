@@ -15,7 +15,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    // Initialize std.Io runtime (Auto-selects Evented on Linux, Threaded elsewhere)
+    // Initialize std.Io runtime (Threaded on Zig 0.16-supported targets).
     try runtime.init(alloc);
     defer runtime.deinit();
 
@@ -24,7 +24,10 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const args = try init.args.toSlice(arena_state.allocator());
 
     // Load .env before threads start.
-    mer.loadDotenv(alloc);
+    _ = try mer.loadDotenvStatus(alloc);
+    defer mer.deinitDotenv();
+    mer.telemetry.init();
+    defer mer.telemetry.deinit();
 
     var config = mer.Config{
         .host = "127.0.0.1",
@@ -44,11 +47,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
             i += 1;
         } else if (std.mem.eql(u8, args[i], "--no-dev")) {
             config.dev = false;
-        } else if (std.mem.eql(u8, args[i], "--debug")) {
-            config.debug = true;
-        } else if (std.mem.eql(u8, args[i], "--kuri-port") and i + 1 < args.len) {
-            config.kuri_port = try std.fmt.parseInt(u16, args[i + 1], 10);
-            i += 1;
+        } else if (std.mem.eql(u8, args[i], "--debug") or std.mem.eql(u8, args[i], "--kuri-port")) {
+            log.err("{s} was removed with the disabled browser automation integration", .{args[i]});
+            return error.RemovedBrowserAutomationOption;
         } else if (std.mem.eql(u8, args[i], "--verbose") or std.mem.eql(u8, args[i], "-v")) {
             config.verbose = true;
         } else if (std.mem.eql(u8, args[i], "--prerender")) {

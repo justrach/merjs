@@ -6,6 +6,7 @@ pub fn build(b: *std.Build) void {
 
     const merjs_dep = b.dependency("merjs", .{});
     const mer_mod = merjs_dep.module("mer");
+    const runtime_mod = merjs_dep.module("runtime");
 
     const main_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -14,6 +15,7 @@ pub fn build(b: *std.Build) void {
         .strip = if (optimize != .Debug) true else null,
     });
     main_mod.addImport("mer", mer_mod);
+    main_mod.addImport("runtime", runtime_mod);
     addDirModules(b, main_mod, mer_mod, "app");
     addDirModules(b, main_mod, mer_mod, "api");
     addRoutesModule(b, main_mod, mer_mod);
@@ -22,13 +24,16 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     // zig build codegen
+    const codegen_mod = b.createModule(.{
+        .root_source_file = merjs_dep.path("tools/codegen.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    codegen_mod.addImport("runtime", runtime_mod);
+    codegen_mod.addImport("mercss_jit", merjs_dep.module("mercss_jit"));
     const codegen_exe = b.addExecutable(.{
         .name = "codegen",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tools/codegen.zig"),
-            .target = b.graph.host,
-            .optimize = .Debug,
-        }),
+        .root_module = codegen_mod,
     });
     const run_codegen = b.addRunArtifact(codegen_exe);
     run_codegen.setCwd(b.path("."));
@@ -50,11 +55,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     test_mod.addImport("mer", mer_mod);
+    test_mod.addImport("runtime", runtime_mod);
     addDirModules(b, test_mod, mer_mod, "app");
     addDirModules(b, test_mod, mer_mod, "api");
     addRoutesModule(b, test_mod, mer_mod);
-    const run_tests = b.addRunArtifact(b.addTest(.{ .root_module = test_mod }));
-    run_tests.step.dependOn(&run_codegen.step);
+    const test_artifact = b.addTest(.{ .root_module = test_mod });
+    test_artifact.step.dependOn(&run_codegen.step);
+    const run_tests = b.addRunArtifact(test_artifact);
     b.step("test", "Compile the starter app").dependOn(&run_tests.step);
 }
 
@@ -85,6 +92,9 @@ fn addDirModules(b: *std.Build, mod: *std.Build.Module, mer_mod: *std.Build.Modu
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
         if (std.mem.eql(u8, entry.path, "layout.zig")) continue;
+        if (std.mem.eql(u8, dir, "app") and
+            (std.mem.startsWith(u8, entry.path, "components/") or
+                std.mem.startsWith(u8, entry.path, "components\\"))) continue;
         const file_path = b.fmt("{s}/{s}", .{ dir, entry.path });
         const import_name = b.fmt("{s}/{s}", .{ dir, entry.path[0 .. entry.path.len - 4] });
         const route_mod = b.createModule(.{ .root_source_file = b.path(file_path) });

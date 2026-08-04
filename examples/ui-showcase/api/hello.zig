@@ -10,9 +10,9 @@ const HelloResponse = struct {
 
 pub fn render(req: mer.Request) mer.Response {
     return mer.typedJson(req.allocator, HelloResponse{
-        .message      = "hello from merjs",
-        .framework    = "zig",
+        .message = "hello from merjs",
+        .framework = "zig",
         .node_modules = 0,
-        .zig_version  = "0.15",
+        .zig_version = "0.15",
     });
 }

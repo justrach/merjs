@@ -1,7 +1,6 @@
 //! Button component for merlion-ui
 //! Usage: const Button = @import("components/button.zig");
 
-const std = @import("std");
 const mer = @import("mer");
 const h = mer.h;
 
@@ -32,7 +31,7 @@ pub const Props = struct {
     type: []const u8 = "button",
 };
 
-fn variantClasses(variant: Variant) []const u8 {
+fn variantClasses(comptime variant: Variant) []const u8 {
     return switch (variant) {
         .primary => "bg-slate-900 text-white hover:bg-slate-800",
         .secondary => "bg-slate-100 text-slate-900 hover:bg-slate-200",
@@ -43,7 +42,7 @@ fn variantClasses(variant: Variant) []const u8 {
     };
 }
 
-fn sizeClasses(size: Size) []const u8 {
+fn sizeClasses(comptime size: Size) []const u8 {
     return switch (size) {
         .sm => "h-8 px-3 text-sm",
         .md => "h-10 px-4 py-2",
@@ -52,19 +51,20 @@ fn sizeClasses(size: Size) []const u8 {
     };
 }
 
-pub fn render(props: Props) h.Node {
+pub fn render(comptime props: Props) h.Node {
     const base_classes = "inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:pointer-events-none disabled:opacity-50";
-    const variant_cls = variantClasses(props.variant);
-    const size_cls = sizeClasses(props.size);
-    var class_buf: [512]u8 = undefined;
-    const classes = std.fmt.bufPrint(&class_buf, "{s} {s} {s} {s}", .{
-        base_classes,
-        variant_cls,
-        size_cls,
-        props.class orelse "",
-    }) catch base_classes;
-    return h.button(
-        .{ .class = classes, .id = props.id, .type = props.type, .disabled = props.disabled, .onclick = props.on_click },
-        props.label,
-    );
+    const variant_classes = comptime variantClasses(props.variant);
+    const size_classes = comptime sizeClasses(props.size);
+    const classes = base_classes ++ " " ++ variant_classes ++ " " ++
+        size_classes ++ " " ++ (props.class orelse "");
+    return h.button(.{
+        .class = classes,
+        .id = props.id,
+        .type = props.type,
+        .disabled = props.disabled,
+        .extra = if (props.on_click) |on_click|
+            &.{.{ .name = "onclick", .value = on_click }}
+        else
+            &.{},
+    }, props.label);
 }
