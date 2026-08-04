@@ -31,6 +31,15 @@ pub const Ctx = struct {
     allocator: std.mem.Allocator,
     permissions: []const []const u8,
     allowed_origins: []const []const u8 = &.{},
+    /// Optional explicit command allowlist. Empty preserves the older
+    /// permission-only behavior; generated manifests fill this in for least privilege.
+    allowed_commands: []const []const u8 = &.{},
+    /// Optional per-command origin bindings encoded as "command|origin".
+    command_origins: []const []const u8 = &.{},
+    /// Origin of the current bridge call, set by the platform backend.
+    current_origin: ?[]const u8 = null,
+    external_url_schemes: []const []const u8 = &.{ "http", "https", "mailto" },
+    open_path_roots: []const []const u8 = &.{},
 };
 
 /// A JSON value returned by a bridge handler (an owned string of JSON).
@@ -44,6 +53,10 @@ pub const BridgeError = error{
     PayloadTooLarge,
     ParseError,
     HandlerError,
+    CommandDenied,
+    UrlDenied,
+    PathDenied,
+    InvalidArgs,
     OutOfMemory,
 };
 
@@ -80,6 +93,7 @@ pub const registry = [_]Command{
     .{ .name = "open.external", .permission = "open", .handler = openExternal },
     .{ .name = "open.path", .permission = "open", .handler = openPath },
     .{ .name = "window.setTitle", .permission = "window", .handler = windowSetTitle },
+    .{ .name = "window.close", .permission = "window", .handler = windowClose },
 };
 
 fn ping(_: *Ctx, _: std.json.Value) HandlerResult {
@@ -93,7 +107,6 @@ fn echo(_: *Ctx, _: std.json.Value) HandlerResult {
 }
 
 fn dialogOpenFile(ctx: *Ctx, args: std.json.Value) HandlerResult {
-    if (builtin.os.tag != .macos) return .{ .err = error.HandlerError };
     const title = argString(args, "title") orelse "Choose a file";
     const result = commands.openPanel(ctx.allocator, .{
         .title = title,
@@ -108,12 +121,12 @@ fn dialogOpenFile(ctx: *Ctx, args: std.json.Value) HandlerResult {
 }
 
 fn dialogPickDirectory(ctx: *Ctx, args: std.json.Value) HandlerResult {
-    if (builtin.os.tag != .macos) return .{ .err = error.HandlerError };
     const title = argString(args, "title") orelse "Choose a folder";
     const result = commands.openPanel(ctx.allocator, .{
         .title = title,
         .can_choose_files = false,
         .can_choose_directories = true,
+        .can_create_directories = argBool(args, "canCreateDirectories") orelse false,
     }) catch return .{ .err = error.HandlerError };
     const json = if (result) |path| blk: {
         defer ctx.allocator.free(path);
@@ -123,14 +136,12 @@ fn dialogPickDirectory(ctx: *Ctx, args: std.json.Value) HandlerResult {
 }
 
 fn clipboardRead(ctx: *Ctx, _: std.json.Value) HandlerResult {
-    if (builtin.os.tag != .macos) return .{ .err = error.HandlerError };
     const text = commands.clipboardRead() catch return .{ .err = error.HandlerError };
     const json = jsonString(ctx.allocator, text) catch return .{ .err = error.OutOfMemory };
     return .{ .ok_owned = json };
 }
 
 fn clipboardWrite(_: *Ctx, args: std.json.Value) HandlerResult {
-    if (builtin.os.tag != .macos) return .{ .err = error.HandlerError };
     const text = switch (args) {
         .string => |value| value,
         .object => |object| blk: {
@@ -143,24 +154,29 @@ fn clipboardWrite(_: *Ctx, args: std.json.Value) HandlerResult {
     return .{ .ok = "null" };
 }
 
-fn openExternal(_: *Ctx, args: std.json.Value) HandlerResult {
-    if (builtin.os.tag != .macos) return .{ .err = error.HandlerError };
-    const url = argString(args, "url") orelse if (args == .string) args.string else return .{ .err = error.HandlerError };
+fn openExternal(ctx: *Ctx, args: std.json.Value) HandlerResult {
+    const url = argString(args, "url") orelse if (args == .string) args.string else return .{ .err = error.InvalidArgs };
+    if (!isAllowedExternalUrl(ctx, url)) return .{ .err = error.UrlDenied };
     commands.openUrl(url) catch return .{ .err = error.HandlerError };
     return .{ .ok = "null" };
 }
 
-fn openPath(_: *Ctx, args: std.json.Value) HandlerResult {
-    if (builtin.os.tag != .macos) return .{ .err = error.HandlerError };
-    const path = argString(args, "path") orelse if (args == .string) args.string else return .{ .err = error.HandlerError };
-    commands.openPath(path) catch return .{ .err = error.HandlerError };
+fn openPath(ctx: *Ctx, args: std.json.Value) HandlerResult {
+    const path = argString(args, "path") orelse if (args == .string) args.string else return .{ .err = error.InvalidArgs };
+    const resolved_path = resolveAllowedPath(ctx, path) orelse return .{ .err = error.PathDenied };
+    defer ctx.allocator.free(resolved_path);
+    commands.openPath(resolved_path) catch return .{ .err = error.HandlerError };
     return .{ .ok = "null" };
 }
 
 fn windowSetTitle(_: *Ctx, args: std.json.Value) HandlerResult {
-    if (builtin.os.tag != .macos) return .{ .err = error.HandlerError };
     const title = argString(args, "title") orelse if (args == .string) args.string else return .{ .err = error.HandlerError };
     commands.setWindowTitle(title) catch return .{ .err = error.HandlerError };
+    return .{ .ok = "null" };
+}
+
+fn windowClose(_: *Ctx, _: std.json.Value) HandlerResult {
+    commands.closeWindow() catch return .{ .err = error.HandlerError };
     return .{ .ok = "null" };
 }
 
@@ -170,11 +186,17 @@ fn argString(args: std.json.Value, key: []const u8) ?[]const u8 {
     return if (value == .string) value.string else null;
 }
 
+fn argBool(args: std.json.Value, key: []const u8) ?bool {
+    if (args != .object) return null;
+    const value = args.object.get(key) orelse return null;
+    return if (value == .bool) value.bool else null;
+}
+
 fn jsonString(alloc: std.mem.Allocator, value: []const u8) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(alloc);
     var jw: std.json.Stringify = .{ .writer = &out.writer };
     try jw.write(value);
-    return out.written();
+    return out.toOwnedSlice();
 }
 
 /// True if `perm` is granted by the manifest's permissions list. Empty perm
@@ -185,6 +207,99 @@ pub fn hasPermission(ctx: *Ctx, perm: []const u8) bool {
         if (std.mem.eql(u8, p, perm)) return true;
     }
     return false;
+}
+
+pub fn isCommandAllowed(ctx: *Ctx, name: []const u8) bool {
+    if (ctx.allowed_commands.len == 0) return true;
+    for (ctx.allowed_commands) |allowed| {
+        if (std.mem.eql(u8, allowed, name)) return true;
+    }
+    return false;
+}
+
+pub fn isCommandOriginAllowed(ctx: *Ctx, name: []const u8) bool {
+    const origin = ctx.current_origin orelse return ctx.command_origins.len == 0;
+    const actual = parseOrigin(origin) orelse return false;
+    var saw_rule_for_command = false;
+    for (ctx.command_origins) |entry| {
+        const sep = std.mem.indexOfScalar(u8, entry, '|') orelse continue;
+        const cmd_name = entry[0..sep];
+        if (!std.mem.eql(u8, cmd_name, name)) continue;
+        saw_rule_for_command = true;
+        const allowed = parseOrigin(entry[sep + 1 ..]) orelse continue;
+        if (!std.ascii.eqlIgnoreCase(actual.scheme, allowed.scheme)) continue;
+        if (!std.ascii.eqlIgnoreCase(actual.host, allowed.host)) continue;
+        // Command-origin entries may omit the port for ephemeral loopback apps.
+        // The platform backend has already enforced the strict global origin,
+        // so this does not expand bridge access beyond the loaded app origin.
+        if (allowed.port) |allowed_port| {
+            if (actual.port == null or !std.mem.eql(u8, actual.port.?, allowed_port)) continue;
+        }
+        return true;
+    }
+    return ctx.command_origins.len == 0 and !saw_rule_for_command;
+}
+
+fn isAllowedExternalUrl(ctx: *Ctx, url: []const u8) bool {
+    const scheme_end = std.mem.indexOfScalar(u8, url, ':') orelse return false;
+    const scheme = url[0..scheme_end];
+    if (scheme.len == 0) return false;
+    for (scheme) |c| {
+        if (!(std.ascii.isAlphanumeric(c) or c == '+' or c == '-' or c == '.')) return false;
+    }
+    for (ctx.external_url_schemes) |allowed| {
+        if (std.ascii.eqlIgnoreCase(scheme, allowed)) return true;
+    }
+    return false;
+}
+
+const path_canonicalizer = if (builtin.os.tag == .windows) struct {
+    fn realPathAlloc(_: std.mem.Allocator, _: []const u8) ![]u8 {
+        // Windows needs drive/UNC/case-insensitive/symlink-aware canonicalization
+        // before `open.path` can be enabled there. Until the WebView2 backend
+        // lands, rooted open.path checks fail closed on Windows without pulling
+        // POSIX libc symbols into the platform-neutral bridge.
+        return error.RealPathFailed;
+    }
+} else struct {
+    fn realPathAlloc(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
+        const path_z = try alloc.dupeZ(u8, path);
+        defer alloc.free(path_z);
+        var buf: [std.c.PATH_MAX]u8 = undefined;
+        const resolved = std.c.realpath(path_z.ptr, &buf) orelse return error.RealPathFailed;
+        return try alloc.dupe(u8, std.mem.span(resolved));
+    }
+};
+
+fn realPathAlloc(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
+    return path_canonicalizer.realPathAlloc(alloc, path);
+}
+
+fn pathWithinRoot(path: []const u8, root: []const u8) bool {
+    if (std.mem.eql(u8, path, root)) return true;
+    if (!std.mem.startsWith(u8, path, root)) return false;
+    return root.len > 0 and (root[root.len - 1] == '/' or (path.len > root.len and path[root.len] == '/'));
+}
+
+fn resolveAllowedPath(ctx: *Ctx, path: []const u8) ?[]u8 {
+    if (std.mem.indexOfScalar(u8, path, 0) != null) return null;
+
+    const resolved_path = if (ctx.open_path_roots.len == 0)
+        ctx.allocator.dupe(u8, path) catch return null
+    else
+        realPathAlloc(ctx.allocator, path) catch return null;
+    errdefer ctx.allocator.free(resolved_path);
+
+    if (ctx.open_path_roots.len == 0) return resolved_path;
+
+    for (ctx.open_path_roots) |root| {
+        if (root.len == 0 or std.mem.indexOfScalar(u8, root, 0) != null) continue;
+        const resolved_root = realPathAlloc(ctx.allocator, root) catch continue;
+        defer ctx.allocator.free(resolved_root);
+        if (pathWithinRoot(resolved_path, resolved_root)) return resolved_path;
+    }
+    ctx.allocator.free(resolved_path);
+    return null;
 }
 
 const ParsedOrigin = struct {
@@ -234,6 +349,10 @@ pub fn isOriginAllowed(ctx: *Ctx, url: []const u8) bool {
         const allowed = parseOrigin(origin) orelse continue;
         if (!std.ascii.eqlIgnoreCase(actual.scheme, allowed.scheme)) continue;
         if (!std.ascii.eqlIgnoreCase(actual.host, allowed.host)) continue;
+        // Browser origins are scheme+host+port. A portless manifest entry (for
+        // example `http://127.0.0.1`) intentionally does not wildcard every
+        // loopback port; shell.zig prepends the exact runtime origin after the
+        // server binds its ephemeral port.
         if (allowed.port) |allowed_port| {
             if (actual.port == null or !std.mem.eql(u8, actual.port.?, allowed_port)) continue;
         } else if (actual.port != null) {
@@ -267,6 +386,12 @@ pub fn dispatch(ctx: *Ctx, payload: []const u8) BridgeError![]u8 {
 
     for (registry) |cmd| {
         if (std.mem.eql(u8, cmd.name, env.cmd)) {
+            if (!isCommandAllowed(ctx, cmd.name)) {
+                return resolveError(alloc, env.id, "CommandDenied");
+            }
+            if (!isCommandOriginAllowed(ctx, cmd.name)) {
+                return resolveError(alloc, env.id, "OriginNotAllowed");
+            }
             if (!hasPermission(ctx, cmd.permission)) {
                 return resolveStr(alloc, env.id, false, "\"PermissionDenied\"");
             }
@@ -375,21 +500,103 @@ test "dispatch: malformed json yields ParseError" {
     try testing.expectEqualStrings("window.mer._resolve(0,false,\"ParseError\");", js);
 }
 
+test "jsonString returns an owned exact slice" {
+    const json = try jsonString(testing.allocator, "clipboard text");
+    defer testing.allocator.free(json);
+    try testing.expectEqualStrings("\"clipboard text\"", json);
+}
+
+test "dispatch: clipboard read owned result is freeable" {
+    if (!platform_commands.has_platform_commands) return error.SkipZigTest;
+
+    var ctx = newCtx(testing.allocator, &.{"clipboard"});
+    const js = try dispatch(&ctx, "{\"cmd\":\"clipboard.read\",\"args\":null,\"id\":9}");
+    defer testing.allocator.free(js);
+    try testing.expect(std.mem.startsWith(u8, js, "window.mer._resolve(9,true,"));
+}
+
 test "hasPermission: empty perm always allowed" {
     var ctx = newCtx(testing.allocator, &.{});
     try testing.expect(hasPermission(&ctx, ""));
 }
 
-test "isOriginAllowed: matches scheme and host, not string prefixes" {
+test "dispatch: explicit command allowlist denies unlisted commands" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{"window"});
+    ctx.allowed_commands = &.{"mer.ping"};
+    const js = try dispatch(&ctx, "{\"cmd\":\"window.close\",\"args\":null,\"id\":11}");
+    try testing.expectEqualStrings("window.mer._resolve(11,false,\"CommandDenied\");", js);
+}
+
+test "dispatch: per-command origin bindings deny commands without a rule" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{});
+    ctx.allowed_commands = &.{ "mer.ping", "mer.echo" };
+    ctx.command_origins = &.{"mer.ping|http://127.0.0.1:3000"};
+    ctx.current_origin = "http://127.0.0.1:3000";
+    const js = try dispatch(&ctx, "{\"cmd\":\"mer.echo\",\"args\":null,\"id\":16}");
+    try testing.expectEqualStrings("window.mer._resolve(16,false,\"OriginNotAllowed\");", js);
+}
+
+test "dispatch: per-command origin bindings deny wrong origins" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{});
+    ctx.allowed_commands = &.{"mer.ping"};
+    ctx.command_origins = &.{"mer.ping|http://127.0.0.1:3000"};
+    ctx.current_origin = "http://evil.test";
+    const js = try dispatch(&ctx, "{\"cmd\":\"mer.ping\",\"args\":null,\"id\":12}");
+    try testing.expectEqualStrings("window.mer._resolve(12,false,\"OriginNotAllowed\");", js);
+}
+
+test "dispatch: open.external rejects disallowed URL schemes before native open" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{"open"});
+    ctx.allowed_commands = &.{"open.external"};
+    const js = try dispatch(&ctx, "{\"cmd\":\"open.external\",\"args\":{\"url\":\"javascript:alert(1)\"},\"id\":13}");
+    try testing.expectEqualStrings("window.mer._resolve(13,false,\"UrlDenied\");", js);
+}
+
+test "dispatch: open.path rejects paths outside configured roots before native open" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{"open"});
+    ctx.allowed_commands = &.{"open.path"};
+    ctx.open_path_roots = &.{"/safe/root"};
+    const js = try dispatch(&ctx, "{\"cmd\":\"open.path\",\"args\":{\"path\":\"/safe/root-evil/file\"},\"id\":14}");
+    try testing.expectEqualStrings("window.mer._resolve(14,false,\"PathDenied\");", js);
+}
+
+test "dispatch: open.path rejects parent traversal outside configured roots" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var ctx = newCtx(alloc, &.{"open"});
+    ctx.allowed_commands = &.{"open.path"};
+    ctx.open_path_roots = &.{"public"};
+    const js = try dispatch(&ctx, "{\"cmd\":\"open.path\",\"args\":{\"path\":\"public/../build.zig\"},\"id\":15}");
+    try testing.expectEqualStrings("window.mer._resolve(15,false,\"PathDenied\");", js);
+}
+
+test "isOriginAllowed: matches scheme host and port, not string prefixes" {
     var ctx = Ctx{
         .allocator = testing.allocator,
         .permissions = &.{},
-        .allowed_origins = &.{ "http://127.0.0.1", "mer://app", "http://localhost:3000" },
+        .allowed_origins = &.{ "http://127.0.0.1", "http://127.0.0.1:49152", "mer://app", "http://localhost:3000" },
     };
-    try testing.expect(!isOriginAllowed(&ctx, "http://127.0.0.1:49152/"));
+    try testing.expect(isOriginAllowed(&ctx, "http://127.0.0.1:49152/"));
     try testing.expect(isOriginAllowed(&ctx, "http://127.0.0.1/"));
     try testing.expect(isOriginAllowed(&ctx, "mer://app/index.html"));
     try testing.expect(isOriginAllowed(&ctx, "http://localhost:3000/"));
+    try testing.expect(!isOriginAllowed(&ctx, "http://127.0.0.1:31337/"));
     try testing.expect(!isOriginAllowed(&ctx, "http://127.0.0.1.evil.example/"));
     try testing.expect(!isOriginAllowed(&ctx, "mer://app.evil/index.html"));
     try testing.expect(!isOriginAllowed(&ctx, "http://localhost:3001/"));
