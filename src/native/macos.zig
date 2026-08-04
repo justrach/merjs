@@ -19,6 +19,8 @@ extern fn objc_allocateClassPair(superclass: Id, name: [*:0]const u8, extra_byte
 extern fn class_addMethod(cls: Id, name: Sel, imp: *const anyopaque, types: [*:0]const u8) BOOL;
 extern fn objc_registerClassPair(cls: Id) void;
 extern fn objc_disposeClassPair(cls: Id) void;
+extern fn class_getInstanceMethod(cls: Id, name: Sel) Id;
+extern fn method_getImplementation(method: Id) ?*const anyopaque;
 
 const NSWindowStyleMaskTitled: NSUInteger = 1;
 const NSWindowStyleMaskClosable: NSUInteger = 2;
@@ -57,11 +59,6 @@ fn sendOne(recv: Id, selector: Sel, arg: Id) Id {
 fn sendOneVoid(recv: Id, selector: Sel, arg: Id) void {
     const F = *const fn (Id, Sel, Id) callconv(.c) void;
     @as(F, @ptrCast(&objc_msgSend))(recv, selector, arg);
-}
-
-fn sendOneBool(recv: Id, selector: Sel, arg: Id) BOOL {
-    const F = *const fn (Id, Sel, Id) callconv(.c) BOOL;
-    return @as(F, @ptrCast(&objc_msgSend))(recv, selector, arg);
 }
 
 fn sendIntegerBool(recv: Id, selector: Sel, value: NSInteger) BOOL {
@@ -106,7 +103,8 @@ fn createAppDelegate() Id {
     const class_name = "MerjsNativeWindowLifecycleDelegate_v1";
     const class = cls(class_name) orelse blk: {
         const superclass = cls("NSObject") orelse return null;
-        const new_class = objc_allocateClassPair(superclass, class_name, 0) orelse return null;
+        const new_class = objc_allocateClassPair(superclass, class_name, 0) orelse
+            break :blk cls(class_name) orelse return null;
         if (class_addMethod(new_class, method, @ptrCast(&stopAfterLastWindow), "c@:@") == NO) {
             objc_disposeClassPair(new_class);
             return null;
@@ -114,7 +112,10 @@ fn createAppDelegate() Id {
         objc_registerClassPair(new_class);
         break :blk new_class;
     };
-    if (sendOneBool(class, sel("instancesRespondToSelector:"), method) == NO) return null;
+    const registered_method = class_getInstanceMethod(class, method) orelse return null;
+    const implementation = method_getImplementation(registered_method) orelse return null;
+    const expected: *const anyopaque = @ptrCast(&stopAfterLastWindow);
+    if (implementation != expected) return null;
     return send(send(class, sel("alloc")), sel("init"));
 }
 
