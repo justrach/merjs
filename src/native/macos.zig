@@ -178,8 +178,10 @@ pub fn run(port: u16, config: anytype) error{ WrongThread, NativeRuntimeUnavaila
     const std = @import("std");
     const url = std.fmt.bufPrintZ(&url_buffer, "http://127.0.0.1:{d}/", .{port}) catch
         return error.NativeRuntimeUnavailable;
+    const url_string = sendOne(string_class, sel("stringWithUTF8String:"), @ptrCast(url.ptr)) orelse
+        return error.NativeRuntimeUnavailable;
     const url_class = cls("NSURL") orelse return error.NativeRuntimeUnavailable;
-    const ns_url = sendOne(url_class, sel("URLWithString:"), @ptrCast(url.ptr)) orelse
+    const ns_url = sendOne(url_class, sel("URLWithString:"), url_string) orelse
         return error.NativeRuntimeUnavailable;
     const request_class = cls("NSURLRequest") orelse return error.NativeRuntimeUnavailable;
     const request = sendOne(request_class, sel("requestWithURL:"), ns_url) orelse
