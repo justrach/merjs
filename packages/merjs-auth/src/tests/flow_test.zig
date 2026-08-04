@@ -17,6 +17,10 @@ const argon2 = std.crypto.pwhash.argon2;
 // Fast params for testing — don't use WorkersParams (too slow in tests).
 // ~1ms per hash instead of ~200ms.
 const TEST_ARGON2 = argon2.Params{ .t = 1, .m = 8, .p = 1 };
+const JSON_HEADERS = [_]std.http.Header{
+    .{ .name = "Content-Type", .value = "application/json" },
+    .{ .name = "Origin", .value = "http://localhost:3000" },
+};
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
@@ -52,6 +56,8 @@ fn testReqWithBody(arena_alloc: std.mem.Allocator, method: mer.Method, path: []c
         .query_string = "",
         .body = body,
         .cookies_raw = "",
+        .headers = &JSON_HEADERS,
+        .client_identity = "test-client",
         .params = &.{},
         .allocator = arena_alloc,
     };
@@ -71,6 +77,7 @@ fn testReqWithBodyAndCookies(
         .query_string = "",
         .body = body,
         .cookies_raw = cookies_raw,
+        .headers = &JSON_HEADERS,
         .params = &.{},
         .allocator = arena_alloc,
     };
@@ -89,6 +96,7 @@ fn testReqWithCookies(
         .query_string = "",
         .body = "",
         .cookies_raw = cookies_raw,
+        .headers = if (method == .POST) &JSON_HEADERS else &.{},
         .params = &.{},
         .allocator = arena_alloc,
     };
@@ -283,6 +291,57 @@ test "sign-in rejects unknown email" {
     try testing.expectEqual(std.http.Status.unauthorized, res.status);
 }
 
+test "sign-in rejects browser-simple content types and untrusted origins" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var mem_adapter = mem.MemAdapter.init(testing.allocator);
+    defer mem_adapter.deinit();
+    var config = testConfig(mem_adapter.adapter());
+    const body = "{\"email\":\"alice@test.com\",\"password\":\"Password123!\"}";
+
+    const text_headers = [_]std.http.Header{
+        .{ .name = "Content-Type", .value = "text/plain" },
+        .{ .name = "Origin", .value = "http://localhost:3000" },
+    };
+    var text_req = testReqWithBody(alloc, .POST, "/auth/sign-in/email", body);
+    text_req.headers = &text_headers;
+    try testing.expectEqual(std.http.Status.unsupported_media_type, (try merjs_auth.handle(&config, text_req)).status);
+
+    const form_headers = [_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/x-www-form-urlencoded" },
+        .{ .name = "Origin", .value = "http://localhost:3000" },
+    };
+    var form_req = testReqWithBody(alloc, .POST, "/auth/sign-in/email", body);
+    form_req.headers = &form_headers;
+    try testing.expectEqual(std.http.Status.unsupported_media_type, (try merjs_auth.handle(&config, form_req)).status);
+
+    const no_origin_headers = [_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json" },
+    };
+    var no_origin_req = testReqWithBody(alloc, .POST, "/auth/sign-in/email", body);
+    no_origin_req.headers = &no_origin_headers;
+    try testing.expectEqual(std.http.Status.forbidden, (try merjs_auth.handle(&config, no_origin_req)).status);
+
+    const evil_headers = [_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json; charset=utf-8" },
+        .{ .name = "Origin", .value = "http://localhost:3000.evil.test" },
+    };
+    var evil_req = testReqWithBody(alloc, .POST, "/auth/sign-in/email", body);
+    evil_req.headers = &evil_headers;
+    try testing.expectEqual(std.http.Status.forbidden, (try merjs_auth.handle(&config, evil_req)).status);
+
+    config.trusted_origins = &.{"https://frontend.example"};
+    const trusted_headers = [_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json" },
+        .{ .name = "Origin", .value = "https://frontend.example" },
+    };
+    var trusted_req = testReqWithBody(alloc, .POST, "/auth/sign-in/email", "{}");
+    trusted_req.headers = &trusted_headers;
+    try testing.expectEqual(std.http.Status.bad_request, (try merjs_auth.handle(&config, trusted_req)).status);
+}
+
 test "get-session returns user data with valid session" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -427,6 +486,108 @@ test "full flow: sign-up -> sign-in -> session -> sign-out" {
     const signout_req2 = testReqWithCookies(alloc, .POST, "/auth/sign-out", signin_cookies_raw);
     _ = try merjs_auth.handle(&config, signout_req2);
     try testing.expectEqual(@as(usize, 0), mem_adapter.sessionCount());
+}
+
+test "rate limits ignore query spoofing and do not share an unknown-client bucket" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var mem_adapter = mem.MemAdapter.init(testing.allocator);
+    defer mem_adapter.deinit();
+    const config = testConfig(mem_adapter.adapter());
+
+    for (0..10) |i| {
+        var req = testReqWithBody(alloc, .POST, "/auth/sign-up/email", "{}");
+        req.query_string = try std.fmt.allocPrint(alloc, "x-forwarded-for=198.51.100.{d}", .{i});
+        try testing.expectEqual(std.http.Status.bad_request, (try merjs_auth.handle(&config, req)).status);
+    }
+    var blocked = testReqWithBody(alloc, .POST, "/auth/sign-up/email", "{}");
+    blocked.query_string = "x-forwarded-for=203.0.113.1";
+    try testing.expectEqualStrings("{\"error\":\"too many requests\"}", (try merjs_auth.handle(&config, blocked)).body);
+
+    var unavailable = testReqWithBody(
+        alloc,
+        .POST,
+        "/auth/sign-up/email",
+        "{\"email\":\"nobody@test.com\",\"password\":\"Password123!\",\"name\":\"Nobody\"}",
+    );
+    unavailable.client_identity = null;
+    unavailable.query_string = "x-forwarded-for=192.0.2.1";
+    try testing.expectEqual(std.http.Status.service_unavailable, (try merjs_auth.handle(&config, unavailable)).status);
+
+    var other_client = testReqWithBody(alloc, .POST, "/auth/sign-up/email", "{}");
+    other_client.client_identity = "other-client";
+    try testing.expectEqual(std.http.Status.bad_request, (try merjs_auth.handle(&config, other_client)).status);
+}
+
+test "sign-in retains account limits without a client identity" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var mem_adapter = mem.MemAdapter.init(testing.allocator);
+    defer mem_adapter.deinit();
+    const config = testConfig(mem_adapter.adapter());
+    _ = try signUpAlice(alloc, &config);
+
+    for (0..5) |i| {
+        var req = testReqWithBody(
+            alloc,
+            .POST,
+            "/auth/sign-in/email",
+            "{\"email\":\"alice@test.com\",\"password\":\"WrongPassword!\"}",
+        );
+        req.client_identity = null;
+        req.query_string = try std.fmt.allocPrint(alloc, "x-forwarded-for=192.0.2.{d}", .{i});
+        try testing.expectEqual(std.http.Status.unauthorized, (try merjs_auth.handle(&config, req)).status);
+    }
+    var blocked = testReqWithBody(
+        alloc,
+        .POST,
+        "/auth/sign-in/email",
+        "{\"email\":\"alice@test.com\",\"password\":\"WrongPassword!\"}",
+    );
+    blocked.client_identity = null;
+    blocked.query_string = "x-forwarded-for=203.0.113.2";
+    try testing.expectEqualStrings("{\"error\":\"too many requests\"}", (try merjs_auth.handle(&config, blocked)).body);
+}
+
+test "auth user JSON escapes quotes backslashes and control characters" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var mem_adapter = mem.MemAdapter.init(testing.allocator);
+    defer mem_adapter.deinit();
+    const config = testConfig(mem_adapter.adapter());
+    const expected_name = "A\"lice\\Admin\nTab\t";
+    const req = testReqWithBody(
+        alloc,
+        .POST,
+        "/auth/sign-up/email",
+        "{\"email\":\"alice@test.com\",\"password\":\"Password123!\",\"name\":\"A\\\"lice\\\\Admin\\nTab\\t\"}",
+    );
+    const res = try merjs_auth.handle(&config, req);
+    try testing.expectEqual(std.http.Status.created, res.status);
+
+    const SignupPayload = struct {
+        user: struct { id: []const u8, email: []const u8, name: []const u8, email_verified: bool },
+    };
+    const parsed_signup = try std.json.parseFromSlice(SignupPayload, alloc, res.body, .{});
+    defer parsed_signup.deinit();
+    try testing.expectEqualStrings(expected_name, parsed_signup.value.user.name);
+
+    const cookie = getSessionCookie(res) orelse return error.NoCookie;
+    const cookies_raw = try buildSessionCookies(alloc, cookie);
+    const session_res = try merjs_auth.handle(&config, testReqWithCookies(alloc, .GET, "/auth/session", cookies_raw));
+    const SessionPayload = struct {
+        session: struct { id: []const u8, expires_at: i64 },
+        user: struct { id: []const u8, name: []const u8, email: []const u8, email_verified: bool, image: ?[]const u8 },
+    };
+    const parsed_session = try std.json.parseFromSlice(SessionPayload, alloc, session_res.body, .{});
+    defer parsed_session.deinit();
+    try testing.expectEqualStrings(expected_name, parsed_session.value.user.name);
 }
 
 test "sign-up validates password strength" {
