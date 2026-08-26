@@ -1,0 +1,21 @@
+{
+  "name": "merjs",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "user": "ubuntu",
+  "install": "zig build codegen",
+  "terminals": [
+    {
+      "name": "dev-server",
+      "command": "zig build serve -- --host 0.0.0.0 --port 3000 --verbose",
+      "description": "merjs dev server on :3000 with hot reload. Rerun `zig build codegen` after adding routes."
+    }
+  ],
+  "ports": [
+    {
+      "name": "web",
+      "port": 3000
+    }
+  ]
+}
