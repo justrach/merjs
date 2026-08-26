@@ -208,6 +208,12 @@ pub const Route = struct {
     prerender: bool = false,
     /// Optional per-route guard. Runs after global middleware, before render.
     middleware: ?MiddlewareFn = null,
+    /// Incremental Static Regeneration (ISR) TTL in seconds.
+    /// 0 (default) disables caching — the page renders on every request.
+    /// When > 0, the rendered HTML is cached and served instantly within the
+    /// TTL; after it elapses the stale copy is served while a background
+    /// re-render refreshes the cache (stale-while-revalidate).
+    revalidate: u32 = 0,
 };
 
 /// Built-in guard: redirect to `/login` (303) when no `session` cookie exists.

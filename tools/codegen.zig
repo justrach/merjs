@@ -62,7 +62,7 @@ pub fn main() !void {
         defer alloc.free(ident);
         const url = try toUrl(alloc, path);
         defer alloc.free(url);
-        try buf.print(alloc, "    .{{ .path = \"{s}\", .render = {s}.render, .render_stream = if (@hasDecl({s}, \"renderStream\")) {s}.renderStream else null, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}}, .prerender = if (@hasDecl({s}, \"prerender\")) {s}.prerender else false, .middleware = if (@hasDecl({s}, \"middleware\")) {s}.middleware else null }},\n", .{ url, ident, ident, ident, ident, ident, ident, ident, ident, ident });
+        try buf.print(alloc, "    .{{ .path = \"{s}\", .render = {s}.render, .render_stream = if (@hasDecl({s}, \"renderStream\")) {s}.renderStream else null, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}}, .prerender = if (@hasDecl({s}, \"prerender\")) {s}.prerender else false, .middleware = if (@hasDecl({s}, \"middleware\")) {s}.middleware else null, .revalidate = if (@hasDecl({s}, \"revalidate\")) {s}.revalidate else 0 }},\n", .{ url, ident, ident, ident, ident, ident, ident, ident, ident, ident, ident, ident });
     }
     try buf.appendSlice(alloc, "};\n\n");
 
