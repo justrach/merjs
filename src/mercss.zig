@@ -38,8 +38,8 @@ fn generateCss(comptime styles: anytype) []const u8 {
         const T = @TypeOf(styles);
         switch (@typeInfo(T)) {
             .@"struct" => |info| {
-                for (info.fields) |field| {
-                    const value = @field(styles, field.name);
+                for (info.field_names) |name| {
+                    const value = @field(styles, name);
                     const value_str = switch (@typeInfo(@TypeOf(value))) {
                         .@"enum" => @tagName(value),
                         .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
@@ -47,10 +47,10 @@ fn generateCss(comptime styles: anytype) []const u8 {
                     };
 
                     // Convert property name to kebab-case for CSS
-                    const css_property = toKebabCase(field.name);
+                    const css_property = toKebabCase(name);
 
                     // Append CSS rule
-                    const rule = std.fmt.comptimePrint(".mcss-{s}{{{s}:{s};}}", .{ field.name, css_property, value_str });
+                    const rule = std.fmt.comptimePrint(".mcss-{s}{{{s}:{s};}}", .{ name, css_property, value_str });
                     css = css ++ rule;
                 }
             },
@@ -69,8 +69,8 @@ fn getClassNames(comptime styles: anytype) []const u8 {
         const T = @TypeOf(styles);
         switch (@typeInfo(T)) {
             .@"struct" => |info| {
-                for (info.fields) |field| {
-                    const name = std.fmt.comptimePrint("mcss-{s} ", .{field.name});
+                for (info.field_names) |field_name| {
+                    const name = std.fmt.comptimePrint("mcss-{s} ", .{field_name});
                     names = names ++ name;
                 }
             },
@@ -149,18 +149,18 @@ fn generateBreakpointCss(comptime prefix: []const u8, comptime styles: anytype) 
         const T = @TypeOf(styles);
         switch (@typeInfo(T)) {
             .@"struct" => |info| {
-                for (info.fields) |field| {
-                    const value = @field(styles, field.name);
+                for (info.field_names) |name| {
+                    const value = @field(styles, name);
                     const value_str = switch (@typeInfo(@TypeOf(value))) {
                         .@"enum" => @tagName(value),
                         .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
                         else => value,
                     };
 
-                    const css_property = toKebabCase(field.name);
+                    const css_property = toKebabCase(name);
 
                     // Prefix class name with breakpoint
-                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}{{{s}:{s};}}", .{ prefix, field.name, css_property, value_str });
+                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}{{{s}:{s};}}", .{ prefix, name, css_property, value_str });
                     css = css ++ rule;
                 }
             },
@@ -219,8 +219,8 @@ fn getBreakpointClassNames(comptime prefix: []const u8, comptime styles: anytype
         const T = @TypeOf(styles);
         switch (@typeInfo(T)) {
             .@"struct" => |info| {
-                for (info.fields) |field| {
-                    const name = std.fmt.comptimePrint("mcss-{s}-{s} ", .{ prefix, field.name });
+                for (info.field_names) |field_name| {
+                    const name = std.fmt.comptimePrint("mcss-{s}-{s} ", .{ prefix, field_name });
                     names = names ++ name;
                 }
             },

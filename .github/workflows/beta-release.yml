@@ -17,10 +17,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Zig 0.16.0
+      - name: Setup Zig 0.17.0-dev
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: "0.17.0-dev.1862+40ebd8162"
 
       - name: Build check
         run: |
@@ -33,13 +33,13 @@ jobs:
       - name: Cross-compile CLI
         run: |
           mkdir -p release
-          zig build cli -Doptimize=ReleaseSmall -Dtarget=aarch64-macos
+          zig build cli --release=small -Dtarget=aarch64-macos
           cp zig-out/bin/mer release/mer-macos-aarch64
-          zig build cli -Doptimize=ReleaseSmall -Dtarget=x86_64-macos
+          zig build cli --release=small -Dtarget=x86_64-macos
           cp zig-out/bin/mer release/mer-macos-x86_64
-          zig build cli -Doptimize=ReleaseSmall -Dtarget=x86_64-linux
+          zig build cli --release=small -Dtarget=x86_64-linux
           cp zig-out/bin/mer release/mer-linux-x86_64
-          zig build cli -Doptimize=ReleaseSmall -Dtarget=aarch64-linux
+          zig build cli --release=small -Dtarget=aarch64-linux
           cp zig-out/bin/mer release/mer-linux-aarch64
 
       - name: Generate checksums

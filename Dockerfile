@@ -11,15 +11,16 @@
 FROM ubuntu:24.04 AS builder
 
 # Pin Zig version. Match build.zig.zon `minimum_zig_version`.
-ARG ZIG_VERSION=0.16.0
+# 0.17.0-dev snapshots live under /builds/, not /download/<version>/.
+ARG ZIG_VERSION=0.17.0-dev.1862+40ebd8162
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
+    && apt-get install -y --no-recommends curl xz-utils ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Zig (auto-detect arch). Both x86_64 and aarch64 are supported.
 RUN ARCH=$(uname -m) \
-    && curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-${ARCH}-linux-${ZIG_VERSION}.tar.xz" \
+    && curl -fsSL "https://ziglang.org/builds/zig-${ARCH}-linux-${ZIG_VERSION}.tar.xz" \
        | tar -xJ -C /opt \
     && ln -s /opt/zig-${ARCH}-linux-${ZIG_VERSION}/zig /usr/local/bin/zig \
     && zig version
@@ -39,7 +40,7 @@ COPY . .
 RUN rm -rf .zig-cache zig-out src/generated
 
 RUN zig build codegen \
-    && zig build -Doptimize=ReleaseSmall
+    && zig build --release=small
 
 # ── Stage 2: Runtime ────────────────────────────────────────────────────────
 FROM debian:bookworm-slim

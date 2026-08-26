@@ -5,7 +5,7 @@ const std = @import("std");
 pub fn addPackages(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.builtin.Optimize,
     mer_mod: *std.Build.Module,
 ) void {
     // ── merjs-auth: wire + test ──────────────────────────────────────────────

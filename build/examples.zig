@@ -12,7 +12,7 @@ pub fn addExamples(
     const sgdata_mod = b.createModule(.{
         .root_source_file = b.path("src/worker.zig"),
         .target = wasm_target,
-        .optimize = .ReleaseSmall,
+        .optimize = .small,
     });
     sgdata_mod.addImport("mer", mer_mod);
     helpers.addDirModules(b, sgdata_mod, mer_mod, "examples/singapore-data-dashboard/app", "app", &.{});
@@ -32,7 +32,7 @@ pub fn addExamples(
     const kanban_mod = b.createModule(.{
         .root_source_file = b.path("examples/kanban/worker_entry.zig"),
         .target = wasm_target,
-        .optimize = .ReleaseSmall,
+        .optimize = .small,
     });
     kanban_mod.addImport("mer", mer_mod);
     const router_mod = b.createModule(.{

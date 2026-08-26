@@ -212,13 +212,13 @@ fn coerceChildren(children: anytype) []const Node {
 
     // Tuple of nodes — coerce to slice.
     if (@typeInfo(T) == .@"struct" and @typeInfo(T).@"struct".is_tuple) {
-        const fields = @typeInfo(T).@"struct".fields;
-        var nodes: [fields.len]Node = undefined;
-        inline for (fields, 0..) |field, idx| {
-            const val = @field(children, field.name);
-            if (field.type == Node) {
+        const s = @typeInfo(T).@"struct";
+        var nodes: [s.field_names.len]Node = undefined;
+        inline for (s.field_names, s.field_types, 0..) |name, FieldType, idx| {
+            const val = @field(children, name);
+            if (FieldType == Node) {
                 nodes[idx] = val;
-            } else if (field.type == []const u8 or comptime isStringLiteral(field.type)) {
+            } else if (FieldType == []const u8 or comptime isStringLiteral(FieldType)) {
                 nodes[idx] = Node{ .text = val };
             } else {
                 nodes[idx] = val;
@@ -227,7 +227,7 @@ fn coerceChildren(children: anytype) []const Node {
         // Comptime path (e.g. `const page_node = page()`): &final lives in the
         // binary's data section — safe.
         if (@inComptime()) {
-            const final: [fields.len]Node = nodes;
+            const final: [s.field_names.len]Node = nodes;
             return &final;
         }
         // Runtime path: heap-allocate via the thread-local request arena so the
@@ -237,7 +237,7 @@ fn coerceChildren(children: anytype) []const Node {
             return alloc.dupe(Node, &nodes) catch &.{};
         }
         // No allocator set — fall back (safe only if there is no nesting).
-        const final: [fields.len]Node = nodes;
+        const final: [s.field_names.len]Node = nodes;
         return &final;
     }
 

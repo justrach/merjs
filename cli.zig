@@ -142,7 +142,7 @@ const build_zig_template =
     \\        .root_source_file = b.path("src/main.zig"),
     \\        .target = target,
     \\        .optimize = optimize,
-    \\        .strip = if (optimize != .Debug) true else null,
+    \\        .strip = if (optimize != .debug) true else null,
     \\    });
     \\    main_mod.addImport("mer", mer_mod);
     \\    addDirModules(b, main_mod, mer_mod, "app");
@@ -158,7 +158,7 @@ const build_zig_template =
     \\        .root_module = b.createModule(.{
     \\            .root_source_file = b.path("tools/codegen.zig"),
     \\            .target = b.graph.host,
-    \\            .optimize = .Debug,
+    \\            .optimize = .debug,
     \\        }),
     \\    });
     \\    const run_codegen = b.addRunArtifact(codegen_exe);
@@ -171,7 +171,7 @@ const build_zig_template =
     \\    // zig build serve
     \\    const run_exe = b.addRunArtifact(exe);
     \\    run_exe.step.dependOn(b.getInstallStep());
-    \\    if (b.args) |args| run_exe.addArgs(args);
+    \\    run_exe.addPassthruArgs();
     \\    b.step("serve", "Start the dev server").dependOn(&run_exe.step);
     \\
     \\    // zig build test
@@ -379,7 +379,7 @@ fn writeBuildZigZon(dir: std.Io.Dir, alloc: std.mem.Allocator, name: []const u8)
     try file.writeStreamingAll(runtime.io, ".{\n    .name = .");
     try file.writeStreamingAll(runtime.io, zig_name);
     try file.writeStreamingAll(runtime.io, ",\n    .version = \"0.1.0\",\n");
-    try file.writeStreamingAll(runtime.io, "    .minimum_zig_version = \"0.16.0\",\n");
+    try file.writeStreamingAll(runtime.io, "    .minimum_zig_version = \"0.17.0-dev.1862+40ebd8162\",\n");
     try file.writeStreamingAll(runtime.io, "    .dependencies = .{\n");
     try file.writeStreamingAll(runtime.io, "        .merjs = .{\n");
     try file.writeStreamingAll(runtime.io, "            .url = \"git+https://github.com/justrach/merjs.git\",\n");

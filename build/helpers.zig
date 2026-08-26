@@ -74,7 +74,7 @@ pub fn addWasmExe(b: *std.Build, name: []const u8, source: []const u8, wasm_targ
         .root_module = b.createModule(.{
             .root_source_file = b.path(source),
             .target = wasm_target,
-            .optimize = .ReleaseSmall,
+            .optimize = .small,
         }),
     });
     exe.rdynamic = true;

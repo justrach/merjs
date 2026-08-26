@@ -2,7 +2,7 @@
     .name = .ui_showcase,
     .fingerprint = 0x1571bdf9507f6848,
     .version = "0.1.0",
-    .minimum_zig_version = "0.15.1",
+    .minimum_zig_version = "0.17.0-dev.1862+40ebd8162",
     .dependencies = .{
         .merjs = .{
             .url = "git+https://github.com/justrach/merjs.git#1584fa898d5fd20e76062b71288a4f2159c5bed5",

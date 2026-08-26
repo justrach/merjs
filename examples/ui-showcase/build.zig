@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .strip = if (optimize != .Debug) true else null,
+        .strip = if (optimize != .debug) true else null,
     });
     main_mod.addImport("mer", mer_mod);
     addDirModules(b, main_mod, mer_mod, "app");
@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/codegen.zig"),
             .target = b.graph.host,
-            .optimize = .Debug,
+            .optimize = .debug,
         }),
     });
     const run_codegen = b.addRunArtifact(codegen_exe);
@@ -40,7 +40,7 @@ pub fn build(b: *std.Build) void {
     // zig build serve
     const run_exe = b.addRunArtifact(exe);
     run_exe.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_exe.addArgs(args);
+    run_exe.addPassthruArgs();
     b.step("serve", "Start the dev server").dependOn(&run_exe.step);
 
     // zig build test

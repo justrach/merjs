@@ -450,7 +450,7 @@ zig build test       # run tests
 
 **Always run from the merjs root directory** (where `build.zig` lives).
 
-## Zig 0.15 API Notes
+## Zig 0.17 API Notes
 
 - `std.ArrayList(T)` is unmanaged: init with `.{}`, pass alloc to `deinit(alloc)`, `append(alloc, item)`
 - `std.io.Writer.Allocating` — use for growing writers
@@ -467,7 +467,7 @@ zig build test       # run tests
 5. **HTML builder is comptime-only** — never call `h.*` functions at runtime; dangling pointers will crash
 6. **For wasm32 targets**, guard `std.time`, `std.fs`, `std.net` with `builtin.target.cpu.arch != .wasm32`
 7. **Tailwind CSS** uses the standalone CLI at `tools/tailwindcss` — no npm needed
-8. **Zig version is 0.15.1** — do not use 0.14 APIs
+8. **Zig version is 0.17.0-dev** (`0.17.0-dev.1862+40ebd8162`) — do not use 0.15 APIs. `std.builtin.Optimize` tags are `.debug` / `.safe` / `.fast` / `.small` (not `.Debug` / `.ReleaseSmall`).
 9. **Design system**: always use CSS vars (`--bg`, `--text`, etc.) and DM Serif/DM Sans fonts for new pages
 10. **Server**: std.Thread.Pool with 128 workers and kernel backlog 512 — no global mutable state in handlers
 
