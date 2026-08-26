@@ -97,6 +97,29 @@ const DarkCard = mercss.Component(.{
     },
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// HASHED ATOMIC CLASSES (#91.4) - short, content-addressed, deduplicated names
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Two components that share the same `background` atomic rule. With
+// HashedComponent the shared rule collapses onto one short `.mc-<hash>` class
+// name across both, instead of two long readable `.mcss-background` rules.
+const HashedPrimary = mercss.HashedComponent(.{
+    .background = "#3b82f6",
+    .color = "white",
+    .padding = "10px 20px",
+    .border_radius = "6px",
+    .border = "none",
+});
+
+const HashedGhost = mercss.HashedComponent(.{
+    .background = "#3b82f6",
+    .color = "white",
+    .padding = "10px 20px",
+    .border_radius = "999px",
+    .border = "none",
+});
+
 // Compile-time generated CSS - zero runtime cost!
 const page_css =
     Button.css ++
@@ -105,6 +128,8 @@ const page_css =
     ResponsiveBox.css ++
     TokenButton.css ++
     DarkCard.css ++
+    HashedPrimary.css ++
+    HashedGhost.css ++
     "body{background:#f3f4f6;padding:40px;font-family:system-ui;}" ++
     ".container{max-width:800px;margin:0 auto;display:flex;flex-direction:column;gap:20px;}" ++
     "h1{margin:0 0 16px 0;color:#1f2937;}" ++
@@ -174,6 +199,17 @@ pub fn render(req: mer.Request) mer.Response {
         h.div(.{ .class = DarkCard.classes }, .{
             h.h1(.{}, "Dark mode card"),
             h.p(.{}, "This card flips colors under prefers-color-scheme: dark."),
+        }),
+
+        h.div(.{ .class = Card.classes }, .{
+            h.h1(.{}, "Hashed atomic classes (#91)"),
+            h.p(.{}, "HashedComponent derives short, content-addressed class names " ++
+                "from each property:value pair. Shared atomic rules collapse onto one " ++
+                "class across components (true atomic dedup), and names stay short."),
+            h.raw("<button class='" ++ HashedPrimary.classes ++ "'>Primary</button> " ++
+                "<button class='" ++ HashedGhost.classes ++ "'>Pill</button>"),
+            h.p(.{}, "Primary classes: " ++ HashedPrimary.classes),
+            h.p(.{}, "Pill classes:    " ++ HashedGhost.classes),
         }),
     });
 

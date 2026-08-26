@@ -224,11 +224,14 @@ If you use merjs as a Zig dependency, prefer its exported API instead of reachin
 
 ```zig
 const merjs_dep = b.dependency("merjs", .{});
-const mer_mod = merjs_dep.module("mer");
-const server_mod = merjs_dep.module("server");
+const mer_mod = merjs_dep.module("mer");         // framework public API
+const runtime_mod = merjs_dep.module("runtime"); // std.Io runtime instance
+const server_mod = merjs_dep.module("server");   // HTTP server entry
+const codegen_mod = merjs_dep.module("codegen"); // route generator
+const worker_mod = merjs_dep.module("worker");   // Cloudflare Workers entry
 ```
 
-Fresh `mer init` apps also vendor their own `tools/codegen.zig`, so route generation no longer depends on internal merjs package paths.
+Every entry point is a named module, so consumer `build.zig` files never reach into internal paths like `src/main.zig` or `tools/codegen.zig`. Fresh `mer init` apps still vendor their own `tools/codegen.zig` by default, so route generation works even without the module.
 
 ---
 

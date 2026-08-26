@@ -186,6 +186,7 @@ const build_zig_template =
     \\
     \\    const merjs_dep = b.dependency("merjs", .{});
     \\    const mer_mod = merjs_dep.module("mer");
+    \\    const runtime_mod = merjs_dep.module("runtime");
     \\
     \\    const main_mod = b.createModule(.{
     \\        .root_source_file = b.path("src/main.zig"),
@@ -194,7 +195,7 @@ const build_zig_template =
     \\        .strip = if (optimize != .debug) true else null,
     \\    });
     \\    main_mod.addImport("mer", mer_mod);
-    \\    main_mod.addImport("runtime", merjs_dep.module("runtime"));
+    \\    main_mod.addImport("runtime", runtime_mod);
     \\    addDirModules(b, main_mod, mer_mod, "app");
     \\    addDirModules(b, main_mod, mer_mod, "api");
     \\    addRoutesModule(b, main_mod, mer_mod);
@@ -208,7 +209,7 @@ const build_zig_template =
     \\        .target = b.graph.host,
     \\        .optimize = .debug,
     \\    });
-    \\    codegen_mod.addImport("runtime", merjs_dep.module("runtime"));
+    \\    codegen_mod.addImport("runtime", runtime_mod);
     \\    const codegen_exe = b.addExecutable(.{
     \\        .name = "codegen",
     \\        .root_module = codegen_mod,
@@ -233,7 +234,7 @@ const build_zig_template =
     \\        .optimize = optimize,
     \\    });
     \\    test_mod.addImport("mer", mer_mod);
-    \\    test_mod.addImport("runtime", merjs_dep.module("runtime"));
+    \\    test_mod.addImport("runtime", runtime_mod);
     \\    addDirModules(b, test_mod, mer_mod, "app");
     \\    addDirModules(b, test_mod, mer_mod, "api");
     \\    addRoutesModule(b, test_mod, mer_mod);
@@ -298,10 +299,11 @@ const main_zig_template =
     \\    defer _ = gpa.deinit();
     \\    const alloc = gpa.allocator();
     \\
-    \\    // Initialize the std.Io runtime before any I/O (server, watcher, fetch).
-    \\    // Without this, mer.Server uses an undefined io instance and crashes.
+    \\    // Initialize the std.Io runtime (Evented on Linux io_uring, else Threaded).
+    \\    // Must run before any mer.Server / mer.fetch call touches runtime.io.
     \\    try runtime.init(alloc, init.environ);
     \\    defer runtime.deinit();
+    \\    runtime.logBackend();
     \\
     \\    var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     \\    defer arena_state.deinit();
@@ -703,12 +705,13 @@ test "build_zig_template uses local codegen entrypoint" {
 test "build_zig_template wires runtime module into codegen exe" {
     // tools/codegen.zig imports the "runtime" module, so the starter build must
     // provide it from the merjs dependency or the scaffold fails to build.
-    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "codegen_mod.addImport(\"runtime\", merjs_dep.module(\"runtime\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "const runtime_mod = merjs_dep.module(\"runtime\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "codegen_mod.addImport(\"runtime\", runtime_mod)") != null);
 }
 
 test "build_zig_template wires runtime module into app and test modules" {
-    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "main_mod.addImport(\"runtime\", merjs_dep.module(\"runtime\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "test_mod.addImport(\"runtime\", merjs_dep.module(\"runtime\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "main_mod.addImport(\"runtime\", runtime_mod)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, build_zig_template, "test_mod.addImport(\"runtime\", runtime_mod)") != null);
 }
 
 test "main_zig_template initializes the std.Io runtime before serving" {
