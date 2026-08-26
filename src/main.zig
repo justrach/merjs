@@ -20,7 +20,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    try runtime.init(alloc);
+    try runtime.init(alloc, init.environ);
     defer runtime.deinit();
     runtime.logBackend();
 

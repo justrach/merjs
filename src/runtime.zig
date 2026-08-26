@@ -41,10 +41,10 @@ const evented_supported = blk: {
 // Storage for the Evented instance — only allocated on supported platforms.
 var evented: if (evented_supported) std.Io.Evented else void = undefined;
 
-pub fn init(gpa: std.mem.Allocator) !void {
+pub fn init(gpa: std.mem.Allocator, environ: std.process.Environ) !void {
     if (evented_supported) {
         evented = undefined;
-        if (std.Io.Evented.init(&evented, gpa, .{})) {
+        if (std.Io.Evented.init(&evented, gpa, .{ .environ = environ })) {
             io = evented.io();
             active = .evented;
             return;
@@ -55,7 +55,7 @@ pub fn init(gpa: std.mem.Allocator) !void {
             log.warn("io_uring init failed ({s}); falling back to Threaded backend", .{@errorName(err)});
         }
     }
-    threaded = std.Io.Threaded.init(gpa, .{});
+    threaded = std.Io.Threaded.init(gpa, .{ .environ = environ });
     io = threaded.io();
     active = .threaded;
 }
