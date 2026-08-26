@@ -137,6 +137,7 @@ const build_zig_template =
     \\
     \\    const merjs_dep = b.dependency("merjs", .{});
     \\    const mer_mod = merjs_dep.module("mer");
+    \\    const runtime_mod = merjs_dep.module("runtime");
     \\
     \\    const main_mod = b.createModule(.{
     \\        .root_source_file = b.path("src/main.zig"),
@@ -145,6 +146,7 @@ const build_zig_template =
     \\        .strip = if (optimize != .debug) true else null,
     \\    });
     \\    main_mod.addImport("mer", mer_mod);
+    \\    main_mod.addImport("runtime", runtime_mod);
     \\    addDirModules(b, main_mod, mer_mod, "app");
     \\    addDirModules(b, main_mod, mer_mod, "api");
     \\    addRoutesModule(b, main_mod, mer_mod);
@@ -161,6 +163,7 @@ const build_zig_template =
     \\            .optimize = .debug,
     \\        }),
     \\    });
+    \\    codegen_exe.root_module.addImport("runtime", runtime_mod);
     \\    const run_codegen = b.addRunArtifact(codegen_exe);
     \\    run_codegen.setCwd(b.path("."));
     \\    b.step("codegen", "Regenerate src/generated/routes.zig").dependOn(&run_codegen.step);
@@ -181,6 +184,7 @@ const build_zig_template =
     \\        .optimize = optimize,
     \\    });
     \\    test_mod.addImport("mer", mer_mod);
+    \\    test_mod.addImport("runtime", runtime_mod);
     \\    addDirModules(b, test_mod, mer_mod, "app");
     \\    addDirModules(b, test_mod, mer_mod, "api");
     \\    addRoutesModule(b, test_mod, mer_mod);
@@ -236,6 +240,7 @@ const main_zig_template =
     \\
     \\const std = @import("std");
     \\const mer = @import("mer");
+    \\const runtime = @import("runtime");
     \\
     \\const log = std.log.scoped(.main);
     \\
@@ -243,6 +248,12 @@ const main_zig_template =
     \\    var gpa: std.heap.DebugAllocator(.{}) = .init;
     \\    defer _ = gpa.deinit();
     \\    const alloc = gpa.allocator();
+    \\
+    \\    // Initialize the std.Io runtime (Evented on Linux io_uring, else Threaded).
+    \\    // Must run before any mer.Server / mer.fetch call touches runtime.io.
+    \\    try runtime.init(alloc, init.environ);
+    \\    defer runtime.deinit();
+    \\    runtime.logBackend();
     \\
     \\    var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     \\    defer arena_state.deinit();

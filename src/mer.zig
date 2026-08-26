@@ -191,12 +191,23 @@ pub const dev = @import("dev.zig");
 pub const RenderFn = *const fn (req: Request) Response;
 pub const StreamRenderFn = *const fn (req: Request, stream: *StreamWriter) void;
 
+/// Route guard / middleware. Returning a non-null `Response` short-circuits
+/// dispatch: the render fn is skipped and the returned response is sent as-is
+/// (no layout wrapping). Returning null lets the request continue.
+///
+///   pub const middleware = mer.requireSession;   // per-route guard
+///   // or, in the generated routes module:
+///   pub const global_middleware: []const mer.MiddlewareFn = &.{ myGuard };
+pub const MiddlewareFn = *const fn (req: Request) ?Response;
+
 pub const Route = struct {
     path: []const u8,
     render: RenderFn,
     render_stream: ?StreamRenderFn = null,
     meta: Meta = .{},
     prerender: bool = false,
+    /// Optional per-route guard. Runs after global middleware, before render.
+    middleware: ?MiddlewareFn = null,
     /// Incremental Static Regeneration (ISR) TTL in seconds.
     /// 0 (default) disables caching — the page renders on every request.
     /// When > 0, the rendered HTML is cached and served instantly within the
@@ -204,6 +215,13 @@ pub const Route = struct {
     /// re-render refreshes the cache (stale-while-revalidate).
     revalidate: u32 = 0,
 };
+
+/// Built-in guard: redirect to `/login` (303) when no `session` cookie exists.
+/// Use as a per-route `middleware` or inside a `global_middleware` slice.
+pub fn requireSession(req: Request) ?Response {
+    if (req.cookie("session") == null) return redirect("/login", .see_other);
+    return null;
+}
 
 // --- Runtime (server, router, watcher, prerender) ----------------------------
 // Re-exported so consumer projects only need `@import("mer")`.

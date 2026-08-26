@@ -24,10 +24,12 @@ Release branch stacking remaining open work onto current `main` (Zig 0.17.0-dev)
 ### Added
 - **turboapi-core dependency** — merjs now imports [turboapi-core](https://github.com/justrach/turboAPI/tree/main/turboapi-core), a shared Zig library providing a radix trie router, HTTP utilities (`percentDecode`, `queryStringGet`, `statusText`, `formatHttpDate`), and a bounded response cache. This is the first step toward sharing routing primitives between merjs and turboAPI. See [#66](https://github.com/justrach/merjs/issues/66) for the full integration roadmap.
 
+### Changed
+- **Shared query-string parser (#66)** — `Request.queryParam` now delegates to turboapi-core's fuzz-tested `queryStringGet` via a narrow `turboapi-http` module (rooted at the dependency's `http.zig`). Public API is unchanged.
+
 ### Next (tracked in #66)
-- Method-based API routing via turboapi-core's radix trie (GET vs POST on same path)
-- Replace `queryParamFromStr` with turboapi-core's `queryStringGet`
-- Optional: radix trie for dynamic page routes (perf upgrade for large route counts)
+- Method-based API routing via turboapi-core's radix trie (GET vs POST on same path) — blocked: the pinned Zig (`0.17.0-dev.1862`) rejects a literal in turboapi-core's `router.zig` fuzz corpus (`"a/" ** 70`), so the router module cannot be imported yet.
+- Optional: radix trie for dynamic page routes (perf upgrade for large route counts) — same router-import blocker.
 
 ## [0.2.5] — 2026-04-17
 

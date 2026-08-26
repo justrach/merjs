@@ -25,6 +25,10 @@ pub const Router = struct {
     exact_map: std.StringHashMapUnmanaged(usize) = .{},
     /// Subset of routes containing dynamic segments (`:param`).
     dynamic_routes: []const Route = &.{},
+    /// Guards run on every request before routing. First non-null response
+    /// short-circuits dispatch. Populated from the generated routes module's
+    /// `global_middleware` declaration, if present.
+    global_middleware: []const mer.MiddlewareFn = &.{},
 
     pub fn init(allocator: std.mem.Allocator, routes: []const Route) Router {
         var router = Router{ .allocator = allocator, .routes = routes };
@@ -50,6 +54,7 @@ pub const Router = struct {
         if (@hasDecl(generated, "layout")) r.layout = generated.layout;
         if (@hasDecl(generated, "streamLayout")) r.stream_layout = generated.streamLayout;
         if (@hasDecl(generated, "notFound")) r.not_found = generated.notFound;
+        if (@hasDecl(generated, "global_middleware")) r.global_middleware = generated.global_middleware;
         return r;
     }
 

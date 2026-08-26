@@ -51,6 +51,16 @@ pub fn build(b: *std.Build) void {
     const core_mod = core_dep.module("turboapi-core");
     mer_mod.addImport("turboapi-core", core_mod);
 
+    // Narrow module rooted directly at turboapi-core's pure HTTP helpers
+    // (`http.zig` imports only `std`). Importing the full `turboapi-core`
+    // root would transitively AstGen `router.zig`, whose fuzz corpus uses a
+    // literal the pinned Zig rejects, so we point straight at http.zig for
+    // the shared query-string parser (issue #66).
+    const core_http_mod = b.createModule(.{
+        .root_source_file = core_dep.path("src/http.zig"),
+    });
+    mer_mod.addImport("turboapi-http", core_http_mod);
+
     // Self-referential import: internal files (server.zig, router.zig, …)
     // file-imported from mer.zig still resolve their `@import("mer")` calls.
     mer_mod.addImport("mer", mer_mod);
@@ -94,7 +104,10 @@ pub fn build(b: *std.Build) void {
     // b.getInstallStep().dependOn(&install_kuri.step);
 
     // ── Codegen ──────────────────────────────────────────────────────────────
-    const codegen_mod = b.createModule(.{
+    // Exposed as a public module (`merjs_dep.module("codegen")`) so consumers
+    // can build the route generator without reaching into internal paths (#67),
+    // alongside the "server" and "worker" module exports above.
+    const codegen_mod = b.addModule("codegen", .{
         .root_source_file = b.path("tools/codegen.zig"),
         .target = b.graph.host,
         .optimize = .debug,
@@ -233,7 +246,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
     // Run inline tests in individual framework source files.
-    for ([_][]const u8{ "src/css.zig", "src/session.zig", "src/telemetry.zig", "src/mercss.zig", "src/native.zig", "src/isr.zig" }) |src_path| {
+    for ([_][]const u8{ "src/css.zig", "src/session.zig", "src/telemetry.zig", "src/mercss.zig", "src/native.zig", "src/metrics.zig", "src/isr.zig" }) |src_path| {
         const file_test_mod = b.createModule(.{
             .root_source_file = b.path(src_path),
             .target = target,
@@ -265,6 +278,7 @@ pub fn build(b: *std.Build) void {
         mer_test_mod.addImport("dhi_model", dhi_model_mod);
         mer_test_mod.addImport("dhi_validator", dhi_validator_mod);
         mer_test_mod.addImport("turboapi-core", core_mod);
+        mer_test_mod.addImport("turboapi-http", core_http_mod);
         mer_test_mod.addImport("mer", mer_test_mod);
         mer_test_mod.addImport("build_options", build_options_mod);
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mer_test_mod })).step);
