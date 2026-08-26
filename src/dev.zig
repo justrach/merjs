@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const res_mod = @import("response.zig");
+const metrics = @import("metrics.zig");
 
 /// Minimal route info passed from server.zig for the debug endpoint.
 pub const RouteDebugInfo = struct {
@@ -88,6 +89,20 @@ pub fn sendErrorOverlay(std_req: *std.http.Server.Request, target: []const u8, e
     try bw.end();
 }
 
+fn writeStatJson(w: *std.Io.Writer, name: []const u8, s: metrics.Stat) !void {
+    try w.print(
+        "\"{s}\":{{\"avg\":{d},\"p50\":{d},\"p95\":{d},\"p99\":{d},\"max\":{d}}}",
+        .{ name, s.avg, s.p50, s.p95, s.p99, s.max },
+    );
+}
+
+fn writeStatRow(w: *std.Io.Writer, label: []const u8, s: metrics.Stat) !void {
+    try w.print(
+        "<tr><td>{s}</td><td>{d}</td><td>{d}</td><td>{d}</td><td>{d}</td><td>{d}</td></tr>",
+        .{ label, s.avg, s.p50, s.p95, s.p99, s.max },
+    );
+}
+
 /// Build a response for the /_mer/debug endpoint.
 /// Caller is responsible for sending it via sendResponse (which adds security headers).
 pub fn serveDebug(
@@ -114,7 +129,31 @@ pub fn serveDebug(
             const rtype: []const u8 = if (std.mem.startsWith(u8, route.path, "/api/")) "api" else "page";
             try w.print("{{\"path\":\"{s}\",\"type\":\"{s}\"}}", .{ route.path, rtype });
         }
-        try w.writeAll("],\"hints\":[");
+        try w.writeAll("],");
+
+        // Metrics block (TTFB + duration percentiles, per-route breakdown).
+        const report = metrics.collect(alloc) catch metrics.Report{
+            .total_requests = 0,
+            .window = 0,
+            .ttfb = .{},
+            .duration = .{},
+            .routes = &.{},
+        };
+        try w.print("\"metrics\":{{\"total_requests\":{d},\"window\":{d},", .{ report.total_requests, report.window });
+        try writeStatJson(w, "ttfb_us", report.ttfb);
+        try w.writeAll(",");
+        try writeStatJson(w, "duration_us", report.duration);
+        try w.writeAll(",\"routes\":[");
+        for (report.routes, 0..) |r, i| {
+            if (i > 0) try w.writeAll(",");
+            try w.print(
+                "{{\"path\":\"{s}\",\"count\":{d},\"avg_ttfb_us\":{d},\"avg_duration_us\":{d}}}",
+                .{ r.path, r.count, r.avg_ttfb_us, r.avg_duration_us },
+            );
+        }
+        try w.writeAll("]},");
+
+        try w.writeAll("\"hints\":[");
         try w.writeAll("\"Run with --verbose for per-request timing\",");
         try w.writeAll("\"Visit /_mer/events for SSE hot reload stream\",");
         try w.writeAll("\"Use std.log.scoped(.mypage) in page handlers\"");
@@ -143,6 +182,28 @@ pub fn serveDebug(
         try w.print("<tr><td>Zig</td><td>{s}</td></tr>", .{@import("builtin").zig_version_string});
         try w.print("<tr><td>Routes</td><td>{d} exact + {d} dynamic</td></tr>", .{ exact_count, dynamic_count });
         try w.writeAll("</table>");
+
+        // Metrics section.
+        const report = metrics.collect(alloc) catch metrics.Report{
+            .total_requests = 0,
+            .window = 0,
+            .ttfb = .{},
+            .duration = .{},
+            .routes = &.{},
+        };
+        try w.print("<h2>Metrics <small>(last {d} of {d} requests)</small></h2>", .{ report.window, report.total_requests });
+        try w.writeAll("<table><tr><th>Metric</th><th>avg</th><th>p50</th><th>p95</th><th>p99</th><th>max</th></tr>");
+        try writeStatRow(w, "TTFB (\u{00b5}s)", report.ttfb);
+        try writeStatRow(w, "Duration (\u{00b5}s)", report.duration);
+        try w.writeAll("</table>");
+
+        if (report.routes.len > 0) {
+            try w.writeAll("<h2>Per-route</h2><table><tr><th>Path</th><th>count</th><th>avg TTFB (\u{00b5}s)</th><th>avg dur (\u{00b5}s)</th></tr>");
+            for (report.routes) |r| {
+                try w.print("<tr><td>{s}</td><td>{d}</td><td>{d}</td><td>{d}</td></tr>", .{ r.path, r.count, r.avg_ttfb_us, r.avg_duration_us });
+            }
+            try w.writeAll("</table>");
+        }
 
         try w.writeAll("<h2>Hints</h2><ul>");
         try w.writeAll("<li>Run with <code>--verbose</code> to log per-request timing</li>");
