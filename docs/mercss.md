@@ -57,18 +57,19 @@ pub fn render(req: mer.Request) mer.Response {
 ### ✅ Implemented
 - [x] Atomic CSS generation from structs
 - [x] Compile-time class name generation
-- [x] Type-safe design tokens
+- [x] Type-safe design tokens (`mer.design` — 17 color scales × 11 shades)
 - [x] Component-level style scoping
 - [x] CSS string concatenation at comptime
 - [x] Integration with merjs page rendering
+- [x] Responsive variants (`sm`, `md`, `lg`, `xl`, `xl2`)
+- [x] State variants (`hover`, `focus`, `active`)
+- [x] Dark mode via `prefers-color-scheme`
+- [x] `generateStylesheet` / `getAllClasses` helpers
 
 ### 🚧 Not Yet Implemented (vs Tailwind)
-- [ ] Responsive variants (`md:`, `lg:`)
-- [ ] State variants (`hover:`, `focus:`, `active:`)
-- [ ] Arbitrary value syntax (`[123px]`)
+- [ ] Arbitrary value syntax (`[123px]`) as a dedicated parser
 - [ ] Plugin system
 - [ ] `@apply` directive equivalent
-- [ ] Dark mode support
 - [ ] Container queries
 - [ ] CSS grid helpers
 - [ ] Typography plugin
@@ -96,27 +97,42 @@ const Button = mercss.Component(.{
 
 ## Design System / Theme
 
-```zig
-const Theme = struct {
-    pub const colors = .{
-        .primary = "#3b82f6",
-        .secondary = "#64748b",
-        .danger = "#ef4444",
-        .success = "#22c55e",
-    };
-    
-    pub const spacing = .{
-        .xs = 4,
-        .sm = 8,
-        .md = 16,
-        .lg = 24,
-        .xl = 32,
-    };
-};
+`mer.design` (from yxlyx #92/#95) is the public token set. `mercss.DesignSystem` remains as a small built-in fallback.
 
-// Type-safe! This will error at compile time:
-const bad = mercss.Component(.{
-    .background = Theme.colors.nonexistent,  // ❌ Compile error!
+```zig
+const mer = @import("mer");
+const design = mer.design;
+const mercss = mer.mercss;
+
+const Button = mercss.Component(.{
+    .base = .{
+        .padding = design.space.base,
+        .background_color = design.primary.DEFAULT,
+        .color = "#ffffff",
+        .border_radius = design.radius.md,
+        .transition = design.transition.base,
+    },
+    .hover = .{
+        .background_color = design.primary.dark,
+    },
+    .dark = .{
+        .background_color = design.slate.c800,
+        .color = design.slate.c100,
+    },
+    .md = .{
+        .padding = design.space.xl,
+    },
+});
+```
+
+Tokens include `design.space`, `design.font`, 17 color scales (`design.blue.c500`, aliases like `design.primary`), `design.shadow`, `design.blur`, `design.transition`, `design.ease`, `design.duration`, `design.radius`, `design.z`, `design.opacity`, and `design.size`.
+
+Flat style structs still work:
+
+```zig
+const Chip = mercss.Component(.{
+    .padding = "8px 16px",
+    .background = design.primary.DEFAULT,
 });
 ```
 
@@ -161,16 +177,17 @@ docker run -p 3000:3000 merjs
 
 ## Roadmap
 
-### v0.3.0 Goals
-- [ ] Responsive breakpoints (`sm:`, `md:`, `lg:`)
-- [ ] State variants (`hover:`, `focus:`)
-- [ ] Property mapping (`border_radius` → `border-radius`)
-- [ ] Shorter hash-based class names
-- [ ] Streaming CSS (CSS arrives with component chunks)
+### v0.2.54
+- [x] Responsive breakpoints (`sm`, `md`, `lg`, `xl`, `xl2`)
+- [x] State variants (`hover`, `focus`, `active`)
+- [x] Dark mode (`prefers-color-scheme`)
+- [x] `mer.design` token system
+- [x] Property mapping (`border_radius` → `border-radius`)
 
-### v0.4.0 Ideas
+### Later
+- [ ] Shorter hash-based class names (kept `mcss-*` to avoid breaking existing pages)
+- [ ] Streaming CSS (CSS arrives with component chunks)
 - [ ] Container queries
-- [ ] Dark mode (`dark:`)
 - [ ] Animation keyframes
 - [ ] CSS custom properties integration
 
