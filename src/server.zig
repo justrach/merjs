@@ -338,6 +338,15 @@ fn serveRequest(
         const matched_route = router.findRoute(req.path);
         if (matched_route) |route| {
             if (route.render_stream) |stream_fn| {
+                // Guards run before streaming render (mirrors dispatch paths).
+                if (dispatch_mod.globalGuard(router.*, req)) |resp| {
+                    try sendResponse(std_req, resp);
+                    return;
+                }
+                if (dispatch_mod.routeGuard(route, req)) |resp| {
+                    try sendResponse(std_req, resp);
+                    return;
+                }
                 const parts = stream_wrap(alloc, req.path, route.meta);
 
                 const fixed = [1]std.http.Header{
