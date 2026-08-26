@@ -197,6 +197,12 @@ pub const Route = struct {
     render_stream: ?StreamRenderFn = null,
     meta: Meta = .{},
     prerender: bool = false,
+    /// Incremental Static Regeneration (ISR) TTL in seconds.
+    /// 0 (default) disables caching — the page renders on every request.
+    /// When > 0, the rendered HTML is cached and served instantly within the
+    /// TTL; after it elapses the stale copy is served while a background
+    /// re-render refreshes the cache (stale-while-revalidate).
+    revalidate: u32 = 0,
 };
 
 // --- Runtime (server, router, watcher, prerender) ----------------------------

@@ -4,8 +4,10 @@
 const std = @import("std");
 const mer = @import("mer");
 const Router = @import("router.zig").Router;
+const Route = @import("router.zig").Route;
 const dispatch_mod = @import("dispatch.zig");
 const static = @import("static.zig");
+const isr = @import("isr.zig");
 const watcher_mod = @import("watcher.zig");
 const kuri_mod = @import("kuri.zig");
 const runtime = @import("runtime");
@@ -93,6 +95,8 @@ pub const Server = struct {
     pub fn listen(self: *Server) !void {
         // Init static file cache.
         static.initCache(self.allocator);
+        // Init ISR (stale-while-revalidate) page cache.
+        isr.initCache(self.allocator);
 
         // Spawn kuri sidecar in debug mode.
         if (self.config.debug) {
@@ -321,6 +325,19 @@ fn serveRequest(
 
     mer.h.setRenderAllocator(alloc);
 
+    // ── ISR: stale-while-revalidate page cache ─────────────────────────────
+    // Routes that opt in with `pub const revalidate: u32 = N;` cache their
+    // fully-rendered HTML. Non-streaming GET routes only. Everything else
+    // (revalidate == 0, POST, renderStream pages) falls through unchanged.
+    if (req.method == .GET) {
+        if (router.findRoute(req.path)) |route| {
+            if (route.revalidate > 0 and route.render_stream == null) {
+                try serveIsr(alloc, std_req, router, req, route, dev);
+                return;
+            }
+        }
+    }
+
     // ── Check for true streaming render (renderStream) ─────────────────────
     // If the matched route exports renderStream and we have a stream_layout,
     // use the Marko-style placeholder/resolve pattern.
@@ -412,6 +429,121 @@ fn serveRequest(
     defer if (owned_body) |b| alloc.free(b);
 
     try sendResponse(std_req, response);
+}
+
+/// Serve a route that opted into ISR (`revalidate > 0`).
+///   * Cache hit, fresh → serve cached HTML instantly.
+///   * Cache hit, stale → serve stale HTML instantly + kick off a background
+///                        re-render (stale-while-revalidate).
+///   * Cache miss        → render synchronously, cache, serve.
+fn serveIsr(
+    alloc: std.mem.Allocator,
+    std_req: *std.http.Server.Request,
+    router: *const Router,
+    req: mer.Request,
+    route: Route,
+    dev: bool,
+) !void {
+    const now = isr.nowNs();
+
+    if (isr.get(alloc, req.path, route.revalidate, now)) |hit| {
+        // Stale copy served now; refresh in the background for the next hit.
+        if (hit.stale) spawnRevalidate(router, req.path, route.revalidate);
+        try sendIsrResponse(alloc, std_req, hit.body, dev);
+        return;
+    }
+
+    // Cache miss — render synchronously via the normal dispatch (so layout
+    // wrapping applies), then cache the assembled HTML for future requests.
+    const response = dispatch_mod.dispatch(router.*, req);
+    if (response.content_type == .html and response.status == .ok) {
+        isr.store(req.path, response.body, now);
+        try sendIsrResponse(alloc, std_req, response.body, dev);
+        return;
+    }
+
+    // Non-HTML / non-200 responses are never cached — serve as-is.
+    try sendResponse(std_req, response);
+}
+
+/// Send a cached/rendered ISR body as a standard 200 HTML response, injecting
+/// the dev hot-reload script when in dev mode (matching the non-streaming path).
+fn sendIsrResponse(
+    alloc: std.mem.Allocator,
+    std_req: *std.http.Server.Request,
+    body: []const u8,
+    dev: bool,
+) !void {
+    var response = mer.Response.init(.ok, .html, body);
+    var owned_body: ?[]u8 = null;
+    if (dev) {
+        if (dev_mod.injectHotReload(alloc, body)) |injected| {
+            owned_body = injected;
+            response.body = injected;
+        } else |_| {}
+    }
+    defer if (owned_body) |b| alloc.free(b);
+    try sendResponse(std_req, response);
+}
+
+/// Context handed to a detached background re-render thread. Both fields are
+/// owned by the ISR base allocator and freed by the worker.
+const RevalidateCtx = struct {
+    router: *const Router,
+    path: []u8,
+};
+
+/// Kick off a single background re-render for `path` (if one isn't already in
+/// flight). Best-effort: on any failure we release the revalidation claim so a
+/// later request can retry. The stale copy has already been served.
+fn spawnRevalidate(router: *const Router, path: []const u8, revalidate: u32) void {
+    _ = revalidate;
+    if (!isr.tryBeginRevalidate(path)) return;
+
+    const base = isr.allocator();
+    const ctx = base.create(RevalidateCtx) catch {
+        isr.clearRevalidating(path);
+        return;
+    };
+    const path_copy = base.dupe(u8, path) catch {
+        base.destroy(ctx);
+        isr.clearRevalidating(path);
+        return;
+    };
+    ctx.* = .{ .router = router, .path = path_copy };
+
+    const t = std.Thread.spawn(.{}, revalidateWorker, .{ctx}) catch {
+        base.free(ctx.path);
+        base.destroy(ctx);
+        isr.clearRevalidating(path);
+        return;
+    };
+    t.detach();
+}
+
+/// Background worker: re-render the page off the request path and refresh the
+/// cache. Runs in its own arena so it never touches per-connection memory.
+fn revalidateWorker(ctx: *RevalidateCtx) void {
+    const base = isr.allocator();
+    defer {
+        base.free(ctx.path);
+        base.destroy(ctx);
+    }
+
+    var arena = std.heap.ArenaAllocator.init(base);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // html.zig's render allocator is thread-local, so setting it here is safe.
+    mer.h.setRenderAllocator(a);
+
+    const req = mer.Request.init(a, .GET, ctx.path);
+    const response = dispatch_mod.dispatch(ctx.router.*, req);
+    if (response.content_type == .html and response.status == .ok) {
+        isr.store(ctx.path, response.body, isr.nowNs());
+    } else {
+        isr.clearRevalidating(ctx.path);
+    }
 }
 
 fn streamWriteImpl(ctx: *anyopaque, data: []const u8) void {
