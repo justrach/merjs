@@ -10,11 +10,95 @@ pub const RouteDebugInfo = struct {
     path: []const u8,
 };
 
+// Hot reload client: on an SSE reload event, fetch the current URL, parse it,
+// and morph the live <body> in place (morphdom-style diff) instead of a full
+// location.reload(). This preserves window scroll position, form field values,
+// and the focused element. Any failure falls back to location.reload().
+//
+// IMPORTANT: this script MUST end with </body> — injectHotReload() (below) and
+// the streaming tail in server.zig rely on that closing tag being present here.
 pub const hot_reload_script =
-    \\<script>
+    \\<script id="__mer_hr__">
     \\(function(){
-    \\  const es = new EventSource('/_mer/events');
-    \\  es.onmessage = () => location.reload();
+    \\  var es = new EventSource('/_mer/events');
+    \\  var reloading = false;
+    \\  function fullReload(){ if(reloading) return; reloading = true; location.reload(); }
+    \\  function fieldKey(el){
+    \\    if(!el || el.nodeType!==1) return null;
+    \\    if(el.id) return '#'+el.id;
+    \\    if(el.name) return el.tagName+'['+el.name+']';
+    \\    return null;
+    \\  }
+    \\  function findByKey(k){
+    \\    if(!k) return null;
+    \\    if(k.charAt(0)==='#') return document.getElementById(k.slice(1));
+    \\    var m = k.match(/^([A-Z]+)\[(.+)\]$/);
+    \\    if(m) return document.querySelector(m[1]+'[name="'+m[2]+'"]');
+    \\    return null;
+    \\  }
+    \\  function captureFields(root){
+    \\    var map = {}, els = root.querySelectorAll('input,textarea,select'), i, el, k;
+    \\    for(i=0;i<els.length;i++){
+    \\      el = els[i]; k = fieldKey(el); if(!k) continue;
+    \\      map[k] = { value: el.value, checked: el.checked };
+    \\    }
+    \\    return map;
+    \\  }
+    \\  function restoreFields(root, map){
+    \\    var els = root.querySelectorAll('input,textarea,select'), i, el, k, rec, t;
+    \\    for(i=0;i<els.length;i++){
+    \\      el = els[i]; k = fieldKey(el); if(!k || !(k in map)) continue;
+    \\      rec = map[k]; t = (el.type||'').toLowerCase();
+    \\      if(t==='checkbox' || t==='radio'){ el.checked = rec.checked; }
+    \\      else { el.value = rec.value; }
+    \\    }
+    \\  }
+    \\  function morphAttrs(from, to){
+    \\    var i, a, ta = to.attributes, fa = from.attributes;
+    \\    for(i=0;i<ta.length;i++){ a = ta[i]; if(from.getAttribute(a.name)!==a.value) from.setAttribute(a.name, a.value); }
+    \\    for(i=fa.length-1;i>=0;i--){ a = fa[i]; if(!to.hasAttribute(a.name)) from.removeAttribute(a.name); }
+    \\  }
+    \\  function morph(from, to){
+    \\    var f = from.firstChild, t = to.firstChild, nf, nt;
+    \\    while(t){
+    \\      nf = f ? f.nextSibling : null; nt = t.nextSibling;
+    \\      if(!f){
+    \\        from.appendChild(document.importNode(t, true));
+    \\      } else if(f.nodeType!==t.nodeType || (f.nodeType===1 && f.nodeName!==t.nodeName)){
+    \\        from.replaceChild(document.importNode(t, true), f);
+    \\      } else if(f.nodeType===1){
+    \\        morphAttrs(f, t); morph(f, t);
+    \\      } else if(f.nodeValue!==t.nodeValue){
+    \\        f.nodeValue = t.nodeValue;
+    \\      }
+    \\      f = nf; t = nt;
+    \\    }
+    \\    while(f){ nf = f.nextSibling; from.removeChild(f); f = nf; }
+    \\  }
+    \\  function apply(){
+    \\    if(reloading) return;
+    \\    var sx = window.scrollX, sy = window.scrollY;
+    \\    var ae = document.activeElement, activeKey = fieldKey(ae), sel = null;
+    \\    if(ae){ try { sel = [ae.selectionStart, ae.selectionEnd]; } catch(e){} }
+    \\    fetch(location.href, { headers: { 'x-mer-hot-reload': '1' }, cache: 'no-store' })
+    \\      .then(function(r){ if(!r.ok) throw new Error('status '+r.status); return r.text(); })
+    \\      .then(function(html){
+    \\        var doc = new DOMParser().parseFromString(html, 'text/html');
+    \\        if(!doc || !doc.body || !doc.documentElement) throw new Error('parse failed');
+    \\        var fields = captureFields(document.body);
+    \\        morphAttrs(document.documentElement, doc.documentElement);
+    \\        if(doc.title && doc.title!==document.title) document.title = doc.title;
+    \\        morph(document.body, doc.body);
+    \\        restoreFields(document.body, fields);
+    \\        window.scrollTo(sx, sy);
+    \\        if(activeKey){
+    \\          var el = findByKey(activeKey);
+    \\          if(el){ try { el.focus(); if(sel && el.setSelectionRange) el.setSelectionRange(sel[0], sel[1]); } catch(e){} }
+    \\        }
+    \\      })
+    \\      .catch(fullReload);
+    \\  }
+    \\  es.onmessage = apply;
     \\})();
     \\</script>
     \\</body>
