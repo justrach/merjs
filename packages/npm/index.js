@@ -24,7 +24,7 @@ function getBinaryPath() {
     throw new Error(`Unsupported platform: ${platform}`);
   }
   
-  const binName = p === 'windows' ? 'mer.exe' : 'mer';
+  const binName = p === 'windows' ? 'mer.exe' : 'mer-bin';
   return path.join(__dirname, 'bin', binName);
 }
 
