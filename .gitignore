@@ -55,3 +55,6 @@ app.main/
 public/style.css
 *.o
 --version
+
+# Zig package cache (must not be committed — it pulled QuickJS C into GitHub language stats)
+zig-pkg/
