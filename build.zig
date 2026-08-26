@@ -51,6 +51,16 @@ pub fn build(b: *std.Build) void {
     const core_mod = core_dep.module("turboapi-core");
     mer_mod.addImport("turboapi-core", core_mod);
 
+    // Narrow module rooted directly at turboapi-core's pure HTTP helpers
+    // (`http.zig` imports only `std`). Importing the full `turboapi-core`
+    // root would transitively AstGen `router.zig`, whose fuzz corpus uses a
+    // literal the pinned Zig rejects, so we point straight at http.zig for
+    // the shared query-string parser (issue #66).
+    const core_http_mod = b.createModule(.{
+        .root_source_file = core_dep.path("src/http.zig"),
+    });
+    mer_mod.addImport("turboapi-http", core_http_mod);
+
     // Self-referential import: internal files (server.zig, router.zig, …)
     // file-imported from mer.zig still resolve their `@import("mer")` calls.
     mer_mod.addImport("mer", mer_mod);
@@ -268,6 +278,7 @@ pub fn build(b: *std.Build) void {
         mer_test_mod.addImport("dhi_model", dhi_model_mod);
         mer_test_mod.addImport("dhi_validator", dhi_validator_mod);
         mer_test_mod.addImport("turboapi-core", core_mod);
+        mer_test_mod.addImport("turboapi-http", core_http_mod);
         mer_test_mod.addImport("mer", mer_test_mod);
         mer_test_mod.addImport("build_options", build_options_mod);
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mer_test_mod })).step);
