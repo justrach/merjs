@@ -10,8 +10,10 @@ const fs = require('fs');
 
 function getBinPath() {
   const platform = os.platform() === 'win32' ? 'windows' : os.platform() === 'darwin' ? 'macos' : 'linux';
-  const binName = platform === 'windows' ? 'mer.exe' : 'mer';
-  const binPath = path.join(__dirname, '..', 'bin', binName);
+  // The native binary is a sibling of this launcher inside bin/, named
+  // distinctly from the launcher itself (which is bin/mer).
+  const binName = platform === 'windows' ? 'mer.exe' : 'mer-bin';
+  const binPath = path.join(__dirname, binName);
   
   if (!fs.existsSync(binPath)) {
     console.error('merjs: binary not found. Try running `npm install` again.');
