@@ -189,7 +189,7 @@ pub fn run(port: u16, config: anytype) error{ WrongThread, NativeRuntimeUnavaila
 
     var url_buffer: [64]u8 = undefined;
     const std = @import("std");
-    const url = std.fmt.bufPrintZ(&url_buffer, "http://127.0.0.1:{d}/", .{port}) catch
+    const url = std.fmt.bufPrintSentinel(&url_buffer, "http://127.0.0.1:{d}/", .{port}, 0) catch
         return error.NativeRuntimeUnavailable;
     const url_string = sendOne(string_class, sel("stringWithUTF8String:"), @ptrCast(url.ptr)) orelse
         return error.NativeRuntimeUnavailable;
