@@ -8,6 +8,7 @@ const dispatch_mod = @import("dispatch.zig");
 const static = @import("static.zig");
 const watcher_mod = @import("watcher.zig");
 const kuri_mod = @import("kuri.zig");
+const metrics = @import("metrics.zig");
 const runtime = @import("runtime");
 const telemetry = mer.telemetry;
 const dev_mod = mer.dev;
@@ -186,6 +187,9 @@ fn handleConn(ctx: *ConnCtx) void {
             log.err("serveRequest: {}", .{err});
             if (ctx.dev) {
                 dev_mod.sendErrorOverlay(&std_req, std_req.head.target, err, mer.version) catch {};
+                const err_ns = nanoTimestamp() - start;
+                const err_us: u64 = @intCast(@divFloor(err_ns, 1000));
+                metrics.record(pathOf(std_req.head.target), 500, err_us, err_us);
             }
             telemetry.sentryCapture(@errorName(err), std_req.head.target, mer.version);
             telemetry.ddError(std_req.head.target, @tagName(std_req.head.method), @errorName(err));
@@ -197,6 +201,7 @@ fn handleConn(ctx: *ConnCtx) void {
         const ttfb_us: u64 = if (_ttfb_ns > 0) @intCast(@divFloor(_ttfb_ns, 1000)) else elapsed_us;
 
         telemetry.ddTiming(std_req.head.target, @tagName(std_req.head.method), 200, elapsed_us);
+        if (ctx.dev) metrics.record(pathOf(std_req.head.target), 200, ttfb_us, elapsed_us);
 
         if (ctx.verbose) {
             const elapsed_f: f64 = @as(f64, @floatFromInt(elapsed_ns)) / 1000.0;
@@ -210,6 +215,11 @@ fn handleConn(ctx: *ConnCtx) void {
         // Reset arena between requests on the same connection (keep-alive).
         _ = arena.reset(.retain_capacity);
     }
+}
+
+/// Strip the query string from a raw request target for per-route metrics.
+fn pathOf(target: []const u8) []const u8 {
+    return if (std.mem.indexOfScalar(u8, target, '?')) |q| target[0..q] else target;
 }
 
 /// Replacement for std.time.nanoTimestamp() which was removed in Zig 0.16.
