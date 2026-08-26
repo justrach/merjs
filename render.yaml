@@ -1,0 +1,16 @@
+# render.yaml — Render.com Blueprint for merjs.
+#
+# Push this file to your repo, then click "New Blueprint Instance" on Render
+# and point it at the repo. Render injects PORT automatically — main.zig reads it.
+
+services:
+  - type: web
+    name: merjs
+    runtime: docker
+    plan: starter
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /_mer/health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0

@@ -11,7 +11,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const runtime = @import("runtime");
 
-pub const version = "0.2.5";
+pub const version = @import("build_options").version;
 
 const print = std.debug.print;
 
@@ -969,4 +969,12 @@ fn printUsage() void {
     print("    mer update           update merjs to latest version\n", .{});
     print("    mer --version        print version\n", .{});
     print("\n  https://github.com/justrach/merjs\n\n", .{});
+}
+
+
+// --- Tests ------------------------------------------------------------------
+
+test "cli version matches build.zig.zon" {
+    const expected = @import("build_options").version;
+    try std.testing.expectEqualStrings(expected, version);
 }

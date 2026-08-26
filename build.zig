@@ -4,9 +4,20 @@ const examples = @import("build/examples.zig");
 const tools = @import("build/tools.zig");
 const packages = @import("build/packages.zig");
 
+/// Single source of truth for the framework version.
+/// Every runtime constant (mer.version, cli.version, the macOS bundle plist,
+/// /_mer/health JSON) is derived from `zon.version` via the build_options
+/// module wired below. To bump the version, edit build.zig.zon only.
+const zon = @import("build.zig.zon");
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    // ── build_options module (zon-derived constants) ────────────────────────
+    const build_opts = b.addOptions();
+    build_opts.addOption([]const u8, "version", zon.version);
+    const build_options_mod = build_opts.createModule();
 
     // ── dhi dependency ──────────────────────────────────────────────────────
     const dhi_dep = b.dependency("dhi", .{});
@@ -33,6 +44,7 @@ pub fn build(b: *std.Build) void {
     mer_mod.addImport("dhi_model", dhi_model_mod);
     mer_mod.addImport("dhi_validator", dhi_validator_mod);
     mer_mod.addImport("runtime", runtime_mod);
+    mer_mod.addImport("build_options", build_options_mod);
 
     // ── turboapi-core (shared router + HTTP utilities) ──
     const core_dep = b.dependency("turboapi_core", .{});
@@ -176,6 +188,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     cli_mod.addImport("runtime", runtime_mod);
+    cli_mod.addImport("build_options", build_options_mod);
     const cli_exe = b.addExecutable(.{ .name = "mer", .root_module = cli_mod });
     b.step("cli", "Build the `mer` CLI binary").dependOn(&b.addInstallArtifact(cli_exe, .{}).step);
 
@@ -212,6 +225,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .link_libc = true,
         });
+        cli_test_mod.addImport("build_options", build_options_mod);
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = cli_test_mod })).step);
     }
     // Run router + runtime inline tests (through mer.zig as root to avoid
@@ -228,6 +242,7 @@ pub fn build(b: *std.Build) void {
         mer_test_mod.addImport("dhi_validator", dhi_validator_mod);
         mer_test_mod.addImport("turboapi-core", core_mod);
         mer_test_mod.addImport("mer", mer_test_mod);
+        mer_test_mod.addImport("build_options", build_options_mod);
         test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = mer_test_mod })).step);
     }
 
@@ -351,7 +366,7 @@ pub fn build(b: *std.Build) void {
         desktop_step.dependOn(&desktop_install.step);
 
         // ── .app bundle — MerApp.app/Contents/MacOS/merapp + Info.plist ──────
-        const plist = b.addWriteFile("MerApp.app/Contents/Info.plist",
+        const plist = b.addWriteFile("MerApp.app/Contents/Info.plist", b.fmt(
             \\<?xml version="1.0" encoding="UTF-8"?>
             \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
             \\<plist version="1.0">
@@ -359,12 +374,12 @@ pub fn build(b: *std.Build) void {
             \\  <key>CFBundleExecutable</key>    <string>merapp</string>
             \\  <key>CFBundleIdentifier</key>    <string>com.merjs.desktop</string>
             \\  <key>CFBundleName</key>          <string>MerApp</string>
-            \\  <key>CFBundleVersion</key>       <string>0.2.5</string>
+            \\  <key>CFBundleVersion</key>       <string>{s}</string>
             \\  <key>NSHighResolutionCapable</key><true/>
             \\  <key>NSPrincipalClass</key>      <string>NSApplication</string>
             \\</dict>
             \\</plist>
-        );
+        , .{zon.version}));
         const bundle_bin = b.addInstallFile(
             desktop_exe.getEmittedBin(),
             "MerApp.app/Contents/MacOS/merapp",
