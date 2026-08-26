@@ -94,7 +94,10 @@ pub fn build(b: *std.Build) void {
     // b.getInstallStep().dependOn(&install_kuri.step);
 
     // ── Codegen ──────────────────────────────────────────────────────────────
-    const codegen_mod = b.createModule(.{
+    // Exposed as a public module (`merjs_dep.module("codegen")`) so consumers
+    // can build the route generator without reaching into internal paths (#67),
+    // alongside the "server" and "worker" module exports above.
+    const codegen_mod = b.addModule("codegen", .{
         .root_source_file = b.path("tools/codegen.zig"),
         .target = b.graph.host,
         .optimize = .debug,
