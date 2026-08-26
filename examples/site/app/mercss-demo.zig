@@ -5,8 +5,9 @@ const h = mer.h;
 // mercss INTEGRATION DEMO - Real merjs page with compile-time CSS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Access mercss through mer module
+// Access mercss + design tokens through mer module
 const mercss = mer.mercss;
+const design = mer.design;
 
 // Define component styles at compile time
 const Button = mercss.Component(.{
@@ -61,12 +62,49 @@ const ResponsiveBox = mercss.ResponsiveComponent(.{
     },
 });
 
+const TokenButton = mercss.Component(.{
+    .base = .{
+        .padding = design.space.base,
+        .background = design.primary.DEFAULT,
+        .color = "#ffffff",
+        .border_radius = design.radius.md,
+        .font_weight = design.font.weight.semibold,
+        .border = "none",
+        .cursor = "pointer",
+        .transition = design.transition.base,
+    },
+    .hover = .{
+        .background = design.primary.dark,
+    },
+    .active = .{
+        .background = design.primary.darker,
+    },
+    .focus = .{
+        .outline = "2px solid " ++ design.primary.light,
+    },
+});
+
+const DarkCard = mercss.Component(.{
+    .base = .{
+        .padding = design.space.xl,
+        .background = design.slate.c100,
+        .border_radius = design.radius.lg,
+        .color = design.slate.c800,
+    },
+    .dark = .{
+        .background = design.slate.c800,
+        .color = design.slate.c100,
+    },
+});
+
 // Compile-time generated CSS - zero runtime cost!
 const page_css =
     Button.css ++
     Card.css ++
     Alert.css ++
     ResponsiveBox.css ++
+    TokenButton.css ++
+    DarkCard.css ++
     "body{background:#f3f4f6;padding:40px;font-family:system-ui;}" ++
     ".container{max-width:800px;margin:0 auto;display:flex;flex-direction:column;gap:20px;}" ++
     "h1{margin:0 0 16px 0;color:#1f2937;}" ++
@@ -125,6 +163,17 @@ pub fn render(req: mer.Request) mer.Response {
                 "<strong>Responsive Box</strong><br>" ++
                 "Resize your browser to see me change!" ++
                 "</div>"),
+        }),
+
+        h.div(.{ .class = Card.classes }, .{
+            h.h1(.{}, "Design tokens + state variants"),
+            h.p(.{}, "Hover / focus / active styles and mer.design tokens, from yxlyx #92/#95."),
+            h.raw("<button class='" ++ TokenButton.classes ++ "'>Hover me</button>"),
+        }),
+
+        h.div(.{ .class = DarkCard.classes }, .{
+            h.h1(.{}, "Dark mode card"),
+            h.p(.{}, "This card flips colors under prefers-color-scheme: dark."),
         }),
     });
 

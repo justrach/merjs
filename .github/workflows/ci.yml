@@ -2,9 +2,9 @@ name: CI — merjs build & test
 
 on:
   push:
-    branches: [main, "feature/**", "feat/**"]
+    branches: [main, "feature/**", "feat/**", "release/**"]
   pull_request:
-    branches: [main]
+    branches: [main, "release/**"]
 
 jobs:
   build:
@@ -30,3 +30,27 @@ jobs:
 
       # TODO: re-enable E2E tests once kuri is updated for Zig 0.17
       # For now, just verify the build succeeds.
+
+  native-macos:
+    runs-on: macos-latest
+    name: Build native macOS app
+
+    steps:
+      - name: Checkout merjs
+        uses: actions/checkout@v4
+
+      - name: Setup Zig 0.17.0-dev
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "0.17.0-dev.1862+40ebd8162"
+
+      - name: Test framework
+        run: zig build test --summary all
+
+      - name: Build app bundle
+        run: zig build desktop --release=small
+
+      - name: Verify app bundle
+        run: |
+          test -x zig-out/MerApp.app/Contents/MacOS/merapp
+          plutil -lint zig-out/MerApp.app/Contents/Info.plist

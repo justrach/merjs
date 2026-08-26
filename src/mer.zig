@@ -8,8 +8,9 @@ const res_mod = @import("response.zig");
 const session_mod = @import("session.zig");
 const fetch_mod = @import("fetch.zig");
 
-// Compile-time CSS generation (experimental)
+// Compile-time CSS generation (experimental) + design tokens (yxlyx #92/#95)
 pub const mercss = @import("mercss.zig");
+pub const design = @import("design.zig");
 
 /// Framework version. Single source of truth: `build.zig.zon`.
 /// Wired in via the `build_options` module in `build.zig` so this constant
@@ -212,6 +213,7 @@ pub const Config = @import("server.zig").Config;
 pub const ServerReady = @import("server.zig").ServerReady;
 pub const security_headers = @import("server.zig").security_headers;
 pub const Watcher = @import("watcher.zig").Watcher;
+pub const native = @import("native.zig");
 pub const runPrerender = @import("prerender.zig").run;
 
 // --- Tests ------------------------------------------------------------------

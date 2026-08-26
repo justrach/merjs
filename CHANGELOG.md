@@ -4,6 +4,21 @@ All notable changes to merjs will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.54] — 2026-08-26
+
+Release branch stacking remaining open work onto current `main` (Zig 0.17.0-dev). Dirty PRs were not merged as-is.
+
+### Added
+- **`mer.design`** — Tailwind-inspired design tokens from yxlyx #92/#95 (spacing, typography, 17 color scales × 11 shades, shadows, transitions, semantic aliases).
+- **mercss variants** — `hover` / `focus` / `active` state rules, `dark` via `prefers-color-scheme`, `xl2` breakpoint, `generateStylesheet` / `getAllClasses`. Flat `Component(.{...})` API is unchanged.
+- **`mer.native.runLoopback`** — compile-safe public API from pranavp311 #107. Validation tests run on Linux. The WKWebView host is macOS-only and still needs a Mac to runtime-verify.
+
+### Changed
+- Desktop example uses `mer.native`, current `ServerReady` wait/set, and Zig 0.17 `runtime.init(alloc, environ)`.
+- CI runs on `release/**` branches and adds a macOS desktop job (does not gate tagged releases).
+
+---
+
 ## [0.2.1] — 2026-03-28
 
 ### Added

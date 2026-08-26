@@ -82,8 +82,35 @@ fn getClassNames(comptime styles: anytype) []const u8 {
     }
 }
 
-/// Create a component with compile-time CSS
+/// True when `config` uses the variant/responsive shape from yxlyx #92
+/// (`.base`, `.sm`, `.hover`, `.dark`, …) rather than a flat style struct.
+fn isVariantConfig(comptime config: anytype) bool {
+    const T = @TypeOf(config);
+    return @hasField(T, "base") or @hasField(T, "sm") or @hasField(T, "md") or
+        @hasField(T, "lg") or @hasField(T, "xl") or @hasField(T, "xl2") or
+        @hasField(T, "dark") or @hasField(T, "hover") or @hasField(T, "focus") or
+        @hasField(T, "active");
+}
+
+/// Create a component with compile-time CSS.
+///
+/// Flat styles (existing API):
+/// ```zig
+/// const Button = mercss.Component(.{ .padding = "8px", .color = "white" });
+/// ```
+///
+/// Variant config (yxlyx #92):
+/// ```zig
+/// const Button = mercss.Component(.{
+///     .base = .{ .padding = "8px" },
+///     .hover = .{ .background = "#2563eb" },
+///     .dark = .{ .background = "#1e293b" },
+/// });
+/// ```
 pub fn Component(comptime styles: anytype) type {
+    if (comptime isVariantConfig(styles)) {
+        return ResponsiveComponent(styles);
+    }
     return struct {
         pub const css = generateCss(styles);
         pub const classes = getClassNames(styles);
@@ -135,6 +162,61 @@ fn generateResponsiveCss(comptime config: anytype) []const u8 {
         if (@hasField(@TypeOf(config), "xl")) {
             const xl_css = generateBreakpointCss("xl", config.xl);
             css = css ++ "@media (min-width: 1280px){" ++ xl_css ++ "}";
+        }
+
+        // Generate xl2 breakpoint (1536px+)
+        if (@hasField(@TypeOf(config), "xl2")) {
+            const xl2_css = generateBreakpointCss("xl2", config.xl2);
+            css = css ++ "@media (min-width: 1536px){" ++ xl2_css ++ "}";
+        }
+
+        // Dark mode via prefers-color-scheme (yxlyx #92)
+        if (@hasField(@TypeOf(config), "dark")) {
+            const dark_css = generateBreakpointCss("dark", config.dark);
+            if (dark_css.len > 0) {
+                css = css ++ "@media (prefers-color-scheme: dark){" ++ dark_css ++ "}";
+            }
+        }
+
+        // State variants — class is applied on the element, pseudo on the rule
+        if (@hasField(@TypeOf(config), "hover")) {
+            css = css ++ generateStateCss("hover", config.hover);
+        }
+        if (@hasField(@TypeOf(config), "focus")) {
+            css = css ++ generateStateCss("focus", config.focus);
+        }
+        if (@hasField(@TypeOf(config), "active")) {
+            css = css ++ generateStateCss("active", config.active);
+        }
+
+        return css;
+    }
+}
+
+/// Generate `.mcss-{state}-{prop}:{state}{prop:val;}` rules for hover/focus/active.
+fn generateStateCss(comptime state: []const u8, comptime styles: anytype) []const u8 {
+    comptime {
+        var css: []const u8 = "";
+
+        const T = @TypeOf(styles);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.field_names) |name| {
+                    const value = @field(styles, name);
+                    const value_str = switch (@typeInfo(@TypeOf(value))) {
+                        .@"enum" => @tagName(value),
+                        .int, .comptime_int => std.fmt.comptimePrint("{d}px", .{value}),
+                        .float, .comptime_float => std.fmt.comptimePrint("{d}px", .{value}),
+                        else => value,
+                    };
+                    const css_property = toKebabCase(name);
+                    const rule = std.fmt.comptimePrint(".mcss-{s}-{s}:{s}{{{s}:{s};}}", .{
+                        state, name, state, css_property, value_str,
+                    });
+                    css = css ++ rule;
+                }
+            },
+            else => {},
         }
 
         return css;
@@ -204,6 +286,29 @@ fn getResponsiveClassNames(comptime config: anytype) []const u8 {
         if (@hasField(@TypeOf(config), "xl")) {
             const xl_names = getBreakpointClassNames("xl", config.xl);
             names = names ++ xl_names ++ " ";
+        }
+
+        // xl2 classes
+        if (@hasField(@TypeOf(config), "xl2")) {
+            const xl2_names = getBreakpointClassNames("xl2", config.xl2);
+            names = names ++ xl2_names ++ " ";
+        }
+
+        if (@hasField(@TypeOf(config), "dark")) {
+            const dark_names = getBreakpointClassNames("dark", config.dark);
+            names = names ++ dark_names ++ " ";
+        }
+        if (@hasField(@TypeOf(config), "hover")) {
+            const hover_names = getBreakpointClassNames("hover", config.hover);
+            names = names ++ hover_names ++ " ";
+        }
+        if (@hasField(@TypeOf(config), "focus")) {
+            const focus_names = getBreakpointClassNames("focus", config.focus);
+            names = names ++ focus_names ++ " ";
+        }
+        if (@hasField(@TypeOf(config), "active")) {
+            const active_names = getBreakpointClassNames("active", config.active);
+            names = names ++ active_names ++ " ";
         }
 
         // Remove trailing space
@@ -447,4 +552,82 @@ pub fn exampleUsage() void {
     //     );
     // }
     _ = {};
+}
+
+/// Combine multiple components into one stylesheet (yxlyx #92).
+pub fn generateStylesheet(comptime components: anytype) []const u8 {
+    comptime {
+        var result: []const u8 = "/* mercss generated stylesheet */\n";
+        const T = @TypeOf(components);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.field_names) |name| {
+                    const comp = @field(components, name);
+                    result = result ++ "/* " ++ name ++ " */\n" ++ comp.css ++ "\n";
+                }
+            },
+            else => {},
+        }
+        return result;
+    }
+}
+
+/// Collect class names from multiple components (yxlyx #92).
+pub fn getAllClasses(comptime components: anytype) []const u8 {
+    comptime {
+        var result: []const u8 = "";
+        const T = @TypeOf(components);
+        switch (@typeInfo(T)) {
+            .@"struct" => |info| {
+                for (info.field_names) |name| {
+                    const comp = @field(components, name);
+                    if (comp.classes.len > 0) {
+                        result = result ++ comp.classes ++ " ";
+                    }
+                }
+            },
+            else => {},
+        }
+        return if (result.len > 0) result[0 .. result.len - 1] else "";
+    }
+}
+
+test "Component variant config: hover and dark" {
+    comptime {
+        @setEvalBranchQuota(8000);
+        const Interactive = Component(.{
+            .base = .{ .background = "#3b82f6" },
+            .hover = .{ .background = "#2563eb" },
+            .dark = .{ .background = "#1e293b", .color = "white" },
+        });
+        try testing.expect(std.mem.indexOf(u8, Interactive.css, ":hover") != null);
+        try testing.expect(std.mem.indexOf(u8, Interactive.css, "prefers-color-scheme: dark") != null);
+        try testing.expect(std.mem.indexOf(u8, Interactive.classes, "mcss-hover-background") != null);
+        try testing.expect(std.mem.indexOf(u8, Interactive.classes, "mcss-dark-background") != null);
+    }
+}
+
+test "Responsive component xl2 breakpoint" {
+    comptime {
+        @setEvalBranchQuota(8000);
+        const Wide = ResponsiveComponent(.{
+            .base = .{ .padding = "8px" },
+            .xl2 = .{ .padding = "64px" },
+        });
+        try testing.expect(std.mem.indexOf(u8, Wide.css, "1536px") != null);
+        try testing.expect(std.mem.indexOf(u8, Wide.classes, "mcss-xl2-padding") != null);
+    }
+}
+
+test "generateStylesheet and getAllClasses" {
+    comptime {
+        const sheet = generateStylesheet(.{
+            .button = Button,
+            .card = Card,
+        });
+        try testing.expect(std.mem.indexOf(u8, sheet, "/* button */") != null);
+        try testing.expect(std.mem.indexOf(u8, sheet, "/* card */") != null);
+        const classes = getAllClasses(.{ .button = Button, .card = Card });
+        try testing.expect(classes.len > 0);
+    }
 }

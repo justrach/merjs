@@ -233,7 +233,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
     // Run inline tests in individual framework source files.
-    for ([_][]const u8{ "src/css.zig", "src/session.zig", "src/telemetry.zig" }) |src_path| {
+    for ([_][]const u8{ "src/css.zig", "src/session.zig", "src/telemetry.zig", "src/mercss.zig", "src/native.zig" }) |src_path| {
         const file_test_mod = b.createModule(.{
             .root_source_file = b.path(src_path),
             .target = target,
@@ -377,10 +377,12 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
         desktop_mod.addImport("mer", mer_mod);
+        desktop_mod.addImport("runtime", runtime_mod);
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/app", "app", site_extras);
         helpers.addDirModules(b, desktop_mod, mer_mod, "examples/site/api", "api", &.{});
         helpers.addRoutesModule(b, desktop_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
         const desktop_exe = b.addExecutable(.{ .name = "merapp", .root_module = desktop_mod });
+        desktop_exe.step.dependOn(&run_codegen.step);
         desktop_mod.linkFramework("AppKit", .{});
         desktop_mod.linkFramework("WebKit", .{});
         desktop_mod.linkFramework("Foundation", .{});
