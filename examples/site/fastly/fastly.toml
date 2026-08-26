@@ -1,0 +1,16 @@
+manifest_version = 3
+name = "merjs-site"
+description = "MerJS demo site on Fastly Compute"
+language = "other"
+
+[scripts]
+build = "cd ../../.. && zig build fastly"
+
+[local_server]
+
+  [local_server.backends]
+    [local_server.backends.origin]
+    url = "https://httpbin.org"
+
+    [local_server.backends.assets]
+    url = "http://localhost:8080"

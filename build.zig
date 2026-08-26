@@ -173,6 +173,30 @@ pub fn build(b: *std.Build) void {
     worker_step.dependOn(&install_worker.step);
     worker_step.dependOn(&install_grep.step);
 
+    // ── Fastly Compute WASM ───────────────────────────────────────────────
+    const fastly_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+    });
+    const zigly_dep = b.dependency("zigly", .{});
+    const fastly_mod = b.createModule(.{
+        .root_source_file = b.path("src/fastly.zig"),
+        .target = fastly_target,
+        .optimize = .small,
+    });
+    fastly_mod.addImport("mer", mer_mod);
+    fastly_mod.addImport("zigly", zigly_dep.module("zigly"));
+    fastly_mod.addImport("counter_config", counter_config_mod);
+    helpers.addStaticAssets(b, fastly_mod, "examples/site/public");
+    helpers.addDirModules(b, fastly_mod, mer_mod, "examples/site/app", "app", site_extras);
+    helpers.addDirModules(b, fastly_mod, mer_mod, "examples/site/api", "api", &.{});
+    helpers.addRoutesModule(b, fastly_mod, mer_mod, "src/generated/routes.zig", "examples/site/app", "examples/site/api", site_extras);
+    const fastly_exe = b.addExecutable(.{ .name = "merjs-fastly", .root_module = fastly_mod });
+    fastly_exe.step.dependOn(&run_codegen.step);
+    const install_fastly = b.addInstallFile(fastly_exe.getEmittedBin(), "../examples/site/fastly/merjs.wasm");
+    const fastly_step = b.step("fastly", "Compile Fastly Compute WASM module");
+    fastly_step.dependOn(&install_fastly.step);
+
     // ── Examples (sgdata, kanban) ────────────────────────────────────────────
     examples.addExamples(b, mer_mod, wasm_target);
 

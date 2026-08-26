@@ -133,6 +133,10 @@ pub const wasmBeginCollect = fetch_mod.wasmBeginCollect;
 pub const wasmEndCollect = fetch_mod.wasmEndCollect;
 pub const wasmProvideResult = fetch_mod.wasmProvideResult;
 pub const wasmClearCache = fetch_mod.wasmClearCache;
+pub const WasiFetchFn = fetch_mod.WasiFetchFn;
+pub fn setWasiFetch(impl: WasiFetchFn) void {
+    fetch_mod.wasi_fetch_impl = impl;
+}
 
 // --- SEO / Meta tags --------------------------------------------------------
 
@@ -199,12 +203,14 @@ pub const Route = struct {
 // Requires the self-referential `mer_mod.addImport("mer", mer_mod)` in build.zig
 // so that transitive file-imports (server.zig → router.zig → mer) resolve.
 
+pub const dispatch = @import("dispatch.zig");
 pub const Router = @import("router.zig").Router;
 pub const LayoutFn = @import("router.zig").LayoutFn;
 pub const StreamLayoutFn = @import("router.zig").StreamLayoutFn;
 pub const Server = @import("server.zig").Server;
 pub const Config = @import("server.zig").Config;
 pub const ServerReady = @import("server.zig").ServerReady;
+pub const security_headers = @import("server.zig").security_headers;
 pub const Watcher = @import("watcher.zig").Watcher;
 pub const runPrerender = @import("prerender.zig").run;
 
