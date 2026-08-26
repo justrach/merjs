@@ -75,8 +75,25 @@ pub const hot_reload_script =
     \\    }
     \\    while(f){ nf = f.nextSibling; from.removeChild(f); f = nf; }
     \\  }
+    \\  function escapeHtml(s){ return String(s).replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+    \\  function clearBuildError(){ var el = document.getElementById('__mer_build_err__'); if(el) el.remove(); }
+    \\  function showBuildError(text){
+    \\    var el = document.getElementById('__mer_build_err__');
+    \\    if(!el){
+    \\      el = document.createElement('div');
+    \\      el.id = '__mer_build_err__';
+    \\      el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(26,26,46,0.97);color:#e0e0e0;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;padding:32px;overflow:auto';
+    \\      document.body.appendChild(el);
+    \\    }
+    \\    el.innerHTML =
+    \\      '<div style="color:#ff5555;font-size:20px;font-weight:600;margin-bottom:4px">Compile error</div>'
+    \\      + '<div style="color:#8a7f78;margin-bottom:16px">merjs dev &mdash; fix the error and save to reload</div>'
+    \\      + '<pre style="white-space:pre-wrap;word-break:break-word;color:#ffd479;background:#111124;padding:16px;border-radius:8px;border:1px solid #ff5555;margin:0">'
+    \\      + escapeHtml(text) + '</pre>';
+    \\  }
     \\  function apply(){
     \\    if(reloading) return;
+    \\    clearBuildError();
     \\    var sx = window.scrollX, sy = window.scrollY;
     \\    var ae = document.activeElement, activeKey = fieldKey(ae), sel = null;
     \\    if(ae){ try { sel = [ae.selectionStart, ae.selectionEnd]; } catch(e){} }
@@ -99,6 +116,7 @@ pub const hot_reload_script =
     \\      .catch(fullReload);
     \\  }
     \\  es.onmessage = apply;
+    \\  es.addEventListener('builderror', function(ev){ showBuildError(ev.data); });
     \\})();
     \\</script>
     \\</body>

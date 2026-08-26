@@ -41,6 +41,13 @@ pub const Watcher = struct {
     mutex: PthreadMutex,
     mtimes: std.StringHashMap(std.Io.Timestamp),
     io: std.Io,
+    /// When true, a `zig build` is spawned on every change so compile errors
+    /// can be surfaced in the browser (issue #44). Disabled automatically when
+    /// there is no build.zig in the cwd (e.g. a deployed app without a toolchain).
+    rebuild_on_change: bool,
+    /// Captured stderr of the last failed `zig build`, or null on success.
+    /// Guarded by `mutex`; owned by the watcher.
+    build_error: ?[]u8 = null,
 
     pub fn init(allocator: std.mem.Allocator, watch_dir: []const u8) Watcher {
         return .{
@@ -50,6 +57,7 @@ pub const Watcher = struct {
             .mutex = .{},
             .mtimes = std.StringHashMap(std.Io.Timestamp).init(allocator),
             .io = runtime.io, // Use shared runtime.io instead of creating new Threaded
+            .rebuild_on_change = true,
         };
     }
 
@@ -58,6 +66,7 @@ pub const Watcher = struct {
         var it = self.mtimes.iterator();
         while (it.next()) |entry| self.allocator.free(entry.key_ptr.*);
         self.mtimes.deinit();
+        if (self.build_error) |e| self.allocator.free(e);
     }
 
     pub fn addClient(self: *Watcher, client: *Client) !void {
@@ -66,11 +75,50 @@ pub const Watcher = struct {
         try self.clients.append(self.allocator, client);
     }
 
-    fn broadcast(self: *Watcher) void {
+    /// Store the latest build result and wake all waiting SSE clients.
+    /// Takes ownership of `err_log` (may be null on success).
+    fn broadcast(self: *Watcher, err_log: ?[]u8) void {
         self.mutex.lock();
         defer self.mutex.unlock();
+        if (self.build_error) |old| self.allocator.free(old);
+        self.build_error = err_log;
         for (self.clients.items) |c| c.notify();
         self.clients.clearRetainingCapacity();
+    }
+
+    /// Spawn `zig build` and capture its stderr. Returns null when the build
+    /// succeeds (or when rebuilding is not applicable), or an owned error log
+    /// when the compile fails (issue #44).
+    fn rebuild(self: *Watcher) ?[]u8 {
+        if (!self.rebuild_on_change) return null;
+        // Only rebuild inside a project root that has a build.zig.
+        std.Io.Dir.cwd().access(self.io, "build.zig", .{}) catch return null;
+
+        const result = std.process.run(self.allocator, self.io, .{
+            .argv = &.{ "zig", "build", "--color", "off" },
+        }) catch |err| {
+            return std.fmt.allocPrint(
+                self.allocator,
+                "merjs: could not run `zig build`: {s}",
+                .{@errorName(err)},
+            ) catch null;
+        };
+        defer self.allocator.free(result.stdout);
+
+        const failed = switch (result.term) {
+            .exited => |code| code != 0,
+            else => true,
+        };
+        if (failed) {
+            log.err("rebuild failed — sending error overlay", .{});
+            if (result.stderr.len == 0) {
+                self.allocator.free(result.stderr);
+                return self.allocator.dupe(u8, "zig build failed (no diagnostics captured)") catch null;
+            }
+            return result.stderr; // ownership transferred to caller
+        }
+        self.allocator.free(result.stderr);
+        return null;
     }
 
     /// Poll loop — run in a background thread.
@@ -78,8 +126,10 @@ pub const Watcher = struct {
         while (true) {
             threadSleep(300 * std.time.ns_per_ms);
             if (self.pollOnce()) {
-                log.info("change detected — reloading", .{});
-                self.broadcast();
+                log.info("change detected — rebuilding", .{});
+                const err_log = self.rebuild();
+                if (err_log == null) log.info("rebuild ok — reloading", .{});
+                self.broadcast(err_log);
             }
         }
     }
@@ -141,7 +191,29 @@ pub fn handleSse(
     // Block until the watcher fires.
     client.wait();
 
-    try bw.writer.writeAll("data: reload\n\n");
+    // Copy the build result under the lock so we can release it before writing
+    // to the (potentially slow) socket.
+    watcher.mutex.lock();
+    const err_copy: ?[]u8 = if (watcher.build_error) |e| (alloc.dupe(u8, e) catch null) else null;
+    watcher.mutex.unlock();
+    defer if (err_copy) |e| alloc.free(e);
+
+    if (err_copy) |elog| {
+        // Distinct SSE event type — the client renders a styled compile-error
+        // overlay instead of patching the DOM (issue #44). Each log line is
+        // emitted as its own `data:` field; EventSource rejoins them with "\n".
+        try bw.writer.writeAll("event: builderror\n");
+        var it = std.mem.splitScalar(u8, elog, '\n');
+        while (it.next()) |line| {
+            const clean = std.mem.trimEnd(u8, line, "\r");
+            try bw.writer.writeAll("data: ");
+            try bw.writer.writeAll(clean);
+            try bw.writer.writeAll("\n");
+        }
+        try bw.writer.writeAll("\n");
+    } else {
+        try bw.writer.writeAll("data: reload\n\n");
+    }
     try bw.end();
 }
 
