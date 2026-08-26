@@ -61,9 +61,11 @@ pub fn render(req: mer.Request) mer.Response {
 - [x] Component-level style scoping
 - [x] CSS string concatenation at comptime
 - [x] Integration with merjs page rendering
-- [x] Responsive variants (`sm`, `md`, `lg`, `xl`, `xl2`)
-- [x] State variants (`hover`, `focus`, `active`)
+- [x] Responsive variants (`sm`, `md`, `lg`, `xl`, `xl2`) → `@media (min-width: …)`
+- [x] State variants (`hover`, `focus`, `active`) → `.cls:hover { … }`
 - [x] Dark mode via `prefers-color-scheme`
+- [x] Property-name mapping (`border_radius` → `border-radius`)
+- [x] Shorter, content-addressed hashed class names (`HashedComponent`)
 - [x] `generateStylesheet` / `getAllClasses` helpers
 
 ### 🚧 Not Yet Implemented (vs Tailwind)
@@ -94,6 +96,73 @@ const Button = mercss.Component(.{
 });
 // Generates: .mcss-padding{padding:8px 16px} .mcss-background{background:#3b82f6} ...
 ```
+
+## Tailwind-parity feature reference (#91)
+
+### 1. Property-name mapping (kebab-case)
+
+Struct field names use Zig's `snake_case`; mercss maps them to CSS `kebab-case`
+properties automatically at comptime.
+
+```zig
+const Box = mercss.Component(.{ .border_radius = "6px", .background_color = "#fff" });
+// Box.css == ".mcss-border_radius{border-radius:6px;}.mcss-background_color{background-color:#fff;}"
+```
+
+Integer / float values become pixels (`.margin_top = 12` → `margin-top:12px;`).
+
+### 2. Responsive prefixes → `@media (min-width: …)`
+
+```zig
+const Box = mercss.ResponsiveComponent(.{
+    .base = .{ .padding = "8px" },
+    .md   = .{ .font_size = "18px" },
+});
+// Box.css contains:
+//   .mcss-padding{padding:8px;}
+//   @media (min-width: 768px){.mcss-md-font_size{font-size:18px;}}
+```
+
+Breakpoints: `sm` 640px, `md` 768px, `lg` 1024px, `xl` 1280px, `xl2` 1536px.
+
+### 3. State variants → `.cls:hover { … }`
+
+```zig
+const Btn = mercss.Component(.{
+    .base   = .{ .background = "#3b82f6" },
+    .hover  = .{ .background_color = "#2563eb" },
+    .focus  = .{ .outline = "2px solid #93c5fd" },
+    .active = .{ .background = "#1d4ed8" },
+});
+// Btn.css contains:
+//   .mcss-hover-background_color:hover{background-color:#2563eb;}
+//   .mcss-focus-outline:focus{outline:2px solid #93c5fd;}
+//   .mcss-active-background:active{background:#1d4ed8;}
+```
+
+`Component(...)` auto-detects the variant shape (presence of `base`/`sm`/`hover`/…)
+and dispatches to `ResponsiveComponent`, so flat and variant configs use the same
+entry point.
+
+### 4. Shorter, hashed atomic class names (`HashedComponent`)
+
+The default `Component` emits readable `.mcss-<property>` names. For pages with
+many components those names get long and repeat identical atomic rules.
+`HashedComponent` derives a short class name from each rule's *content*
+(`property:value`), so identical atomic rules collapse onto one class name across
+components — true atomic-CSS deduplication.
+
+```zig
+const Primary = mercss.HashedComponent(.{ .background = "#3b82f6", .border_radius = "6px" });
+// Primary.css     == ".mc-<hash>{background:#3b82f6;}.mc-<hash>{border-radius:6px;}"
+// Primary.classes == "mc-<hash> mc-<hash>"
+
+const Ghost = mercss.HashedComponent(.{ .background = "#3b82f6", .border_radius = "999px" });
+// Ghost shares Primary's `background:#3b82f6` class name (same hash) — deduped.
+```
+
+Hashing is FNV-1a → base36, evaluated entirely at comptime (no runtime cost).
+`HashedComponent` is opt-in; existing pages keep the stable `mcss-*` names.
 
 ## Design System / Theme
 
@@ -183,9 +252,9 @@ docker run -p 3000:3000 merjs
 - [x] Dark mode (`prefers-color-scheme`)
 - [x] `mer.design` token system
 - [x] Property mapping (`border_radius` → `border-radius`)
+- [x] Shorter hash-based class names via `HashedComponent` (opt-in; `mcss-*` kept as default to avoid breaking existing pages)
 
 ### Later
-- [ ] Shorter hash-based class names (kept `mcss-*` to avoid breaking existing pages)
 - [ ] Streaming CSS (CSS arrives with component chunks)
 - [ ] Container queries
 - [ ] Animation keyframes
