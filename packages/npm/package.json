@@ -29,8 +29,7 @@
     "merjs": "./bin/mer"
   },
   "scripts": {
-    "postinstall": "node install.js",
-    "preuninstall": "node uninstall.js"
+    "postinstall": "node install.js"
   },
   "engines": {
     "node": ">=16.0.0"

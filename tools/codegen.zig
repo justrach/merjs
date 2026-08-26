@@ -62,7 +62,7 @@ pub fn main() !void {
         defer alloc.free(ident);
         const url = try toUrl(alloc, path);
         defer alloc.free(url);
-        try buf.print(alloc, "    .{{ .path = \"{s}\", .render = {s}.render, .render_stream = if (@hasDecl({s}, \"renderStream\")) {s}.renderStream else null, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}}, .prerender = if (@hasDecl({s}, \"prerender\")) {s}.prerender else false }},\n", .{ url, ident, ident, ident, ident, ident, ident, ident });
+        try buf.print(alloc, "    .{{ .path = \"{s}\", .render = {s}.render, .render_stream = if (@hasDecl({s}, \"renderStream\")) {s}.renderStream else null, .meta = if (@hasDecl({s}, \"meta\")) {s}.meta else .{{}}, .prerender = if (@hasDecl({s}, \"prerender\")) {s}.prerender else false, .middleware = if (@hasDecl({s}, \"middleware\")) {s}.middleware else null, .revalidate = if (@hasDecl({s}, \"revalidate\")) {s}.revalidate else 0 }},\n", .{ url, ident, ident, ident, ident, ident, ident, ident, ident, ident, ident, ident });
     }
     try buf.appendSlice(alloc, "};\n\n");
 
@@ -92,6 +92,13 @@ pub fn main() !void {
         try buf.appendSlice(alloc, "pub const notFound = app_404.render;\n");
     }
 
+    // Global middleware — if app/middleware.zig exists, export its
+    // `global_middleware` slice so Router.fromGenerated picks it up.
+    if (fileExists("app/middleware.zig")) {
+        try buf.appendSlice(alloc, "const app_middleware = @import(\"app/middleware\");\n");
+        try buf.appendSlice(alloc, "pub const global_middleware = app_middleware.global_middleware;\n");
+    }
+
     _ = try std.Io.Dir.cwd().createDirPathOpen(runtime.io, "src/generated", .{});
     const out = try std.Io.Dir.cwd().createFile(runtime.io, "src/generated/routes.zig", .{});
     defer out.close(runtime.io);
@@ -113,6 +120,8 @@ fn scanDir(alloc: std.mem.Allocator, entries: *std.ArrayList([]u8), dir: []const
         if (std.mem.eql(u8, entry.path, "layout.zig")) continue;
         // Skip 404.zig — it's an error handler, not a regular route.
         if (std.mem.eql(u8, entry.path, "404.zig")) continue;
+        // Skip middleware.zig — it provides global_middleware, not a route.
+        if (std.mem.eql(u8, entry.path, "middleware.zig")) continue;
         const full = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ dir, entry.path });
         try entries.append(alloc, full);
     }

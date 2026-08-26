@@ -101,7 +101,10 @@ async function main() {
   const { platform, arch } = getPlatform();
   const assetName = `mer-${platform}-${arch}`;
   const binDir = path.join(__dirname, 'bin');
-  const binPath = path.join(binDir, platform === 'windows' ? 'mer.exe' : 'mer');
+  // The launcher script is shipped at bin/mer, so the downloaded native binary
+  // must use a distinct name to avoid overwriting/colliding with it (which
+  // would make the launcher exec itself).
+  const binPath = path.join(binDir, platform === 'windows' ? 'mer.exe' : 'mer-bin');
   
   // Check if already installed
   if (fs.existsSync(binPath)) {

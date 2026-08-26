@@ -1,4 +1,8 @@
 const std = @import("std");
+// turboapi-core's pure HTTP helpers (query-string parsing, percent-decode, …).
+// Imported via the narrow `turboapi-http` module (rooted at the dependency's
+// `http.zig`) to avoid pulling in `router.zig`; see build.zig for details.
+const core_http = @import("turboapi-http");
 
 pub const Method = enum {
     GET,
@@ -131,17 +135,12 @@ pub const Request = struct {
 // ── Internal helpers ───────────────────────────────────────────────────────
 
 /// Extract a named query param from a raw query string (no `?` prefix).
+///
+/// Delegates to turboapi-core's `queryStringGet` so merjs and turboAPI share a
+/// single, fuzz-tested query-string parser (see issue #66). The public
+/// `Request.queryParam` API is unchanged.
 pub fn queryParamFromStr(query: []const u8, name: []const u8) ?[]const u8 {
-    var rest = query;
-    while (rest.len > 0) {
-        const amp = std.mem.indexOfScalar(u8, rest, '&') orelse rest.len;
-        const kv = rest[0..amp];
-        if (std.mem.indexOfScalar(u8, kv, '=')) |eq| {
-            if (std.mem.eql(u8, kv[0..eq], name)) return kv[eq + 1 ..];
-        }
-        rest = if (amp < rest.len) rest[amp + 1 ..] else "";
-    }
-    return null;
+    return core_http.queryStringGet(query, name);
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -168,6 +167,31 @@ test "queryParam: single param, no ampersand" {
     var req = Request.init(std.testing.allocator, .GET, "/");
     req.query_string = "only=one";
     try std.testing.expectEqualStrings("one", req.queryParam("only").?);
+}
+
+test "queryParam: multiple params, middle and last key" {
+    var req = Request.init(std.testing.allocator, .GET, "/search");
+    req.query_string = "a=1&b=2&c=3";
+    try std.testing.expectEqualStrings("1", req.queryParam("a").?);
+    try std.testing.expectEqualStrings("2", req.queryParam("b").?);
+    try std.testing.expectEqualStrings("3", req.queryParam("c").?);
+}
+
+test "queryParam: empty value" {
+    var req = Request.init(std.testing.allocator, .GET, "/");
+    req.query_string = "flag=&x=1";
+    try std.testing.expectEqualStrings("", req.queryParam("flag").?);
+    try std.testing.expectEqualStrings("1", req.queryParam("x").?);
+}
+
+test "queryParamFromStr delegates to turboapi-core queryStringGet" {
+    // The helper must return exactly what turboapi-core returns.
+    const qs = "foo=bar&baz=qux";
+    try std.testing.expectEqualStrings(
+        core_http.queryStringGet(qs, "baz").?,
+        queryParamFromStr(qs, "baz").?,
+    );
+    try std.testing.expect(queryParamFromStr(qs, "missing") == null);
 }
 
 test "cookie: basic name=value" {
