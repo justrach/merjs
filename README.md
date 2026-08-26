@@ -381,11 +381,12 @@ when the toolchain supports it, and gracefully **fall back to Threaded** if
 io_uring init fails (old kernel, restricted seccomp, sandboxed container, …) so
 the same binary boots on every host.
 
-On Zig **0.17.0-dev**, Linux tries Evented (io_uring) first and falls back
-to Threaded if init fails. Zig 0.16.0 left this gated off because the
-release tarball's `std/Io/Uring.zig` failed to compile (`error.ReadOnlyFileSystem`
-missing from `Dir.OpenError` / `Dir.RealPathFileError`). That mapping is
-fixed in 0.17.0-dev.
+Zig **0.17.0-dev** fixes the 0.16.0 Uring compile bug (`error.ReadOnlyFileSystem`
+mapped instead of forwarded into `Dir.OpenError`). Evented still cannot listen:
+`std.Io.Uring` wires `netListenIp` / `netAccept` to stubs that always return
+`error.NetworkDown`. `stdlib_evented_works` stays `false` so the server uses
+Threaded until those vtable slots are implemented. The init-time io_uring
+fallback remains in place for when they are.
 
 ---
 

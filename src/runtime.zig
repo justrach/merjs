@@ -24,11 +24,11 @@ var active: Backend = .threaded;
 
 // Evented is only available on platforms where the stdlib provides it.
 //
-// Zig 0.16.0's release stdlib shipped a compile bug in `std/Io/Uring.zig`:
-// `Dir.OpenError` / `Dir.RealPathFileError` omitted `error.ReadOnlyFileSystem`,
-// but the vtable forwarded it via `else => |e| return e`. 0.17.0-dev maps
-// that error to `errnoBug(.ROFS)` instead, so Evented can be analyzed again.
-const stdlib_evented_works = true;
+// Evented compiles on 0.17.0-dev (the 0.16.0 Uring `ReadOnlyFileSystem`
+// compile bug is fixed). It still cannot serve HTTP: `std.Io.Uring`'s vtable
+// wires `netListenIp` / `netAccept` to stubs that always return
+// `error.NetworkDown`. Keep Threaded until those vtable slots are real.
+const stdlib_evented_works = false;
 const evented_supported = blk: {
     if (!stdlib_evented_works) break :blk false;
     if (!@hasDecl(std.Io, "Evented")) break :blk false;
