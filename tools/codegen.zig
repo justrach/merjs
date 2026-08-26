@@ -10,7 +10,7 @@ pub fn main() !void {
     const alloc = gpa.allocator();
 
     // Initialize std.Io runtime (Auto-selects Evented on Linux, Threaded elsewhere)
-    try runtime.init(alloc);
+    try runtime.init(alloc, .empty);
     defer runtime.deinit();
 
     // Each entry stores the full relative path from the project root.
