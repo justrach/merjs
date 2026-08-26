@@ -17,6 +17,10 @@
             .url = "git+https://github.com/justrach/turboapi-core.git#6c4217b8d0cdc297f5b827527cdc9237213b14f1",
             .hash = "turboapi_core-0.1.0-DjdHgu19AABfWBxcHyuAg51BxbZ7jmtlJ5VRt9GTURAP",
         },
+        .zigly = .{
+            .url = "git+https://github.com/jedisct1/zigly.git#961f9a7e3f59bac46618455f34d4fa5e018b6f4e",
+            .hash = "zigly-0.1.20-QJiBOTSMAwDKtbjy0t6GUHW1dq0lzIN4cC1tMv-XeV4l",
+        },
     },
     .paths = .{
         "build.zig",

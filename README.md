@@ -15,7 +15,7 @@
 <h3 align="center">Next.js-style web framework. Written in Zig. Zero Node.js.</h3>
 
 <p align="center">
-  File-based routing · SSR · Type-safe APIs · Hot reload · WASM client logic · Cloudflare Workers
+  File-based routing · SSR · Type-safe APIs · Hot reload · WASM client logic · Cloudflare Workers · Fastly Compute
 </p>
 
 <p align="center">
@@ -367,6 +367,27 @@ If your routes use secrets (API keys, etc.), set them first: `wrangler secret pu
 
 The `worker/worker.js` shim handles the fetch event and passes requests to the WASM binary.
 
+### Fastly Compute
+
+1. Edit `examples/site/fastly/fastly.toml` — set your service name and backend origins.
+2. Build and deploy:
+
+```bash
+zig build fastly        # compile to WASI WASM
+cd examples/site/fastly
+fastly compute deploy
+```
+
+The Fastly target compiles to `wasm32-wasi` and runs natively on Fastly's Compute platform — no JS shim needed. Static assets from `public/` are embedded directly into the WASM binary for zero-latency serving. Outbound HTTP requests (for SSR data fetching) are routed through Fastly backends configured in `fastly.toml`.
+
+To test locally with [Viceroy](https://github.com/fastly/Viceroy):
+
+```bash
+cd examples/site/fastly
+viceroy ./merjs.wasm -C fastly.toml
+# → http://127.0.0.1:7676
+```
+
 ### Runtime selection (io_uring)
 
 `src/runtime.zig` exposes a single `runtime.io` instance and a `Backend` enum
@@ -407,6 +428,11 @@ zig build serve
 zig build worker
   └── compiles to wasm32-freestanding
   └── worker/worker.js wraps WASM in a CF Workers fetch handler
+
+zig build fastly
+  └── compiles to wasm32-wasi
+  └── embeds public/ assets into the binary
+  └── runs natively on Fastly Compute (no JS shim)
 ```
 
 **Thread model:** `std.Thread.Pool` with CPU-count-based sizing, kernel backlog 512, 64 KB write buffers.
@@ -435,7 +461,8 @@ merjs/
 ├── examples/
 │   ├── desktop/            # native macOS app (experimental) — zig build desktop
 │   ├── kanban/             # Kanban board demo (merboard.merlionjs.com)
-│   └── singapore-data-dashboard/
+│   ├── singapore-data-dashboard/
+│   └── site/fastly/        # Fastly Compute deploy target — zig build fastly
 ├── tools/
 │   ├── codegen.zig
 │   └── tailwindcss         # Tailwind v4 standalone CLI (no npm)
