@@ -30,6 +30,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This p
 ---
 
 ## [Unreleased]
+### Changed
+- **Zig 0.17.0-dev** — toolchain pin moves from 0.16.0 to master snapshot `0.17.0-dev.1862+40ebd8162`. Build files use the new `std.builtin.Optimize` tags (`.debug` / `.small` / `.fast` / `.safe`) and `Run.addPassthruArgs()` instead of `b.args`. `@typeInfo` struct reflection uses `field_names` / `field_types`. Linux Evented (io_uring) is re-enabled now that 0.17's Uring backend maps `error.ReadOnlyFileSystem`. Bumps dhi to the 0.17 reflection migration (`89d46d6`).
+
 ### Added
 - **Shell-first HTML rendering** — layout splits into head (CSS, meta, nav) and tail (footer, closing tags). The server flushes the head chunk immediately via chunked transfer encoding before the page's `render()` runs. This is NOT true streaming SSR (render still blocks) — it's early shell flushing so the browser can start painting the layout while waiting for page content.
 - **`mer.fetchAll()`** — parallel HTTP fetching. Spawns a thread per request, joins all. Cuts total latency to the slowest single fetch instead of the sum.

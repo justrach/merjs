@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/justrach/merjs/releases/latest"><img src="https://img.shields.io/github/v/release/justrach/merjs?style=flat-square&label=version" alt="Latest Release" /></a>
   <a href="https://github.com/justrach/merjs/blob/main/LICENSE"><img src="https://img.shields.io/github/license/justrach/merjs?style=flat-square" alt="License" /></a>
-  <img src="https://img.shields.io/badge/zig-0.16-f7a41d?style=flat-square" alt="Zig 0.16" />
+  <img src="https://img.shields.io/badge/zig-0.17.0--dev-f7a41d?style=flat-square" alt="Zig 0.17.0-dev" />
   <img src="https://img.shields.io/badge/node__modules-0_files-brightgreen?style=flat-square" alt="Zero node_modules" />
   <img src="https://img.shields.io/badge/status-experimental-orange?style=flat-square" alt="Experimental" />
 </p>
@@ -46,7 +46,7 @@ merjs is exploring whether you can get the full Next.js developer experience —
 
 ## Quick Start
 
-**Requirements:** [Zig 0.16](https://ziglang.org/download/)
+**Requirements:** [Zig 0.17.0-dev](https://ziglang.org/download/) (master snapshot `0.17.0-dev.1862+40ebd8162`)
 
 ### Option A: One-line install (recommended)
 
@@ -98,7 +98,7 @@ Visit `http://localhost:3000`.
 
 ## Performance
 
-**Local benchmarks** (Apple M-series, `wrk -t4 -c50 -d10s`, `-Doptimize=ReleaseSmall`):
+**Local benchmarks** (Apple M-series, `wrk -t4 -c50 -d10s`, `--release=small`):
 
 |                        | **merjs**                  | **Next.js**                    |
 | ---------------------- | -------------------------- | ------------------------------ |
@@ -210,13 +210,13 @@ Download from [releases](https://github.com/justrach/merjs/releases/latest) — 
 Or build from source:
 
 ```bash
-zig build cli -Doptimize=ReleaseSmall   # → zig-out/bin/mer
+zig build cli --release=small   # → zig-out/bin/mer
 ```
 
 Quick install from source checkout:
 
 ```bash
-zig build cli -Doptimize=ReleaseSmall
+zig build cli --release=small
 install -m 755 zig-out/bin/mer /usr/local/bin/mer
 ```
 
@@ -308,7 +308,7 @@ docker run --rm -p 3000:3000 merjs
 ```
 
 The image:
-- Pins Zig 0.16.0 (matches `build.zig.zon`)
+- Pins Zig 0.17.0-dev (matches `build.zig.zon`)
 - Runs as a non-root user (`uid 10001`)
 - Uses `tini` as PID 1 so `Ctrl-C` and orchestrator stop signals work
 - Has a `HEALTHCHECK` against `/_mer/health`
@@ -381,12 +381,11 @@ when the toolchain supports it, and gracefully **fall back to Threaded** if
 io_uring init fails (old kernel, restricted seccomp, sandboxed container, …) so
 the same binary boots on every host.
 
-While merjs is pinned to Zig **0.16.0**, the io_uring path is gated off — the
-release tarball's `std/Io/Uring.zig` has a known compile-time bug (missing
-`error.ReadOnlyFileSystem` in `Dir.OpenError`/`Dir.RealPathFileError`) that
-prevents Evented from being analyzed at all. Flip
-`stdlib_evented_works = true` in `src/runtime.zig` once the toolchain pin
-moves past 0.16.0; no other code changes needed.
+On Zig **0.17.0-dev**, Linux tries Evented (io_uring) first and falls back
+to Threaded if init fails. Zig 0.16.0 left this gated off because the
+release tarball's `std/Io/Uring.zig` failed to compile (`error.ReadOnlyFileSystem`
+missing from `Dir.OpenError` / `Dir.RealPathFileError`). That mapping is
+fixed in 0.17.0-dev.
 
 ---
 
@@ -492,7 +491,7 @@ Open an issue before submitting a large PR.
 - **[dhi](https://github.com/justrach/dhi)** — Pydantic-style validation for Zig
 - **[Tailwind CSS v4](https://tailwindcss.com)** — standalone CLI, no npm
 - **[kuri](https://github.com/justrach/kuri)** — E2E testing via headless Chrome
-- **Zig 0.15** — the whole stack
+- **Zig 0.17.0-dev** — the whole stack
 
 ## License
 

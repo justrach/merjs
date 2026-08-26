@@ -25,10 +25,10 @@ pub fn build(b: *std.Build) void {
     const dhi_validator_mod = dhi_dep.module("validator");
 
     // ── kuri dependency (browser automation for debug mode) ─────────────────
-    // TODO: re-enable once kuri is updated for Zig 0.16
+    // TODO: re-enable once kuri is updated for Zig 0.17
     // const kuri_dep = b.dependency("kuri", .{
     //     .target = target,
-    //     .optimize = if (optimize != .Debug) optimize else .ReleaseFast,
+    //     .optimize = if (optimize != .debug) optimize else .fast,
     // });
 
     // ── Runtime module (std.Io instance management) ───────────────────────────
@@ -75,7 +75,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .strip = if (optimize != .Debug) true else null,
+        .strip = if (optimize != .debug) true else null,
         .link_libc = true, // 0.16: std.c.* (pthread, clock_gettime, etc.) needs explicit libc
     });
     main_mod.addImport("mer", mer_mod);
@@ -89,7 +89,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     // Install kuri binary alongside merjs.
-    // TODO: re-enable once kuri is updated for Zig 0.16
+    // TODO: re-enable once kuri is updated for Zig 0.17
     // const install_kuri = b.addInstallArtifact(kuri_dep.artifact("kuri"), .{});
     // b.getInstallStep().dependOn(&install_kuri.step);
 
@@ -97,7 +97,7 @@ pub fn build(b: *std.Build) void {
     const codegen_mod = b.createModule(.{
         .root_source_file = b.path("tools/codegen.zig"),
         .target = b.graph.host,
-        .optimize = .Debug,
+        .optimize = .debug,
     });
     // Wire up runtime for tools/codegen.zig
     codegen_mod.addImport("runtime", runtime_mod);
@@ -112,7 +112,7 @@ pub fn build(b: *std.Build) void {
     // ── `zig build serve` ────────────────────────────────────────────────────
     const run_exe = b.addRunArtifact(exe);
     run_exe.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_exe.addArgs(args);
+    run_exe.addPassthruArgs();
     b.step("serve", "Start the merjs dev server").dependOn(&run_exe.step);
 
     // ── Prerender (SSG) ─────────────────────────────────────────────────────
@@ -150,13 +150,13 @@ pub fn build(b: *std.Build) void {
     const worker_named = b.addModule("worker", .{
         .root_source_file = b.path("src/worker.zig"),
         .target = wasm_target,
-        .optimize = .ReleaseSmall,
+        .optimize = .small,
     });
     worker_named.addImport("mer", mer_mod);
     const worker_mod = b.createModule(.{
         .root_source_file = b.path("src/worker.zig"),
         .target = wasm_target,
-        .optimize = .ReleaseSmall,
+        .optimize = .small,
     });
     worker_mod.addImport("mer", mer_mod);
     worker_mod.addImport("counter_config", counter_config_mod);
@@ -184,7 +184,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("cli.zig"),
         .target = target,
         .optimize = optimize,
-        .strip = if (optimize != .Debug) true else null,
+        .strip = if (optimize != .debug) true else null,
         .link_libc = true,
     });
     cli_mod.addImport("runtime", runtime_mod);

@@ -15,10 +15,10 @@ jobs:
       - name: Checkout merjs
         uses: actions/checkout@v4
 
-      - name: Setup Zig 0.16.0
+      - name: Setup Zig 0.17.0-dev
         uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: "0.17.0-dev.1862+40ebd8162"
 
       - name: Build merjs
         run: |
@@ -28,5 +28,5 @@ jobs:
       - name: Verify binary
         run: test -f zig-out/bin/merjs
 
-      # TODO: re-enable E2E tests once kuri is updated for Zig 0.16
+      # TODO: re-enable E2E tests once kuri is updated for Zig 0.17
       # For now, just verify the build succeeds.
